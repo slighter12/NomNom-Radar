@@ -1,0 +1,88 @@
+-- +goose Up
+-- SQL in this section is executed when the migration is applied.
+
+-- Step 1: Create the reusable trigger function for updated_at
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+   NEW.updated_at = NOW();
+   RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+
+-- Step 2: Create all tables and their indexes
+-- Table: users
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email VARCHAR(255) NOT NULL UNIQUE,
+    name VARCHAR(100),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Table: user_authentications
+CREATE TABLE user_authentications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider VARCHAR(50) NOT NULL,
+    provider_user_id VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX idx_auth_provider_provider_user_id ON user_authentications(provider, provider_user_id);
+CREATE INDEX idx_auth_user_id ON user_authentications(user_id);
+
+-- Table: refresh_tokens
+CREATE TABLE refresh_tokens (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(255) NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_refresh_tokens_expires_at ON refresh_tokens(expires_at);
+CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens(user_id);
+
+-- Table: user_profiles
+CREATE TABLE user_profiles (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    default_shipping_address TEXT,
+    loyalty_points INT DEFAULT 0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TRIGGER update_user_profiles_updated_at BEFORE UPDATE ON user_profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Table: merchant_profiles
+CREATE TABLE merchant_profiles (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    store_name VARCHAR(100) NOT NULL,
+    store_description TEXT,
+    business_license VARCHAR(255) NOT NULL UNIQUE,
+    store_address TEXT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TRIGGER update_merchant_profiles_updated_at BEFORE UPDATE ON merchant_profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+
+-- +goose Down
+-- SQL in this section is executed when the migration is rolled back.
+-- We must drop objects in the reverse order of creation to respect dependencies.
+
+-- Drop triggers first
+DROP TRIGGER IF EXISTS update_merchant_profiles_updated_at ON merchant_profiles;
+DROP TRIGGER IF EXISTS update_user_profiles_updated_at ON user_profiles;
+DROP TRIGGER IF EXISTS update_users_updated_at ON users;
+
+-- Drop tables that have foreign keys pointing to 'users'
+DROP TABLE IF EXISTS merchant_profiles;
+DROP TABLE IF EXISTS user_profiles;
+DROP TABLE IF EXISTS refresh_tokens;
+DROP TABLE IF EXISTS user_authentications;
+
+-- Drop the 'users' table last
+DROP TABLE IF EXISTS users;
+
+-- Drop the trigger function
+DROP FUNCTION IF EXISTS update_updated_at_column();

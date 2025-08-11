@@ -1,0 +1,44 @@
+env:
+  env: local
+  serviceName: radar
+  debug: false
+  log:
+    pretty: true
+    level: "info"
+    path: "/var/logs/radar.log"
+    maxAge: 168h
+    rotationTime: 24h
+
+http:
+  port: 4433
+  timeouts:
+    readTimeout: 30s
+    readHeaderTimeout: 10s
+    writeTimeout: 30s
+    idleTimeout: 60s
+
+postgres:
+  database: "auth_db"
+  schema: "public"
+  searchPath: "public"
+  sslMode: "disable"
+  master:
+    host: "localhost"
+    port: "5432"
+    username: "user"
+    password: "password"
+    timeout: "10s"
+  replicas:
+    - host: "localhost"
+      port: "5433"
+      username: "readonly_user"
+      password: "password"
+      timeout: "10s"
+  maxIdleConns: 25
+  maxOpenConns: 50
+  connMaxLifetime: "5m"
+
+secretKey:
+  jwt: "jwt_secret"
+  access: "access_secret"
+  refresh: "refresh_secret"

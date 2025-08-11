@@ -1,0 +1,73 @@
+name: Go CI Workflow
+
+on:
+  # push:
+  #   branches: [ main ]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  GO_VERSION: stable
+  GOLANGCI_LINT_VERSION: v2.1
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+
+      - name: Set environment variables
+        run: |
+          echo "IMAGE_NAME=my-app" >> $GITHUB_OUTPUT
+          echo "REGISTRY=my-registry" >> $GITHUB_OUTPUT
+          echo "TAG=$(git describe --tags --abbrev=0)" >> $GITHUB_OUTPUT
+        id: set-output
+
+      - name: Set up stable Go version
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Get dependencies
+        run: |
+          go mod tidy
+          go mod download
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v1.62.0
+
+      - name: Lint
+        run: |
+          go vet ./...
+          go fmt ./...
+          golangci-lint run
+
+      - name: Build Docker Image
+        run: |
+          DOCKER_BUILDKIT=1 docker build \
+          --build-arg VERSION=$TAG \
+          --build-arg BUILT=$(date -Iseconds) \
+          --build-arg GIT_COMMIT=$(git rev-parse HEAD) \
+          --build-arg IMAGE_NAME=$IMAGE_NAME \
+          -t $IMAGE_NAME:$TAG -f ./build/Dockerfile .
+
+      - name: Run Tests in Docker
+        run: |
+          docker run --rm $IMAGE_NAME:$TAG make test
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Deploy the application
+        run: |
+          echo "Deploying the application..."
+          docker tag $IMAGE_NAME:$TAG $REGISTRY/$IMAGE_NAME:$TAG
+          docker push $REGISTRY/$IMAGE_NAME:$TAG

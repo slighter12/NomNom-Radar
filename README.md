@@ -38,7 +38,7 @@ Follow these instructions to get a local copy up and running for development and
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/YOUR_USERNAME/NomNom-Radar.git](https://github.com/YOUR_USERNAME/NomNom-Radar.git)
+    git clone [https://github.com/slighter12/NomNom-Radar.git](https://github.com/slighter12/NomNom-Radar.git)
     cd NomNom-Radar
     ```
 
@@ -52,7 +52,7 @@ Follow these instructions to get a local copy up and running for development and
 
 ## 🤝 Contributing
 
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/YOUR_USERNAME/NomNom-Radar/issues).
+Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/slighter12/NomNom-Radar/issues).
 
 Please adhere to this project's `code of conduct`.
 
@@ -70,4 +70,4 @@ The choice of AGPL-3.0 is intended to foster community collaboration while preve
 See the [LICENSE](LICENSE) file for the full legal text.
 
 ---
-*Copyright (c) 2025, [Your Name or Company Name]*
+*Copyright (c) 2025, [slighter12]*

@@ -1,0 +1,139 @@
+version: "2"
+run:
+  issues-exit-code: 1
+  tests: true
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - contextcheck
+    - copyloopvar
+    - cyclop
+    - dupword
+    - durationcheck
+    - errcheck
+    - errorlint
+    - gochecknoglobals
+    - gochecknoinits
+    - goconst
+    - gocritic
+    - gocyclo
+    - godox
+    - gosec
+    - govet
+    - ineffassign
+    - loggercheck
+    - misspell
+    - nakedret
+    - nilerr
+    - nlreturn
+    - noctx
+    - prealloc
+    - predeclared
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - varnamelen
+    - whitespace
+    - wrapcheck
+  settings:
+    gocognit:
+      min-complexity: 20
+    gocritic:
+      disable-all: true
+      enabled-checks:
+        - appendAssign
+        - argOrder
+        - assignOp
+        - badCall
+        - captLocal
+        - commentFormatting
+        - dupImport
+        - equalFold
+        - flagDeref
+        - hugeParam
+        - indexAlloc
+        - rangeValCopy
+        - regexpMust
+        - sloppyLen
+    gosec:
+      excludes:
+        - G115
+    lll:
+      line-length: 100
+      tab-width: 4
+    misspell:
+      locale: US
+    nestif:
+      min-complexity: 5
+    revive:
+      severity: warning
+    varnamelen:
+      ignore-names:
+        - in
+        - db
+      ignore-decls:
+        - lc fx.Lifecycle
+        - ok bool
+        - c echo.Context
+        - q *query.Query
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - contextcheck
+          - cyclop
+          - funlen
+          - gocognit
+          - goconst
+          - gocritic
+          - lll
+          - varnamelen
+          - wrapcheck
+        path: _test\.go
+      - linters:
+          - wrapcheck
+        path: internal/delivery/http/router/.*\.go
+      - linters:
+          - wrapcheck
+        path: internal/delivery/http/validator/.*\.go
+      - linters:
+          - lll
+        source: '^//go:generate '
+    paths:
+      - cmd/generator
+      - cmd/gen
+      - internal/repository/gen
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - localmodule
+        - default
+      custom-order: true
+  exclusions:
+    generated: lax
+    paths:
+      - cmd/generator
+      - cmd/gen
+      - internal/repository/gen
+      - third_party$
+      - builtin$
+      - examples$
