@@ -1,10 +1,12 @@
 name: Go CI Workflow
 
 on:
-  # push:
-  #   branches: [ main ]
+  push:
+    branches: 
+      - main 
   pull_request:
-    branches: [main]
+    branches: 
+      - main 
   workflow_dispatch:
 
 env:
