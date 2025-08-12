@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"log/slog"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
 
+	"github.com/pkg/errors"
 	"go.uber.org/fx"
 )
 
@@ -42,13 +42,14 @@ func NewUserService(
 }
 
 // RegisterUser orchestrates the complete user registration process.
-func (s *userService) RegisterUser(ctx context.Context, input RegisterUserInput) (*RegisterOutput, error) {
+func (s *userService) RegisterUser(ctx context.Context, input *RegisterUserInput) (*RegisterOutput, error) {
 	s.logger.Info("Starting user registration", "email", input.Email)
 
 	hashedPassword, err := s.hasher.Hash(input.Password)
 	if err != nil {
 		s.logger.Error("Failed to hash password during registration", "error", err)
-		return nil, errors.New("internal server error")
+
+		return nil, errors.Wrap(err, "failed to hash password during registration")
 	}
 
 	var registeredUser *entity.User
@@ -63,11 +64,11 @@ func (s *userService) RegisterUser(ctx context.Context, input RegisterUserInput)
 		_, err := authRepo.FindAuthentication(ctx, "email", input.Email)
 		if err == nil {
 			// If no error, it means an auth record was found.
-			return errors.New("user with this email already exists")
+			return errors.Wrap(err, "user with this email already exists")
 		}
 		// We expect a 'not found' error. If it's a different error, something went wrong.
 		if !errors.Is(err, repository.ErrAuthNotFound) {
-			return err
+			return errors.Wrap(err, "failed to find authentication")
 		}
 
 		// 2. Create the User entity and its associated UserProfile.
@@ -78,7 +79,7 @@ func (s *userService) RegisterUser(ctx context.Context, input RegisterUserInput)
 		}
 
 		if err := userRepo.Create(ctx, newUser); err != nil {
-			return err
+			return errors.Wrap(err, "failed to create user")
 		}
 
 		// 3. Create the Authentication entity (the email/password credential).
@@ -89,31 +90,32 @@ func (s *userService) RegisterUser(ctx context.Context, input RegisterUserInput)
 			PasswordHash:   hashedPassword,
 		}
 		if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
-			return err
+			return errors.Wrap(err, "failed to create authentication")
 		}
-
 		registeredUser = newUser
-		return nil // Returning nil commits the transaction.
+
+		return nil
 	})
 
 	if err != nil {
 		s.logger.Error("Failed to execute user registration transaction", "error", err, "email", input.Email)
-		return nil, err
-	}
 
+		return nil, errors.Wrap(err, "failed to execute user registration transaction")
+	}
 	s.logger.Debug("User registered successfully", "userID", registeredUser.ID)
+
 	return &RegisterOutput{User: registeredUser}, nil
 }
 
 // RegisterMerchant would follow a very similar transactional pattern.
-func (s *userService) RegisterMerchant(ctx context.Context, input RegisterMerchantInput) (*RegisterOutput, error) {
+func (s *userService) RegisterMerchant(ctx context.Context, input *RegisterMerchantInput) (*RegisterOutput, error) {
 	// ... Implementation would be very similar to RegisterUser,
 	// but it would create an entity.MerchantProfile instead.
 	return nil, errors.New("not implemented")
 }
 
 // Login orchestrates the user login process.
-func (s *userService) Login(ctx context.Context, input LoginInput) (*LoginOutput, error) {
+func (s *userService) Login(ctx context.Context, input *LoginInput) (*LoginOutput, error) {
 	s.logger.Debug("Starting user login", "email", input.Email)
 
 	var loggedInUser *entity.User
@@ -130,18 +132,18 @@ func (s *userService) Login(ctx context.Context, input LoginInput) (*LoginOutput
 		authRecord, err := authRepo.FindAuthentication(ctx, "email", input.Email)
 		if err != nil {
 			// This includes ErrAuthNotFound, which we can treat as an invalid credential case.
-			return errors.New("invalid email or password")
+			return errors.Wrap(err, "invalid email or password")
 		}
 
 		// 2. Check the password.
 		if !s.hasher.Check(input.Password, authRecord.PasswordHash) {
-			return errors.New("invalid email or password")
+			return errors.Wrap(err, "invalid email or password")
 		}
 
 		// 3. Fetch the full user and profile data to determine roles.
 		user, err := userRepo.FindByID(ctx, authRecord.UserID)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "failed to find user by id")
 		}
 
 		if user.UserProfile != nil {
@@ -154,7 +156,7 @@ func (s *userService) Login(ctx context.Context, input LoginInput) (*LoginOutput
 		// 4. Generate new tokens.
 		accessToken, refreshTokenString, err = s.tokenService.GenerateTokens(user.ID, roles)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "failed to generate tokens")
 		}
 
 		// 5. Securely store the new refresh token.
@@ -169,19 +171,20 @@ func (s *userService) Login(ctx context.Context, input LoginInput) (*LoginOutput
 		}
 
 		if err := authRepo.CreateRefreshToken(ctx, newRefreshToken); err != nil {
-			return err
+			return errors.Wrap(err, "failed to create refresh token")
 		}
-
 		loggedInUser = user
+
 		return nil
 	})
 
 	if err != nil {
 		s.logger.Warn("Login failed", "email", input.Email, "error", err.Error())
-		return nil, err
-	}
 
+		return nil, errors.Wrap(err, "failed to execute user login transaction")
+	}
 	s.logger.Debug("User logged in successfully", "userID", loggedInUser.ID)
+
 	return &LoginOutput{
 		AccessToken:  accessToken,
 		RefreshToken: refreshTokenString,

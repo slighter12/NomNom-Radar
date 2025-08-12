@@ -2,14 +2,14 @@
 package auth
 
 import (
-	"errors"
 	"time"
-
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 
 	"radar/config"
 	"radar/internal/domain/service"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"github.com/pkg/errors"
 )
 
 // jwtService is a concrete implementation of the TokenService interface using the JWT standard.
@@ -26,6 +26,7 @@ func NewJWTService(cfg *config.Config) (service.TokenService, error) {
 	if cfg.SecretKey.Access == "" || cfg.SecretKey.Refresh == "" {
 		return nil, errors.New("jwt secrets must be provided")
 	}
+
 	return &jwtService{
 		accessSecret:  cfg.SecretKey.Access,
 		refreshSecret: cfg.SecretKey.Refresh,
@@ -38,12 +39,12 @@ func NewJWTService(cfg *config.Config) (service.TokenService, error) {
 func (s *jwtService) GenerateTokens(userID uuid.UUID, roles []string) (accessToken string, refreshToken string, err error) {
 	accessToken, err = s.generateToken(userID, roles, s.accessTTL, s.accessSecret, "access")
 	if err != nil {
-		return "", "", err
+		return "", "", errors.Wrap(err, "failed to generate access token")
 	}
 
 	refreshToken, err = s.generateToken(userID, nil, s.refreshTTL, s.refreshSecret, "refresh")
 	if err != nil {
-		return "", "", err
+		return "", "", errors.Wrap(err, "failed to generate refresh token")
 	}
 
 	return accessToken, refreshToken, nil
@@ -51,13 +52,20 @@ func (s *jwtService) GenerateTokens(userID uuid.UUID, roles []string) (accessTok
 
 // ValidateToken checks the validity of a token string against a secret.
 func (s *jwtService) ValidateToken(tokenString string, secret string) (*jwt.Token, error) {
-	return jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
 		// Ensure the signing method is what we expect.
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, jwt.ErrSignatureInvalid
 		}
+
 		return []byte(secret), nil
 	})
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse token")
+	}
+
+	return token, nil
 }
 
 // GetRefreshTokenDuration returns the configured duration for refresh tokens.
@@ -77,7 +85,10 @@ func (s *jwtService) generateToken(userID uuid.UUID, roles []string, ttl time.Du
 	if roles != nil {
 		claims["roles"] = roles
 	}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(secret))
+	if err != nil {
+		return "", errors.Wrap(err, "failed to sign token")
+	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(secret))
+	return token, nil
 }

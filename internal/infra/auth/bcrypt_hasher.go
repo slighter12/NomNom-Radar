@@ -2,9 +2,10 @@
 package auth
 
 import (
-	"golang.org/x/crypto/bcrypt"
-
 	"radar/internal/domain/service"
+
+	"github.com/pkg/errors"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // bcryptHasher is a concrete implementation of the PasswordHasher interface using bcrypt.
@@ -23,7 +24,11 @@ func NewBcryptHasher() service.PasswordHasher {
 // bcrypt automatically handles salt generation.
 func (h *bcryptHasher) Hash(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	return string(bytes), err
+	if err != nil {
+		return "", errors.Wrap(err, "failed to hash password")
+	}
+
+	return string(bytes), nil
 }
 
 // Check compares a plaintext password with a bcrypt hash.

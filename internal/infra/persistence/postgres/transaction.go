@@ -3,16 +3,18 @@ package postgres
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 
 	"radar/internal/domain/repository"
 
+	"github.com/pkg/errors"
 	"gorm.io/gorm"
 )
 
 // gormTransactionManager implements the domain's TransactionManager interface using GORM.
 type gormTransactionManager struct {
-	db *gorm.DB
+	db     *gorm.DB
+	logger *slog.Logger
 }
 
 // gormRepositoryFactory implements the domain's RepositoryFactory interface.
@@ -34,8 +36,8 @@ func (f *gormRepositoryFactory) NewAuthRepository() repository.AuthRepository {
 
 // NewTransactionManager is the constructor for gormTransactionManager.
 // This function will be used as an Fx provider.
-func NewTransactionManager(db *gorm.DB) repository.TransactionManager {
-	return &gormTransactionManager{db: db}
+func NewTransactionManager(db *gorm.DB, logger *slog.Logger) repository.TransactionManager {
+	return &gormTransactionManager{db: db, logger: logger}
 }
 
 // Execute runs the given function within a single database transaction.
@@ -43,7 +45,7 @@ func (tm *gormTransactionManager) Execute(ctx context.Context, fn func(repoFacto
 	// Begin a new transaction
 	tx := tm.db.WithContext(ctx).Begin()
 	if tx.Error != nil {
-		return fmt.Errorf("failed to begin transaction: %w", tx.Error)
+		return errors.Wrap(tx.Error, "failed to begin transaction")
 	}
 
 	// This defer block ensures that if a panic occurs within the callback function,
@@ -65,14 +67,15 @@ func (tm *gormTransactionManager) Execute(ctx context.Context, fn func(repoFacto
 		// If the business logic returns an error, roll back the transaction.
 		if rbErr := tx.Rollback().Error; rbErr != nil {
 			// Log the rollback error, but return the original, more meaningful business error.
-			return fmt.Errorf("transaction rollback failed: %v (original error: %w)", rbErr, err)
+			tm.logger.Error("transaction rollback failed", "error", rbErr)
 		}
-		return err // Return the original business error.
+
+		return errors.Wrap(err, "transaction failed") // Return the original business error.
 	}
 
 	// If the business logic completes without error, commit the transaction.
 	if err := tx.Commit().Error; err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
+		return errors.Wrap(err, "failed to commit transaction")
 	}
 
 	return nil

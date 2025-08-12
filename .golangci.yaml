@@ -76,11 +76,13 @@ linters:
       ignore-names:
         - in
         - db
+        - fn
       ignore-decls:
-        - lc fx.Lifecycle
         - ok bool
         - c echo.Context
         - q *query.Query
+        - tx *gorm.DB
+        - e *echo.Echo
   exclusions:
     generated: lax
     presets:

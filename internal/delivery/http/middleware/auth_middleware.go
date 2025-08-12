@@ -5,12 +5,12 @@ import (
 	"slices"
 	"strings"
 
+	"radar/config"
+	"radar/internal/domain/service"
+
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-
-	"radar/config"
-	"radar/internal/domain/service"
 )
 
 // AuthMiddleware provides middleware for JWT authentication and authorization.

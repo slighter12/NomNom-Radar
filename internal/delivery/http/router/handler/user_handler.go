@@ -5,10 +5,10 @@ import (
 	"log/slog"
 	"net/http"
 
+	"radar/internal/usecase"
+
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-
-	"radar/internal/usecase"
 )
 
 // UserHandler holds dependencies for user-related handlers.
@@ -24,9 +24,10 @@ func NewUserHandler(uc usecase.UserUsecase, logger *slog.Logger) *UserHandler {
 
 // RegisterUser handles the user registration request.
 func (h *UserHandler) RegisterUser(c echo.Context) error {
-	var input usecase.RegisterUserInput
+	var input *usecase.RegisterUserInput
 	if err := c.Bind(&input); err != nil {
 		h.logger.Warn("Failed to bind registration input", "error", err.Error())
+
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
 	}
 
@@ -34,6 +35,7 @@ func (h *UserHandler) RegisterUser(c echo.Context) error {
 	if err != nil {
 		// Here you can map domain errors to specific HTTP status codes
 		h.logger.Error("User registration failed", "error", err.Error())
+
 		return c.JSON(http.StatusConflict, map[string]string{"error": err.Error()})
 	}
 
@@ -44,7 +46,7 @@ func (h *UserHandler) RegisterUser(c echo.Context) error {
 
 // Login handles the user login request.
 func (h *UserHandler) Login(c echo.Context) error {
-	var input usecase.LoginInput
+	var input *usecase.LoginInput
 	if err := c.Bind(&input); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
 	}

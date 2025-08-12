@@ -49,7 +49,7 @@ type LoginOutput struct {
 // UserUsecase defines the interface for user-related business operations.
 // This is the contract that the delivery layer (e.g., API handlers) will depend on.
 type UserUsecase interface {
-	RegisterUser(ctx context.Context, input RegisterUserInput) (*RegisterOutput, error)
-	RegisterMerchant(ctx context.Context, input RegisterMerchantInput) (*RegisterOutput, error)
-	Login(ctx context.Context, input LoginInput) (*LoginOutput, error)
+	RegisterUser(ctx context.Context, input *RegisterUserInput) (*RegisterOutput, error)
+	RegisterMerchant(ctx context.Context, input *RegisterMerchantInput) (*RegisterOutput, error)
+	Login(ctx context.Context, input *LoginInput) (*LoginOutput, error)
 }

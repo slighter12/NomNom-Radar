@@ -2,8 +2,9 @@ package http
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
+	"net"
+	"strconv"
 
 	"radar/config"
 	"radar/internal/delivery"
@@ -50,7 +51,7 @@ func NewServer(params HTTPParams) (delivery.Delivery, error) {
 		server: echoServer,
 	}
 
-	params.Lifecycle.Append(fx.Hook{
+	params.Append(fx.Hook{
 		OnStop: delivery.stop,
 	})
 
@@ -58,8 +59,9 @@ func NewServer(params HTTPParams) (delivery.Delivery, error) {
 }
 
 func (s *httpServer) Serve(ctx context.Context) error {
-	s.logger.Info("Starting HTTP server", slog.Int("port", s.cfg.HTTP.Port))
-	if err := s.server.Start(fmt.Sprintf(":%d", s.cfg.HTTP.Port)); err != nil {
+	hostPort := net.JoinHostPort("0.0.0.0", strconv.Itoa(s.cfg.HTTP.Port))
+	s.logger.Info("Starting HTTP server", slog.String("hostPort", hostPort))
+	if err := s.server.Start(hostPort); err != nil {
 		return errors.Wrap(err, "failed to serve https")
 	}
 
