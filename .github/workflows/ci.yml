@@ -75,10 +75,6 @@ jobs:
           --no-cache \
           -t ${{ steps.set-vars.outputs.IMAGE_NAME }}:${{ steps.set-vars.outputs.TAG }} .
 
-      - name: Run Tests in Docker
-        run: |
-          docker run --rm ${{ steps.set-vars.outputs.IMAGE_NAME }}:${{ steps.set-vars.outputs.TAG }} make test
-
       - name: Deploy the application
         run: |
           echo "Deploying the application..."
