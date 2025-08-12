@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// Params 定義所需的參數
+// Params defines the required parameters
 type Params struct {
 	fx.In
 	fx.Lifecycle
@@ -20,7 +20,7 @@ type Params struct {
 	Config *config.Config
 }
 
-// New 創建 PostgreSQL 客戶端映射
+// New creates PostgreSQL client mapping
 func New(params Params) (*gorm.DB, error) {
 	db, err := pgLib.New(params.Config.Postgres)
 	if err != nil {
@@ -32,7 +32,7 @@ func New(params Params) (*gorm.DB, error) {
 		return nil, errors.Wrap(err, "failed to get PostgreSQL sql.DB")
 	}
 
-	// 添加生命週期管理
+	// Add lifecycle management
 	params.Append(fx.Hook{
 		OnStart: func(startCtx context.Context) error {
 			ctx, cancel := context.WithTimeout(startCtx, lifecycle.DefaultTimeout)

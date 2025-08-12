@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"fmt"
 	"time"
 
 	"radar/config"
@@ -51,21 +52,50 @@ func (s *jwtService) GenerateTokens(userID uuid.UUID, roles []string) (accessTok
 }
 
 // ValidateToken checks the validity of a token string against a secret.
-func (s *jwtService) ValidateToken(tokenString string, secret string) (*jwt.Token, error) {
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
-		// Ensure the signing method is what we expect.
+func (s *jwtService) ValidateToken(tokenString string) (*service.Claims, error) {
+	// First, parse the token without verification to get the claims
+	unverifiedToken, _, err := new(jwt.Parser).ParseUnverified(tokenString, &service.Claims{})
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse token structure")
+	}
+
+	// Get the claims to determine the token type
+	unverifiedClaims, ok := unverifiedToken.Claims.(*service.Claims)
+	if !ok {
+		return nil, errors.New("invalid token claims structure")
+	}
+
+	// Determine which secret to use based on token type
+	var secret []byte
+	switch unverifiedClaims.Type {
+	case "access":
+		secret = []byte(s.accessSecret)
+	case "refresh":
+		secret = []byte(s.refreshSecret)
+	default:
+		return nil, errors.New("unknown token type")
+	}
+
+	// Now parse and verify the token with the correct secret
+	token, err := jwt.ParseWithClaims(tokenString, &service.Claims{}, func(token *jwt.Token) (interface{}, error) {
+		// Check the signing method
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, jwt.ErrSignatureInvalid
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 
-		return []byte(secret), nil
+		return secret, nil
 	})
 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse token")
 	}
 
-	return token, nil
+	claims, ok := token.Claims.(*service.Claims)
+	if !ok || !token.Valid {
+		return nil, errors.New("invalid token claims")
+	}
+
+	return claims, nil
 }
 
 // GetRefreshTokenDuration returns the configured duration for refresh tokens.
@@ -75,20 +105,23 @@ func (s *jwtService) GetRefreshTokenDuration() time.Duration {
 
 // generateToken is a private helper to create a JWT with specific claims.
 func (s *jwtService) generateToken(userID uuid.UUID, roles []string, ttl time.Duration, secret, tokenType string) (string, error) {
-	claims := jwt.MapClaims{
-		"sub":  userID,                     // Subject (who the token is for)
-		"iat":  time.Now().Unix(),          // Issued At
-		"exp":  time.Now().Add(ttl).Unix(), // Expiration Time
-		"type": tokenType,                  // Type of token (access or refresh)
+	claims := service.Claims{
+		UserID: userID,
+		Roles:  roles,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
+			Subject:   userID.String(),
+		},
+		Type: tokenType,
 	}
-	// Only add roles to the access token for stateless authorization.
-	if roles != nil {
-		claims["roles"] = roles
-	}
-	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(secret))
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signedToken, err := token.SignedString([]byte(secret))
 	if err != nil {
 		return "", errors.Wrap(err, "failed to sign token")
 	}
 
-	return token, nil
+	return signedToken, nil
 }

@@ -40,10 +40,10 @@ func (repo *authRepository) CreateAuthentication(ctx context.Context, auth *enti
 }
 
 // FindAuthentication retrieves an authentication record by its provider and provider-specific ID.
-func (repo *authRepository) FindAuthentication(ctx context.Context, provider string, providerUserID string) (*entity.Authentication, error) {
+func (repo *authRepository) FindAuthentication(ctx context.Context, provider entity.ProviderType, providerUserID string) (*entity.Authentication, error) {
 	authM, err := repo.q.AuthenticationModel.WithContext(ctx).
 		Where(
-			repo.q.AuthenticationModel.Provider.Eq(provider),
+			repo.q.AuthenticationModel.Provider.Eq(string(provider)),
 			repo.q.AuthenticationModel.ProviderUserID.Eq(providerUserID),
 		).
 		First()
@@ -118,7 +118,7 @@ func toAuthenticationDomain(data *model.AuthenticationModel) *entity.Authenticat
 	return &entity.Authentication{
 		ID:             data.ID,
 		UserID:         data.UserID,
-		Provider:       data.Provider,
+		Provider:       entity.ProviderType(data.Provider),
 		ProviderUserID: data.ProviderUserID,
 		PasswordHash:   data.PasswordHash,
 		CreatedAt:      data.CreatedAt,
@@ -134,7 +134,7 @@ func fromAuthenticationDomain(data *entity.Authentication) *model.Authentication
 	return &model.AuthenticationModel{
 		ID:             data.ID,
 		UserID:         data.UserID,
-		Provider:       data.Provider,
+		Provider:       string(data.Provider),
 		ProviderUserID: data.ProviderUserID,
 		PasswordHash:   data.PasswordHash,
 	}

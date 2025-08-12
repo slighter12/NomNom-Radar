@@ -41,3 +41,9 @@ postgres:
 secretKey:
   access: "access_secret"
   refresh: "refresh_secret"
+
+googleOAuth:
+  clientId: "your_google_client_id_here"
+  clientSecret: "your_google_client_secret_here"
+  redirectUri: "http://localhost:4433/oauth/google/callback"
+  scopes: "openid email profile"

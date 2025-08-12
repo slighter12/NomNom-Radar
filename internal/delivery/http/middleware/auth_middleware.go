@@ -8,8 +8,6 @@ import (
 	"radar/config"
 	"radar/internal/domain/service"
 
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -37,33 +35,18 @@ func (m *AuthMiddleware) Authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid token format, must be Bearer token"})
 		}
 
-		token, err := m.tokenSvc.ValidateToken(tokenString, m.cfg.SecretKey.Access)
-		if err != nil || !token.Valid {
+		claims, err := m.tokenSvc.ValidateToken(tokenString)
+		if err != nil {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid or expired token"})
 		}
 
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Failed to parse token claims"})
-		}
-
 		// Extract user ID
-		userIDStr, ok := claims["sub"].(string)
-		if !ok {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "User ID missing from token"})
-		}
-		userID, err := uuid.Parse(userIDStr)
-		if err != nil {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid user ID format in token"})
-		}
+		userID := claims.UserID
 
 		// Extract roles
-		rolesClaim, _ := claims["roles"].([]any)
 		var roles []string
-		for _, r := range rolesClaim {
-			if roleStr, ok := r.(string); ok {
-				roles = append(roles, roleStr)
-			}
+		if claims.Roles != nil {
+			roles = claims.Roles
 		}
 
 		// Set user info on the context for handlers to use

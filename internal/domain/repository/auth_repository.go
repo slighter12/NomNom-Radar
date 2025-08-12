@@ -18,13 +18,15 @@ var (
 	ErrTokenNotFound = errors.New("refresh token not found")
 )
 
-// AuthRepository defines the standard operations for authentication-related persistence.
+// AuthRepository defines the interface for authentication-related database operations.
 type AuthRepository interface {
 	// CreateAuthentication persists a new authentication method (e.g., email/password, social login).
 	CreateAuthentication(ctx context.Context, auth *entity.Authentication) error
 
-	// FindAuthentication retrieves an authentication method by its provider and provider-specific ID.
-	FindAuthentication(ctx context.Context, provider string, providerUserID string) (*entity.Authentication, error)
+	// FindAuthentication looks up an authentication record by provider and provider-specific user ID.
+	// For example, when a user tries to log in with Google, we'd call this with
+	// provider="google" and providerUserID=Google's 'sub' claim.
+	FindAuthentication(ctx context.Context, provider entity.ProviderType, providerUserID string) (*entity.Authentication, error)
 
 	// CreateRefreshToken persists a new refresh token, representing a user session.
 	CreateRefreshToken(ctx context.Context, token *entity.RefreshToken) error

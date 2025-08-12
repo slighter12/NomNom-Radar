@@ -8,15 +8,42 @@ import (
 	"github.com/google/uuid"
 )
 
+// ProviderType defines the type of authentication provider.
+type ProviderType string
+
+const (
+	ProviderTypeEmail    ProviderType = "email"
+	ProviderTypeGoogle   ProviderType = "google"
+	ProviderTypeApple    ProviderType = "apple"
+	ProviderTypeGitHub   ProviderType = "github"
+	ProviderTypeFacebook ProviderType = "facebook"
+	// Add more providers as needed
+)
+
+// IsOAuthProvider checks if the provider type is an OAuth provider
+func (p ProviderType) IsOAuthProvider() bool {
+	switch p {
+	case ProviderTypeGoogle, ProviderTypeApple, ProviderTypeGitHub, ProviderTypeFacebook:
+		return true
+	default:
+		return false
+	}
+}
+
+// String returns the string representation of the provider type
+func (p ProviderType) String() string {
+	return string(p)
+}
+
 // Authentication represents a single method of logging in (a credential).
 // For example, a user's email/password is one record, while a linked Google account is another.
 type Authentication struct {
-	ID             uuid.UUID // The unique ID for this specific authentication record itself.
-	UserID         uuid.UUID // Links this authentication method to the User it belongs to.
-	Provider       string    // The authentication provider, e.g., "email", "google", "apple".
-	ProviderUserID string    // The user's unique ID from the external provider (e.g., Google's 'sub' claim).
-	PasswordHash   string    // Stores the bcrypt-hashed password, only used when the Provider is "email".
-	CreatedAt      time.Time // Timestamp of when this authentication method was linked to the user account.
+	ID             uuid.UUID    // The unique ID for this specific authentication record itself.
+	UserID         uuid.UUID    // Links this authentication method to the User it belongs to.
+	Provider       ProviderType // The authentication provider, e.g., "email", "google", "apple".
+	ProviderUserID string       // The user's unique ID from the external provider (e.g., Google's 'sub' claim).
+	PasswordHash   string       // Stores the bcrypt-hashed password, only used when the Provider is "email".
+	CreatedAt      time.Time    // Timestamp of when this authentication method was linked to the user account.
 }
 
 // RefreshToken represents a long-lived, authorized user session.

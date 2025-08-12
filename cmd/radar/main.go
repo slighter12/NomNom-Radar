@@ -11,6 +11,7 @@ import (
 	"radar/internal/delivery/http/middleware"
 	"radar/internal/delivery/http/router/handler"
 	"radar/internal/infra/auth"
+	"radar/internal/infra/auth/google"
 	logs "radar/internal/infra/log"
 	"radar/internal/infra/persistence/postgres"
 	"radar/internal/usecase"
@@ -64,6 +65,8 @@ func injectService() fx.Option {
 		fx.Provide(
 			auth.NewBcryptHasher,
 			auth.NewJWTService,
+			google.NewOAuthService,
+			google.NewAuthService,
 		),
 	)
 }

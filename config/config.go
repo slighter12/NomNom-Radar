@@ -38,6 +38,13 @@ type Config struct {
 		Access  string `json:"access" yaml:"access"`
 		Refresh string `json:"refresh" yaml:"refresh"`
 	} `json:"secretKey" yaml:"secretKey"`
+
+	GoogleOAuth struct {
+		ClientID     string `json:"clientId" yaml:"clientId"`
+		ClientSecret string `json:"clientSecret" yaml:"clientSecret"`
+		RedirectURI  string `json:"redirectUri" yaml:"redirectUri"`
+		Scopes       string `json:"scopes" yaml:"scopes"`
+	} `json:"googleOAuth" yaml:"googleOAuth"`
 }
 
 type Log struct {

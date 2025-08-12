@@ -11,30 +11,33 @@ import (
 	"go.uber.org/fx"
 )
 
-// Params 定義 logger 所需的參數
+// Params defines the parameters required for the logger
 type Params struct {
 	fx.In
 
 	Config *config.Config
 }
 
-// New 創建並初始化 slog.Logger
+// New creates and initializes slog.Logger
 func New(params Params) (*slog.Logger, error) {
-	// 從配置解析日誌級別
+	// Parse log level from config
 	level, err := parseLogLevel(params.Config.Env.Log.Level)
 	if err != nil {
-		return nil, errors.WithMessage(err, "failed to parse log level")
+		return nil, err
 	}
 
-	// 使用 JSON 格式和指定的日誌級別初始化 slog logger
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
-	logger := slog.New(handler)
-	slog.SetDefault(logger)
+	// Initialize slog logger with JSON format and specified log level
+	var logger *slog.Logger
+	if params.Config.Env.Log.Pretty {
+		logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
+	} else {
+		logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
+	}
 
 	return logger, nil
 }
 
-// parseLogLevel 將字符串日誌級別轉換為 slog.Level
+// parseLogLevel converts string log level to slog.Level
 func parseLogLevel(level string) (slog.Level, error) {
 	switch strings.ToLower(level) {
 	case "debug":

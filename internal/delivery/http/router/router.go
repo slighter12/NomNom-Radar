@@ -40,9 +40,17 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 	authGroup := e.Group("/auth")
 	{
 		authGroup.POST("/register/user", r.userHandler.RegisterUser)
-		// authGroup.POST("/register/merchant", r.userHandler.RegisterMerchant)
+		authGroup.POST("/register/merchant", r.userHandler.RegisterMerchant)
 		authGroup.POST("/login", r.userHandler.Login)
-		// ... add refresh, logout routes etc.
+		authGroup.POST("/refresh", r.userHandler.RefreshToken)
+		authGroup.POST("/logout", r.userHandler.Logout)
+	}
+
+	// OAuth routes - separate group for better organization
+	oauthGroup := e.Group("/oauth")
+	{
+		oauthGroup.GET("/google", r.userHandler.GoogleLogin)              // Redirect to Google
+		oauthGroup.POST("/google/callback", r.userHandler.GoogleCallback) // Handle callback
 	}
 
 	// User routes that require authentication
