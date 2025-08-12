@@ -37,7 +37,7 @@ func (m *AuthMiddleware) Authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid token format, must be Bearer token"})
 		}
 
-		token, err := m.tokenSvc.ValidateToken(tokenString, m.cfg.SecretKey.JWT)
+		token, err := m.tokenSvc.ValidateToken(tokenString, m.cfg.SecretKey.Access)
 		if err != nil || !token.Valid {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid or expired token"})
 		}
@@ -58,7 +58,7 @@ func (m *AuthMiddleware) Authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 		}
 
 		// Extract roles
-		rolesClaim, _ := claims["roles"].([]interface{})
+		rolesClaim, _ := claims["roles"].([]any)
 		var roles []string
 		for _, r := range rolesClaim {
 			if roleStr, ok := r.(string); ok {

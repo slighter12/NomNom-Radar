@@ -35,7 +35,6 @@ type Config struct {
 	Postgres *postgres.DBConn `json:"postgres" yaml:"postgres" mapstructure:"postgres"`
 
 	SecretKey struct {
-		JWT     string `json:"jwt" yaml:"jwt"`
 		Access  string `json:"access" yaml:"access"`
 		Refresh string `json:"refresh" yaml:"refresh"`
 	} `json:"secretKey" yaml:"secretKey"`

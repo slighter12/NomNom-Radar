@@ -39,6 +39,5 @@ postgres:
   connMaxLifetime: "5m"
 
 secretKey:
-  jwt: "jwt_secret"
   access: "access_secret"
   refresh: "refresh_secret"
