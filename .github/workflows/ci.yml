@@ -71,7 +71,9 @@ jobs:
           --build-arg BUILT=$(date -Iseconds) \
           --build-arg GIT_COMMIT=$(git rev-parse HEAD) \
           --build-arg IMAGE_NAME=${{ steps.set-vars.outputs.IMAGE_NAME }} \
-          -t ${{ steps.set-vars.outputs.IMAGE_NAME }}:${{ steps.set-vars.outputs.TAG }} -f ./build/Dockerfile .
+          --platform linux/amd64 \
+          --no-cache \
+          -t ${{ steps.set-vars.outputs.IMAGE_NAME }}:${{ steps.set-vars.outputs.TAG }} .
 
       - name: Run Tests in Docker
         run: |
