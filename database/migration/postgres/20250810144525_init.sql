@@ -2,14 +2,28 @@
 -- SQL in this section is executed when the migration is applied.
 
 -- Step 1: Create the reusable trigger function for updated_at
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
    NEW.updated_at = NOW();
    RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ LANGUAGE 'plpgsql';
+-- +goose StatementEnd
 
+-- +goose StatementBegin
+-- add uuid_generate_v4 function
+CREATE OR REPLACE FUNCTION uuid_generate_v4()
+RETURNS UUID AS $$
+DECLARE
+    result UUID;
+BEGIN
+    SELECT gen_random_uuid() INTO result;
+    RETURN result;
+END;
+$$ LANGUAGE 'plpgsql';
+-- +goose StatementEnd
 
 -- Step 2: Create all tables and their indexes
 -- Table: users
@@ -65,7 +79,6 @@ CREATE TABLE merchant_profiles (
 );
 CREATE TRIGGER update_merchant_profiles_updated_at BEFORE UPDATE ON merchant_profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-
 -- +goose Down
 -- SQL in this section is executed when the migration is rolled back.
 -- We must drop objects in the reverse order of creation to respect dependencies.
@@ -86,3 +99,4 @@ DROP TABLE IF EXISTS users;
 
 -- Drop the trigger function
 DROP FUNCTION IF EXISTS update_updated_at_column();
+DROP FUNCTION IF EXISTS uuid_generate_v4();
