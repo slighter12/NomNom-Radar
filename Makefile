@@ -46,6 +46,9 @@ vuln-scan: ## scan for vulnerability issues with govulncheck (govulncheck binary
 ######
 POSTGRES_SQL_PATH := ./database/migration/postgres
 POSTGRES_SEEDERS_SQL_PATH := ./database/migration/postgres/seeders
+POSTGRES_DB_NAME := auth_db
+POSTGRES_DB_USER := user
+POSTGRES_DB_PASSWORD := password
 
 # -----------------------------------------------------------------------------
 # PostgreSQL
@@ -71,29 +74,34 @@ db-postgres-create: ## create new PostgreSQL migration
 	)
 
 define goose_migrate_command
-	PG_URI="postgres://postgres:$(PG_PASSWORD)@localhost:$(PG_PORT)/$(DB_NAME)?sslmode=disable"
+	PG_URI="postgres://${POSTGRES_DB_USER}:${POSTGRES_DB_PASSWORD}@localhost:${PG_PORT}/${POSTGRES_DB_NAME}?sslmode=disable"
 	goose postgres -dir $(1) $(2) $${PG_URI}
 endef
 
 db-postgres-up: ## apply all PostgreSQL migrations
 	@( \
-		printf "Enter database name: "; read -r DB_NAME && \
-		printf "Enter pass for db: "; read -rs PG_PASSWORD && \
 		printf "Enter port(5432...): "; read -r PG_PORT && \
 		PG_PORT=$${PG_PORT:-5432} && \
-		PG_URI="postgres://root:$${PG_PASSWORD}@localhost:$${PG_PORT}/$${DB_NAME}?sslmode=disable" && \
+		PG_URI="postgres://${POSTGRES_DB_USER}:${POSTGRES_DB_PASSWORD}@localhost:${PG_PORT}/${POSTGRES_DB_NAME}?sslmode=disable" && \
 		goose postgres "$${PG_URI}" -dir ${POSTGRES_SQL_PATH} up \
 	)
 
 db-postgres-down: ## revert all PostgreSQL migrations
 	@( \
-		printf "Enter database name: "; read -r DB_NAME && \
-		printf "Enter pass for db: "; read -rs PG_PASSWORD && \
 		printf "Enter port(5432...): "; read -r PG_PORT && \
 		PG_PORT=$${PG_PORT:-5432} && \
-		PG_URI="postgres://root:$${PG_PASSWORD}@localhost:$${PG_PORT}/$${DB_NAME}?sslmode=disable" && \
+		PG_URI="postgres://${POSTGRES_DB_USER}:${POSTGRES_DB_PASSWORD}@localhost:${PG_PORT}/${POSTGRES_DB_NAME}?sslmode=disable" && \
 		goose postgres "$${PG_URI}" -dir ${POSTGRES_SQL_PATH} down \
 	)
+
+db-postgres-test-replication: ## test replication
+	@echo "Testing replication..."
+	@echo "Creating test table on master..."
+	docker exec -it radar-postgres-master psql -U user -d auth_db -c "CREATE TABLE IF NOT EXISTS test_replication (id SERIAL PRIMARY KEY, message TEXT, created_at TIMESTAMP DEFAULT NOW());"
+	@echo "Inserting test data on master..."
+	docker exec -it radar-postgres-master psql -U user -d auth_db -c "INSERT INTO test_replication (message) VALUES ('Test from master at $$(date)');"
+	@echo "Checking data on replica..."
+	docker exec -it radar-postgres-replica psql -U user -d auth_db -c "SELECT * FROM test_replication ORDER BY id DESC LIMIT 1;"
 
 ###########
 #   GCI   #
@@ -131,6 +139,9 @@ docker-up: ## start PostgreSQL services with Docker Compose
 
 docker-down: ## stop PostgreSQL services with Docker Compose
 	docker-compose down
+
+docker-restart: ## restart PostgreSQL services with Docker Compose
+	docker-down docker-up
 
 docker-logs: ## show logs from PostgreSQL services
 	docker-compose logs -f

@@ -1,51 +1,77 @@
+x-postgres-common:
+  &postgres-common
+  image: postgres:17-alpine
+  user: postgres
+  restart: always
+  healthcheck:
+    test: ['CMD-SHELL', 'pg_isready -U user -d auth_db']
+    interval: 10s
+    timeout: 5s
+    retries: 5
+
 services:
-  # PostgreSQL Master
   postgres-master:
-    image: postgres:17-alpine
+    <<: *postgres-common
     container_name: radar-postgres-master
-    environment:
-      POSTGRES_DB: auth_db
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
     ports:
       - "5432:5432"
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_DB: auth_db
+      POSTGRES_PASSWORD: password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    command: |
+      postgres 
+      -c wal_level=replica 
+      -c hot_standby=on 
+      -c max_wal_senders=10 
+      -c max_replication_slots=10 
+      -c hot_standby_feedback=on
+      -c archive_mode=on
+      -c archive_command='test ! -f /var/lib/postgresql/backup_in_progress || exit 1; test ! -f /var/lib/postgresql/archive/%f || cp %p /var/lib/postgresql/archive/%f; rm %p'
+      -c archive_timeout=60
     volumes:
       - postgres_master_data:/var/lib/postgresql/data
-      - ./database/migration/postgres:/docker-entrypoint-initdb.d
+      - ./database/postgres/master:/docker-entrypoint-initdb.d
     networks:
       - radar-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d auth_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
 
-  # PostgreSQL Replica
   postgres-replica:
-    image: postgres:17-alpine
+    <<: *postgres-common
     container_name: radar-postgres-replica
-    environment:
-      POSTGRES_DB: auth_db
-      POSTGRES_USER: readonly_user
-      POSTGRES_PASSWORD: password
-      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
     ports:
       - "5433:5432"
+    environment:
+      PGUSER: readonly_user
+      PGPASSWORD: password
+    command: |
+      bash -c "
+      echo 'Starting replica setup...'
+      
+      # Clean up existing data directory if it exists and is not empty
+      if [ -d /var/lib/postgresql/data ] && [ \"\$(ls -A /var/lib/postgresql/data)\" ]; then
+        echo 'Cleaning up existing data directory...'
+        rm -rf /var/lib/postgresql/data/*
+      fi
+      
+      echo 'Waiting for master to be ready...'
+      until pg_basebackup --pgdata=/var/lib/postgresql/data -R --slot=replica_slot --host=postgres-master --port=5432 --username=user
+      do
+        echo 'Waiting for master to connect...'
+        sleep 2s
+      done
+      
+      echo 'Backup done, starting replica...'
+      chmod 0700 /var/lib/postgresql/data
+      postgres
+      "
     volumes:
       - postgres_replica_data:/var/lib/postgresql/data
-    networks:
-      - radar-network
     depends_on:
       postgres-master:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U readonly_user -d auth_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+    networks:
+      - radar-network
 
 volumes:
   postgres_master_data:
