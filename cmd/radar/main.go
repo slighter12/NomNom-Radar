@@ -83,6 +83,7 @@ func injectMiddleware() fx.Option {
 	return fx.Options(
 		fx.Provide(
 			middleware.NewAuthMiddleware,
+			middleware.NewErrorMiddleware,
 		),
 	)
 }

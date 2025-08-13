@@ -5,11 +5,13 @@ import (
 	"log/slog"
 	"net/http"
 
+	"radar/internal/delivery/http/response"
 	"radar/internal/domain/service"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/pkg/errors"
 )
 
 // UserHandler holds dependencies for user-related handlers.
@@ -32,85 +34,76 @@ func NewUserHandler(uc usecase.UserUsecase, logger *slog.Logger, googleOAuthServ
 func (h *UserHandler) RegisterUser(c echo.Context) error {
 	var input *usecase.RegisterUserInput
 	if err := c.Bind(&input); err != nil {
-		h.logger.Warn("Failed to bind registration input", "error", err.Error())
-
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
+		return response.BindingError(c, "INVALID_INPUT", "Invalid registration input")
 	}
 
 	output, err := h.uc.RegisterUser(c.Request().Context(), input)
 	if err != nil {
-		// Here you can map domain errors to specific HTTP status codes
-		h.logger.Error("User registration failed", "error", err.Error())
-
-		return c.JSON(http.StatusConflict, map[string]string{"error": err.Error()})
+		return errors.WithStack(err)
 	}
 
 	// Do not return sensitive data in the response.
 	// The DTO from the usecase might need to be mapped to a response model.
-	return c.JSON(http.StatusCreated, output.User)
+	return response.Success(c, http.StatusCreated, output.User, "User registered successfully")
 }
 
 // RegisterMerchant handles the merchant registration request.
 func (h *UserHandler) RegisterMerchant(c echo.Context) error {
 	var input *usecase.RegisterMerchantInput
 	if err := c.Bind(&input); err != nil {
-		h.logger.Warn("Failed to bind registration input", "error", err.Error())
-
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
+		return response.BindingError(c, "INVALID_INPUT", "Invalid registration input")
 	}
 
 	output, err := h.uc.RegisterMerchant(c.Request().Context(), input)
 	if err != nil {
-		h.logger.Error("Merchant registration failed", "error", err.Error())
-
-		return c.JSON(http.StatusConflict, map[string]string{"error": err.Error()})
+		return errors.WithStack(err)
 	}
 
-	return c.JSON(http.StatusCreated, output.User)
+	return response.Success(c, http.StatusCreated, output.User, "Merchant registered successfully")
 }
 
 // Login handles the user login request.
 func (h *UserHandler) Login(c echo.Context) error {
 	var input *usecase.LoginInput
 	if err := c.Bind(&input); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
+		return response.BindingError(c, "INVALID_INPUT", "Invalid login input")
 	}
 
 	output, err := h.uc.Login(c.Request().Context(), input)
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		return errors.WithStack(err)
 	}
 
-	return c.JSON(http.StatusOK, output)
+	return response.Success(c, http.StatusOK, output, "Login successful")
 }
 
 // RefreshToken handles the token refresh request.
 func (h *UserHandler) RefreshToken(c echo.Context) error {
 	var input *usecase.RefreshTokenInput
 	if err := c.Bind(&input); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
+		return response.BindingError(c, "INVALID_INPUT", "Invalid refresh token input")
 	}
 
 	output, err := h.uc.RefreshToken(c.Request().Context(), input)
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		return errors.WithStack(err)
 	}
 
-	return c.JSON(http.StatusOK, output)
+	return response.Success(c, http.StatusOK, output, "Token refreshed successfully")
 }
 
 // Logout handles the user logout request.
 func (h *UserHandler) Logout(c echo.Context) error {
 	var input *usecase.LogoutInput
 	if err := c.Bind(&input); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid input"})
+		return response.BindingError(c, "INVALID_INPUT", "Invalid logout input")
 	}
 
 	if err := h.uc.Logout(c.Request().Context(), input); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return errors.WithStack(err)
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"message": "Successfully logged out"})
+	return response.Success(c, http.StatusOK, map[string]string{"message": "Successfully logged out"}, "Logout successful")
 }
 
 // GoogleLogin handles initiating the Google Sign-In flow.
@@ -127,12 +120,11 @@ func (h *UserHandler) GoogleLogin(c echo.Context) error {
 	}
 
 	// Return JSON response with OAuth URL for frontend use
-	return c.JSON(http.StatusOK, map[string]string{
-		"message":      "Google OAuth URL generated successfully",
+	return response.Success(c, http.StatusOK, map[string]string{
 		"oauth_url":    oauthURL,
 		"redirect_url": "/oauth/google?redirect=true",
 		"note":         "Use redirect_url for direct redirect, or oauth_url for frontend implementation",
-	})
+	}, "Google OAuth URL generated successfully")
 }
 
 // GoogleCallback handles the Google Sign-In callback.
@@ -147,10 +139,7 @@ func (h *UserHandler) GoogleCallback(c echo.Context) error {
 		// Authorization code flow - exchange code for tokens
 		// In a real implementation, you would exchange the code for tokens
 		// For now, we'll return an error asking for ID token
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Authorization code flow not implemented yet. Please use ID token flow.",
-			"note":  "Send the ID token in the request body with key 'id_token'",
-		})
+		return response.BadRequest(c, "INVALID_INPUT", "Authorization code flow not implemented yet. Please use ID token flow.")
 	} else if idToken != "" {
 		// ID Token flow - verify the token directly
 		input = &usecase.GoogleCallbackInput{
@@ -159,27 +148,20 @@ func (h *UserHandler) GoogleCallback(c echo.Context) error {
 	} else {
 		// Try to bind from JSON body
 		if err := c.Bind(&input); err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{
-				"error": "Invalid input. Please provide 'id_token' in request body",
-				"example": `{
-					"id_token": "your_google_id_token_here"
-				}`,
-			})
+			return response.BindingError(c, "INVALID_INPUT", "Invalid Google callback input")
 		}
 	}
 
 	if input == nil || input.IDToken == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "ID token is required",
-		})
+		return response.BadRequest(c, "INVALID_INPUT", "ID token is required")
 	}
 
 	output, err := h.uc.GoogleCallback(c.Request().Context(), input)
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		return errors.WithStack(err)
 	}
 
-	return c.JSON(http.StatusOK, output)
+	return response.Success(c, http.StatusOK, output, "Google OAuth authentication successful")
 }
 
 // GetProfile handles the request to get the current user's profile.
@@ -187,17 +169,17 @@ func (h *UserHandler) GetProfile(c echo.Context) error {
 	userIDVal := c.Get("userID")
 	userID, ok := userIDVal.(uuid.UUID)
 	if !ok {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid user ID in token"})
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	// In a real app, you would have a GetProfile use case
 	// user, err := h.uc.GetProfile(c.Request().Context(), userID)
 
 	// For now, just return the ID
-	return c.JSON(http.StatusOK, map[string]string{"message": "Welcome!", "user_id": userID.String()})
+	return response.Success(c, http.StatusOK, map[string]string{"message": "Welcome!", "user_id": userID.String()}, "Profile retrieved successfully")
 }
 
 // HealthCheck is a simple handler to check if the service is up.
 func HealthCheck(c echo.Context) error {
-	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+	return response.Success(c, http.StatusOK, map[string]string{"status": "ok"}, "Service is healthy")
 }

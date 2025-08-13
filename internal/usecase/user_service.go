@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"radar/internal/domain/entity"
+	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
 
@@ -68,7 +69,7 @@ func (srv *userService) RegisterUser(ctx context.Context, input *RegisterUserInp
 		_, err := authRepo.FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email)
 		if err == nil {
 			// If no error, it means an auth record was found.
-			return errors.Wrap(err, "user with this email already exists")
+			return domainerrors.ErrUserAlreadyExists.WrapMessage("user registration failed")
 		}
 		// We expect a 'not found' error. If it's a different error, something went wrong.
 		if !errors.Is(err, repository.ErrAuthNotFound) {
@@ -83,7 +84,7 @@ func (srv *userService) RegisterUser(ctx context.Context, input *RegisterUserInp
 		}
 
 		if err := userRepo.Create(ctx, newUser); err != nil {
-			return errors.Wrap(err, "failed to create user")
+			return err
 		}
 
 		// 3. Create the Authentication entity (the email/password credential).
@@ -94,7 +95,7 @@ func (srv *userService) RegisterUser(ctx context.Context, input *RegisterUserInp
 			PasswordHash:   hashedPassword,
 		}
 		if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
-			return errors.Wrap(err, "failed to create authentication")
+			return err
 		}
 		registeredUser = newUser
 
@@ -131,7 +132,7 @@ func (srv *userService) RegisterMerchant(ctx context.Context, input *RegisterMer
 		// 1. Check if an authentication method with this email already exists.
 		_, err := authRepo.FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email)
 		if err == nil {
-			return errors.New("user with this email already exists")
+			return errors.Wrap(domainerrors.ErrMerchantAlreadyExists, "merchant registration failed")
 		}
 		if !errors.Is(err, repository.ErrAuthNotFound) {
 			return errors.Wrap(err, "failed to find authentication")
@@ -148,7 +149,7 @@ func (srv *userService) RegisterMerchant(ctx context.Context, input *RegisterMer
 		}
 
 		if err := userRepo.Create(ctx, newUser); err != nil {
-			return errors.Wrap(err, "failed to create user")
+			return err
 		}
 
 		// 3. Create the Authentication entity.
@@ -159,7 +160,7 @@ func (srv *userService) RegisterMerchant(ctx context.Context, input *RegisterMer
 			PasswordHash:   hashedPassword,
 		}
 		if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
-			return errors.Wrap(err, "failed to create authentication")
+			return err
 		}
 		registeredUser = newUser
 
@@ -194,12 +195,12 @@ func (srv *userService) Login(ctx context.Context, input *LoginInput) (*LoginOut
 		authRecord, err := authRepo.FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email)
 		if err != nil {
 			// This includes ErrAuthNotFound, which we can treat as an invalid credential case.
-			return errors.Wrap(err, "invalid email or password")
+			return errors.Wrap(domainerrors.ErrInvalidCredentials, "login failed")
 		}
 
 		// 2. Check the password.
 		if !srv.hasher.Check(input.Password, authRecord.PasswordHash) {
-			return errors.Wrap(err, "invalid email or password")
+			return errors.Wrap(domainerrors.ErrInvalidCredentials, "login failed")
 		}
 
 		// 3. Fetch the full user and profile data to determine roles.
@@ -233,7 +234,7 @@ func (srv *userService) Login(ctx context.Context, input *LoginInput) (*LoginOut
 		}
 
 		if err := authRepo.CreateRefreshToken(ctx, newRefreshToken); err != nil {
-			return errors.Wrap(err, "failed to create refresh token")
+			return err
 		}
 		loggedInUser = user
 
@@ -309,7 +310,7 @@ func (srv *userService) RefreshToken(ctx context.Context, input *RefreshTokenInp
 			ExpiresAt: time.Now().Add(srv.tokenService.GetRefreshTokenDuration()),
 		}
 		if err := authRepo.CreateRefreshToken(ctx, newRefreshToken); err != nil {
-			return errors.Wrap(err, "failed to store new refresh token")
+			return err
 		}
 
 		// 5. Delete the old refresh token.
@@ -450,7 +451,7 @@ func (srv *userService) createGoogleUser(ctx context.Context, userRepo repositor
 	}
 
 	if err := userRepo.Create(ctx, newUser); err != nil {
-		return nil, errors.Wrap(err, "failed to create user for google auth")
+		return nil, err
 	}
 
 	newAuth := &entity.Authentication{
@@ -460,7 +461,7 @@ func (srv *userService) createGoogleUser(ctx context.Context, userRepo repositor
 	}
 
 	if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
-		return nil, errors.Wrap(err, "failed to create authentication for google auth")
+		return nil, err
 	}
 
 	return newUser, nil
@@ -520,7 +521,7 @@ func (srv *userService) storeRefreshToken(ctx context.Context, repoFactory repos
 	}
 
 	if err := authRepo.CreateRefreshToken(ctx, newRefreshToken); err != nil {
-		return errors.Wrap(err, "failed to create refresh token for google auth")
+		return err
 	}
 
 	return nil

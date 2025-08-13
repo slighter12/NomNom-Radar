@@ -8,12 +8,13 @@ import (
 
 	"radar/config"
 	"radar/internal/delivery"
+	"radar/internal/delivery/http/middleware"
 	"radar/internal/delivery/http/router"
 	"radar/internal/delivery/http/validator"
 	"radar/internal/domain/lifecycle"
 
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/pkg/errors"
 	slogecho "github.com/samber/slog-echo"
 	"go.uber.org/fx"
@@ -37,10 +38,18 @@ type httpServer struct {
 func NewServer(params HTTPParams) (delivery.Delivery, error) {
 	echoServer := echo.New()
 	echoServer.HideBanner = true
-	echoServer.Use(slogecho.New(params.Logger))
+	// 使用自定義的 logger middleware，可控制是否啟用日誌
+	loggerMiddleware := middleware.NewLoggerMiddleware(params.Logger, params.Config)
+	echoServer.Use(loggerMiddleware.Handle)
+
 	echoServer.Validator = validator.New()
-	echoServer.Use(middleware.Recover())
-	echoServer.Use(middleware.CORS())
+	echoServer.Use(echomiddleware.Recover())
+	echoServer.Use(echomiddleware.CORS())
+
+	// register error handler middleware
+	errorMiddleware := middleware.NewErrorMiddleware(params.Logger)
+	echoServer.Use(errorMiddleware.HandleErrors)
+	echoServer.Use(slogecho.New(params.Logger))
 
 	router := router.NewRouter(params.RouterParams)
 	router.RegisterRoutes(echoServer)

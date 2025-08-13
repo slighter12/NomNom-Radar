@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"radar/internal/domain/entity"
+	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	"radar/internal/infra/persistence/model"
 	"radar/internal/infra/persistence/postgres/query"
@@ -81,7 +82,15 @@ func (repo *userRepository) Create(ctx context.Context, user *entity.User) error
 
 	// Execute the creation using the database connection.
 	if err := repo.q.UserModel.WithContext(ctx).Create(userM); err != nil {
-		return errors.Wrap(err, "failed to create user")
+		// Convert PostgreSQL errors to domain errors
+		if isUniqueConstraintViolation(err) {
+			return domainerrors.ErrUserAlreadyExists.WrapMessage("email already exists")
+		}
+		if isNotNullConstraintViolation(err) {
+			return domainerrors.ErrUserCreationFailed.WrapMessage("missing required user information")
+		}
+		// For other database errors, return a generic database error
+		return domainerrors.NewDatabaseExecuteError(err, "")
 	}
 
 	return nil

@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"radar/internal/domain/entity"
+	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	"radar/internal/infra/persistence/model"
 	"radar/internal/infra/persistence/postgres/query"
@@ -33,7 +34,15 @@ func (repo *authRepository) CreateAuthentication(ctx context.Context, auth *enti
 	authM := fromAuthenticationDomain(auth)
 
 	if err := repo.q.AuthenticationModel.WithContext(ctx).Create(authM); err != nil {
-		return errors.Wrap(err, "failed to create authentication")
+		// Convert PostgreSQL errors to domain errors
+		if isUniqueConstraintViolation(err) {
+			return domainerrors.ErrUserAlreadyExists.WrapMessage("email already exists")
+		}
+		if isForeignKeyConstraintViolation(err) {
+			return domainerrors.ErrUserCreationFailed.WrapMessage("invalid user reference")
+		}
+		// For other database errors, return a generic database error
+		return domainerrors.NewDatabaseExecuteError(err, "")
 	}
 
 	return nil
@@ -64,7 +73,15 @@ func (repo *authRepository) CreateRefreshToken(ctx context.Context, token *entit
 	tokenM := fromRefreshTokenDomain(token)
 
 	if err := repo.q.RefreshTokenModel.WithContext(ctx).Create(tokenM); err != nil {
-		return errors.Wrap(err, "failed to create refresh token")
+		// Convert PostgreSQL errors to domain errors
+		if isUniqueConstraintViolation(err) {
+			return domainerrors.ErrRefreshTokenInvalid.WrapMessage("refresh token already exists")
+		}
+		if isForeignKeyConstraintViolation(err) {
+			return domainerrors.ErrUserCreationFailed.WrapMessage("invalid user reference")
+		}
+		// For other database errors, return a generic database error
+		return domainerrors.NewDatabaseExecuteError(err, "")
 	}
 
 	return nil

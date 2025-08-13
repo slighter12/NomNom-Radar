@@ -1,11 +1,11 @@
 package middleware
 
 import (
-	"net/http"
 	"slices"
 	"strings"
 
 	"radar/config"
+	"radar/internal/delivery/http/response"
 	"radar/internal/domain/service"
 
 	"github.com/labstack/echo/v4"
@@ -27,17 +27,17 @@ func (m *AuthMiddleware) Authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		authHeader := c.Request().Header.Get("Authorization")
 		if authHeader == "" {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Authorization header is missing"})
+			return response.Unauthorized(c, "UNAUTHORIZED", "Authorization header is missing")
 		}
 
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		if tokenString == authHeader {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid token format, must be Bearer token"})
+			return response.Unauthorized(c, "INVALID_TOKEN", "Invalid token format, must be Bearer token")
 		}
 
 		claims, err := m.tokenSvc.ValidateToken(tokenString)
 		if err != nil {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid or expired token"})
+			return response.Unauthorized(c, "INVALID_TOKEN", "Invalid or expired token")
 		}
 
 		// Extract user ID
@@ -65,11 +65,11 @@ func (m *AuthMiddleware) RequireRole(requiredRole string) echo.MiddlewareFunc {
 			rolesVal := c.Get("roles")
 			roles, ok := rolesVal.([]string)
 			if !ok {
-				return c.JSON(http.StatusForbidden, map[string]string{"error": "Permission denied: role information missing"})
+				return response.Forbidden(c, "FORBIDDEN", "Permission denied: role information missing")
 			}
 
 			if !slices.Contains(roles, requiredRole) {
-				return c.JSON(http.StatusForbidden, map[string]string{"error": "Permission denied: require '" + requiredRole + "' role"})
+				return response.Forbidden(c, "FORBIDDEN", "Permission denied: require '"+requiredRole+"' role")
 			}
 
 			return next(c)
