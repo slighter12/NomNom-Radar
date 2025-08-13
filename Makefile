@@ -141,7 +141,8 @@ docker-down: ## stop PostgreSQL services with Docker Compose
 	docker-compose down
 
 docker-restart: ## restart PostgreSQL services with Docker Compose
-	docker-down docker-up
+	$(MAKE) docker-down
+	$(MAKE) docker-up
 
 docker-logs: ## show logs from PostgreSQL services
 	docker-compose logs -f
