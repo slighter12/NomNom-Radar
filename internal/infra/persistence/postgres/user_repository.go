@@ -93,6 +93,11 @@ func (repo *userRepository) Create(ctx context.Context, user *entity.User) error
 		return domainerrors.NewDatabaseExecuteError(err, "")
 	}
 
+	// Update the user entity with the generated ID and timestamps
+	user.ID = userM.ID
+	user.CreatedAt = userM.CreatedAt
+	user.UpdatedAt = userM.UpdatedAt
+
 	return nil
 }
 

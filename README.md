@@ -38,7 +38,7 @@ Follow these instructions to get a local copy up and running for development and
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/slighter12/NomNom-Radar.git](https://github.com/slighter12/NomNom-Radar.git)
+    git clone https://github.com/slighter12/NomNom-Radar.git
     cd NomNom-Radar
     ```
 
