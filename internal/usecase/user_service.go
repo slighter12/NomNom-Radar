@@ -84,7 +84,7 @@ func (srv *userService) RegisterUser(ctx context.Context, input *RegisterUserInp
 		}
 
 		if err := userRepo.Create(ctx, newUser); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 
 		// 3. Create the Authentication entity (the email/password credential).
@@ -95,7 +95,7 @@ func (srv *userService) RegisterUser(ctx context.Context, input *RegisterUserInp
 			PasswordHash:   hashedPassword,
 		}
 		if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		registeredUser = newUser
 
@@ -149,7 +149,7 @@ func (srv *userService) RegisterMerchant(ctx context.Context, input *RegisterMer
 		}
 
 		if err := userRepo.Create(ctx, newUser); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 
 		// 3. Create the Authentication entity.
@@ -160,7 +160,7 @@ func (srv *userService) RegisterMerchant(ctx context.Context, input *RegisterMer
 			PasswordHash:   hashedPassword,
 		}
 		if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		registeredUser = newUser
 
@@ -234,7 +234,7 @@ func (srv *userService) Login(ctx context.Context, input *LoginInput) (*LoginOut
 		}
 
 		if err := authRepo.CreateRefreshToken(ctx, newRefreshToken); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		loggedInUser = user
 
@@ -310,7 +310,7 @@ func (srv *userService) RefreshToken(ctx context.Context, input *RefreshTokenInp
 			ExpiresAt: time.Now().Add(srv.tokenService.GetRefreshTokenDuration()),
 		}
 		if err := authRepo.CreateRefreshToken(ctx, newRefreshToken); err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 
 		// 5. Delete the old refresh token.
@@ -451,7 +451,7 @@ func (srv *userService) createGoogleUser(ctx context.Context, userRepo repositor
 	}
 
 	if err := userRepo.Create(ctx, newUser); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	newAuth := &entity.Authentication{
@@ -461,7 +461,7 @@ func (srv *userService) createGoogleUser(ctx context.Context, userRepo repositor
 	}
 
 	if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
-		return nil, err
+		return nil, errors.WithStack(err)
 	}
 
 	return newUser, nil
@@ -521,7 +521,7 @@ func (srv *userService) storeRefreshToken(ctx context.Context, repoFactory repos
 	}
 
 	if err := authRepo.CreateRefreshToken(ctx, newRefreshToken); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	return nil

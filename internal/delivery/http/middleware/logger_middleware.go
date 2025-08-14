@@ -3,8 +3,9 @@ package middleware
 import (
 	"context"
 	"log/slog"
-	"radar/config"
 	"time"
+
+	"radar/config"
 
 	"github.com/labstack/echo/v4"
 )

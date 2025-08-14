@@ -83,6 +83,10 @@ linters:
         - q *query.Query
         - tx *gorm.DB
         - e *echo.Echo
+    wrapcheck:
+      extra-ignore-sigs:
+        - .JSON(
+        - .WrapMessage(
   exclusions:
     generated: lax
     presets:

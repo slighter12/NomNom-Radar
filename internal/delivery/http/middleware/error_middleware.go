@@ -54,7 +54,8 @@ func (m *ErrorMiddleware) handleError(c echo.Context, err error) error {
 	}
 
 	// Check if it's Echo's HTTPError
-	if httpErr, ok := err.(*echo.HTTPError); ok {
+	var httpErr *echo.HTTPError
+	if errors.As(err, &httpErr) {
 		return c.JSON(httpErr.Code, domainerrors.Response{
 			Success: false,
 			Code:    httpErr.Code,
