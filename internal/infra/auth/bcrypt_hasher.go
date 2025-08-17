@@ -73,33 +73,55 @@ func (h *bcryptHasher) Check(password, hash string) bool {
 func (h *bcryptHasher) ValidatePasswordStrength(password string) error {
 	config := h.getPasswordStrengthConfig()
 
-	// Check minimum length
-	if len(password) < config.MinLength {
-		return fmt.Errorf("password must be at least %d characters long", config.MinLength)
+	// Validate all password requirements
+	if err := h.validatePasswordLength(password, config.MinLength); err != nil {
+		return err
 	}
 
-	// Check for uppercase letters
+	if err := h.validatePasswordCharacters(password, config); err != nil {
+		return err
+	}
+
+	if err := h.validatePasswordForbiddenWords(password, config.ForbiddenWords); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validatePasswordLength checks if password meets minimum length requirement
+func (h *bcryptHasher) validatePasswordLength(password string, minLength int) error {
+	if len(password) < minLength {
+		return fmt.Errorf("password must be at least %d characters long", minLength)
+	}
+
+	return nil
+}
+
+// validatePasswordCharacters checks if password contains required character types
+func (h *bcryptHasher) validatePasswordCharacters(password string, config PasswordStrengthConfig) error {
 	if config.RequireUppercase && !h.hasUppercase(password) {
 		return errors.New("password must contain at least one uppercase letter")
 	}
 
-	// Check for lowercase letters
 	if config.RequireLowercase && !h.hasLowercase(password) {
 		return errors.New("password must contain at least one lowercase letter")
 	}
 
-	// Check for numbers
 	if config.RequireNumbers && !h.hasNumbers(password) {
 		return errors.New("password must contain at least one number")
 	}
 
-	// Check for special characters
 	if config.RequireSpecial && !h.hasSpecialChars(password) {
 		return errors.New("password must contain at least one special character")
 	}
 
-	// Check for forbidden words
-	if h.containsForbiddenWords(password, config.ForbiddenWords) {
+	return nil
+}
+
+// validatePasswordForbiddenWords checks if password contains forbidden words
+func (h *bcryptHasher) validatePasswordForbiddenWords(password string, forbiddenWords []string) error {
+	if h.containsForbiddenWords(password, forbiddenWords) {
 		return domainerrors.ErrPasswordForbiddenWords.WrapMessage("password contains forbidden words or patterns")
 	}
 
