@@ -110,6 +110,7 @@ func (s *jwtService) GetRefreshTokenDuration() time.Duration {
 func (s *jwtService) HashToken(token string) string {
 	hasher := sha256.New()
 	hasher.Write([]byte(token))
+
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 

@@ -94,12 +94,14 @@ func (s *AuthServiceImpl) VerifyGoogleIDToken(ctx context.Context, idToken strin
 	claims, err := s.parseIDToken(idToken)
 	if err != nil {
 		s.logger.Error("Failed to parse ID token", "error", err)
+
 		return nil, errors.Wrap(err, "invalid ID token")
 	}
 
 	// Verify the token
 	if err := s.verifyTokenClaims(claims); err != nil {
 		s.logger.Error("Token verificatioailed", "error", err)
+
 		return nil, errors.Wrap(err, "token verification failed")
 	}
 
@@ -130,6 +132,7 @@ func (s *AuthServiceImpl) ValidateTokenAudience(ctx context.Context, idToken str
 	claims, err := s.parseIDToken(idToken)
 	if err != nil {
 		s.logger.Error("Failed to parse ID token for audience validation", "error", err)
+
 		return errors.Wrap(err, "invalid ID token")
 	}
 
@@ -138,10 +141,11 @@ func (s *AuthServiceImpl) ValidateTokenAudience(ctx context.Context, idToken str
 		s.logger.Error("Token audience mismatch",
 			"expected", expectedClientID,
 			"actual", claims.Aud)
+
 		return errors.Errorf("invalid audience: expected %s, got %s", expectedClientID, claims.Aud)
 	}
-
 	s.logger.Info("Token audience validation successful", "clientID", expectedClientID)
+
 	return nil
 }
 

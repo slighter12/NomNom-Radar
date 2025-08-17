@@ -67,6 +67,7 @@ func (repo *addressRepository) FindAddressByID(ctx context.Context, id uuid.UUID
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, repository.ErrAddressNotFound
 		}
+
 		return nil, errors.Wrap(err, "failed to find address by ID")
 	}
 
@@ -109,6 +110,7 @@ func (repo *addressRepository) FindPrimaryAddressByOwner(ctx context.Context, ow
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, repository.ErrAddressNotFound
 		}
+
 		return nil, errors.Wrap(err, "failed to find primary address by owner")
 	}
 

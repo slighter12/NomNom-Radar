@@ -150,6 +150,7 @@ func (h *bcryptHasher) hasUppercase(password string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -160,6 +161,7 @@ func (h *bcryptHasher) hasLowercase(password string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -170,6 +172,7 @@ func (h *bcryptHasher) hasNumbers(password string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -177,6 +180,7 @@ func (h *bcryptHasher) hasNumbers(password string) bool {
 func (h *bcryptHasher) hasSpecialChars(password string) bool {
 	// Define special characters pattern
 	specialChars := regexp.MustCompile(`[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~` + "`" + `]`)
+
 	return specialChars.MatchString(password)
 }
 
@@ -188,5 +192,6 @@ func (h *bcryptHasher) containsForbiddenWords(password string, forbiddenWords []
 			return true
 		}
 	}
+
 	return false
 }

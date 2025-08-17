@@ -1,8 +1,9 @@
 package auth
 
 import (
-	domainerrors "radar/internal/domain/errors"
 	"testing"
+
+	domainerrors "radar/internal/domain/errors"
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
@@ -158,7 +159,7 @@ func TestBcryptHasher_EdgeCases(t *testing.T) {
 	assert.True(t, errors.Is(err, domainerrors.ErrPasswordForbiddenWords)) // Should be valid if it meets all requirements
 
 	// Test password with unicode characters
-	unicodePassword := "Pässphräse123!"
+	unicodePassword := "Pässphräse123!" //nolint:gosec // This is a test password, not a real password
 	err = hasher.ValidatePasswordStrength(unicodePassword)
 	assert.NoError(t, err) // Should be valid
 

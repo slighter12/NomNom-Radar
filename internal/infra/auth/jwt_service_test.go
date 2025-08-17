@@ -159,7 +159,7 @@ func TestJWTService_HashToken(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Test token hashing
-	testToken := "test.jwt.token"
+	testToken := "test.jwt.token" //nolint:gosec // This is a test token, not a real token
 	hash1 := jwtService.HashToken(testToken)
 	hash2 := jwtService.HashToken(testToken)
 

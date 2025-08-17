@@ -67,6 +67,7 @@ func (repo *refreshTokenRepository) FindRefreshTokenByHash(ctx context.Context, 
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, repository.ErrRefreshTokenNotFound
 		}
+
 		return nil, errors.Wrap(err, "failed to find refresh token by hash")
 	}
 
@@ -90,6 +91,7 @@ func (repo *refreshTokenRepository) FindRefreshTokenByID(ctx context.Context, id
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, repository.ErrRefreshTokenNotFound
 		}
+
 		return nil, errors.Wrap(err, "failed to find refresh token by ID")
 	}
 

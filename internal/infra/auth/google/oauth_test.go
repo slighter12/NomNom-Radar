@@ -2,6 +2,7 @@ package google
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -57,7 +58,7 @@ func TestOAuthService_BuildAuthorizationURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			service := NewOAuthService(tt.config)
+			service := NewOAuthService(tt.config, slog.Default())
 			result := service.BuildAuthorizationURL("state_string")
 
 			assert.Equal(t, tt.expected, result)
@@ -77,7 +78,7 @@ func TestOAuthService_ValidateState(t *testing.T) {
 		},
 	}
 
-	service := NewOAuthService(config)
+	service := NewOAuthService(config, slog.Default())
 
 	// Test valid state
 	state := "test_state_123"
@@ -105,7 +106,7 @@ func TestOAuthService_StateExpiration(t *testing.T) {
 		},
 	}
 
-	service := NewOAuthService(config)
+	service := NewOAuthService(config, slog.Default())
 
 	// Create a service with a very short expiration time for testing
 	// We'll need to modify the service to allow testing expiration
@@ -132,7 +133,7 @@ func TestOAuthService_GetProvider(t *testing.T) {
 		},
 	}
 
-	service := NewOAuthService(config)
+	service := NewOAuthService(config, slog.Default())
 	provider := service.GetProvider()
 
 	assert.Equal(t, entity.ProviderTypeGoogle, provider)
@@ -155,7 +156,7 @@ func TestOAuthService_ExchangeCodeForToken(t *testing.T) {
 		// Return mock token response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"access_token": "test_access_token",
 			"token_type": "Bearer",
 			"expires_in": 3600
@@ -203,7 +204,7 @@ func TestOAuthService_GetUserInfo(t *testing.T) {
 		// Return mock user info response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"id": "123456789",
 			"email": "test@example.com",
 			"name": "Test User",

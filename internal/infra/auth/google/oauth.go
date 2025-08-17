@@ -2,10 +2,9 @@ package google
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -20,13 +19,18 @@ import (
 )
 
 const (
-	googleOAuthURL    = "https://accounts.google.com/o/oauth2/v2/auth"
-	googleTokenURL    = "https://oauth2.googleapis.com/token"
+	//nolint:gosec // These are public Google OAuth endpoint URLs, not credentials
+	googleOAuthURL = "https://accounts.google.com/o/oauth2/v2/auth"
+	//nolint:gosec // This is a public Google OAuth endpoint URL, not a credential
+	googleTokenURL = "https://oauth2.googleapis.com/token"
+	//nolint:gosec // This is a public Google OAuth endpoint URL, not a credential
 	googleUserInfoURL = "https://www.googleapis.com/oauth2/v2/userinfo"
 )
 
 // OAuthService handles Google OAuth infrastructure operations
 type OAuthService struct {
+	logger *slog.Logger
+
 	clientID     string
 	clientSecret string
 	redirectURI  string
@@ -38,21 +42,15 @@ type OAuthService struct {
 }
 
 // NewOAuthService creates a new Google OAuth service
-func NewOAuthService(config *config.Config) service.OAuthService {
+func NewOAuthService(config *config.Config, logger *slog.Logger) service.OAuthService {
 	return &OAuthService{
 		clientID:     config.GoogleOAuth.ClientID,
 		clientSecret: config.GoogleOAuth.ClientSecret,
 		redirectURI:  config.GoogleOAuth.RedirectURI,
 		scopes:       config.GoogleOAuth.Scopes,
 		stateStore:   make(map[string]time.Time),
+		logger:       logger,
 	}
-}
-
-// generateState generates a cryptographically secure random state string
-func (s *OAuthService) generateState() string {
-	bytes := make([]byte, 32)
-	rand.Read(bytes)
-	return hex.EncodeToString(bytes)
 }
 
 // storeState stores a state parameter with expiration time
@@ -110,6 +108,7 @@ func (s *OAuthService) ValidateState(state string) bool {
 		delete(s.stateStore, state)
 		s.stateMutex.Unlock()
 		s.stateMutex.RLock()
+
 		return false
 	}
 
@@ -153,7 +152,9 @@ func (s *OAuthService) ExchangeCodeForToken(ctx context.Context, code string) (s
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return "", errors.Errorf("token exchange failed with status %d: %s", resp.StatusCode, string(body))
+		s.logger.Error("token exchange failed", "status", resp.StatusCode, "body", string(body))
+
+		return "", errors.Errorf("token exchange failed with status %d", resp.StatusCode)
 	}
 
 	var tokenResponse struct {
@@ -187,6 +188,7 @@ func (s *OAuthService) GetUserInfo(ctx context.Context, accessToken string) (*se
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+
 		return nil, errors.Errorf("user info request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 

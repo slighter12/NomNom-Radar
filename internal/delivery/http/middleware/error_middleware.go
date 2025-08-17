@@ -28,7 +28,7 @@ func (m *ErrorMiddleware) HandleHTTPError(err error, c echo.Context) {
 	var appErr domainerrors.AppError
 	if errors.As(err, &appErr) {
 		// Use AppError information
-		c.JSON(appErr.HTTPCode(), domainerrors.Response{
+		_ = c.JSON(appErr.HTTPCode(), domainerrors.Response{
 			Success: false,
 			Code:    appErr.HTTPCode(),
 			Message: appErr.Message(),
@@ -37,13 +37,14 @@ func (m *ErrorMiddleware) HandleHTTPError(err error, c echo.Context) {
 				Details: appErr.Details(),
 			},
 		})
+
 		return
 	}
 
 	// Check if it's Echo's HTTPError
 	var httpErr *echo.HTTPError
 	if errors.As(err, &httpErr) {
-		c.JSON(httpErr.Code, domainerrors.Response{
+		_ = c.JSON(httpErr.Code, domainerrors.Response{
 			Success: false,
 			Code:    httpErr.Code,
 			Message: httpErr.Message.(string),
@@ -52,6 +53,7 @@ func (m *ErrorMiddleware) HandleHTTPError(err error, c echo.Context) {
 				Details: httpErr.Message.(string),
 			},
 		})
+
 		return
 	}
 
@@ -62,7 +64,7 @@ func (m *ErrorMiddleware) HandleHTTPError(err error, c echo.Context) {
 		"method", c.Request().Method,
 	)
 
-	c.JSON(http.StatusInternalServerError, domainerrors.Response{
+	_ = c.JSON(http.StatusInternalServerError, domainerrors.Response{
 		Success: false,
 		Code:    http.StatusInternalServerError,
 		Message: "Internal server error",

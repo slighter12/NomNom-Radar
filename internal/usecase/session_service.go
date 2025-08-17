@@ -50,6 +50,7 @@ func (srv *sessionService) GetActiveSessions(ctx context.Context, userID uuid.UU
 			if errors.Is(err, repository.ErrUserNotFound) {
 				return errors.Wrap(domainerrors.ErrNotFound, "user not found")
 			}
+
 			return errors.Wrap(err, "failed to find user")
 		}
 
@@ -77,10 +78,11 @@ func (srv *sessionService) GetActiveSessions(ctx context.Context, userID uuid.UU
 
 	if err != nil {
 		srv.logger.Error("Failed to get active sessions", "error", err, "userID", userID)
+
 		return nil, errors.Wrap(err, "failed to get active sessions")
 	}
-
 	srv.logger.Debug("Successfully retrieved active sessions", "userID", userID, "count", len(sessions))
+
 	return sessions, nil
 }
 
@@ -98,6 +100,7 @@ func (srv *sessionService) RevokeSession(ctx context.Context, userID, sessionID 
 			if errors.Is(err, repository.ErrUserNotFound) {
 				return errors.Wrap(domainerrors.ErrNotFound, "user not found")
 			}
+
 			return errors.Wrap(err, "failed to find user")
 		}
 
@@ -107,6 +110,7 @@ func (srv *sessionService) RevokeSession(ctx context.Context, userID, sessionID 
 			if errors.Is(err, repository.ErrRefreshTokenNotFound) {
 				return errors.Wrap(domainerrors.ErrNotFound, "session not found")
 			}
+
 			return errors.Wrap(err, "failed to find session")
 		}
 
@@ -125,10 +129,11 @@ func (srv *sessionService) RevokeSession(ctx context.Context, userID, sessionID 
 
 	if err != nil {
 		srv.logger.Error("Failed to revoke session", "error", err, "userID", userID, "sessionID", sessionID)
+
 		return errors.Wrap(err, "failed to revoke session")
 	}
-
 	srv.logger.Info("Successfully revoked session", "userID", userID, "sessionID", sessionID)
+
 	return nil
 }
 
@@ -146,6 +151,7 @@ func (srv *sessionService) RevokeAllSessions(ctx context.Context, userID uuid.UU
 			if errors.Is(err, repository.ErrUserNotFound) {
 				return errors.Wrap(domainerrors.ErrNotFound, "user not found")
 			}
+
 			return errors.Wrap(err, "failed to find user")
 		}
 
@@ -159,10 +165,11 @@ func (srv *sessionService) RevokeAllSessions(ctx context.Context, userID uuid.UU
 
 	if err != nil {
 		srv.logger.Error("Failed to revoke all sessions", "error", err, "userID", userID)
+
 		return errors.Wrap(err, "failed to revoke all sessions")
 	}
-
 	srv.logger.Info("Successfully revoked all sessions", "userID", userID)
+
 	return nil
 }
 
@@ -180,6 +187,7 @@ func (srv *sessionService) RevokeAllOtherSessions(ctx context.Context, userID uu
 			if errors.Is(err, repository.ErrUserNotFound) {
 				return errors.Wrap(domainerrors.ErrNotFound, "user not found")
 			}
+
 			return errors.Wrap(err, "failed to find user")
 		}
 
@@ -204,10 +212,11 @@ func (srv *sessionService) RevokeAllOtherSessions(ctx context.Context, userID uu
 
 	if err != nil {
 		srv.logger.Error("Failed to revoke all other sessions", "error", err, "userID", userID)
+
 		return errors.Wrap(err, "failed to revoke all other sessions")
 	}
-
 	srv.logger.Info("Successfully revoked all other sessions", "userID", userID, "currentSessionID", currentSessionID)
+
 	return nil
 }
 
@@ -227,6 +236,7 @@ func (srv *sessionService) GetSessionInfo(ctx context.Context, userID, sessionID
 			if errors.Is(err, repository.ErrUserNotFound) {
 				return errors.Wrap(domainerrors.ErrNotFound, "user not found")
 			}
+
 			return errors.Wrap(err, "failed to find user")
 		}
 
@@ -236,6 +246,7 @@ func (srv *sessionService) GetSessionInfo(ctx context.Context, userID, sessionID
 			if errors.Is(err, repository.ErrRefreshTokenNotFound) {
 				return errors.Wrap(domainerrors.ErrNotFound, "session not found")
 			}
+
 			return errors.Wrap(err, "failed to find session")
 		}
 
@@ -260,10 +271,11 @@ func (srv *sessionService) GetSessionInfo(ctx context.Context, userID, sessionID
 
 	if err != nil {
 		srv.logger.Error("Failed to get session info", "error", err, "userID", userID, "sessionID", sessionID)
+
 		return nil, errors.Wrap(err, "failed to get session info")
 	}
-
 	srv.logger.Debug("Successfully retrieved session info", "userID", userID, "sessionID", sessionID)
+
 	return sessionInfo, nil
 }
 
@@ -290,10 +302,11 @@ func (srv *sessionService) CleanupExpiredSessions(ctx context.Context) (int, err
 
 	if err != nil {
 		srv.logger.Error("Failed to cleanup expired sessions", "error", err)
+
 		return 0, errors.Wrap(err, "failed to cleanup expired sessions")
 	}
-
 	srv.logger.Info("Successfully cleaned up expired sessions", "deletedCount", deletedCount)
+
 	return deletedCount, nil
 }
 
@@ -313,6 +326,7 @@ func (srv *sessionService) DetectAnomalousActivity(ctx context.Context, userID u
 			if errors.Is(err, repository.ErrUserNotFound) {
 				return errors.Wrap(domainerrors.ErrNotFound, "user not found")
 			}
+
 			return errors.Wrap(err, "failed to find user")
 		}
 
@@ -324,65 +338,105 @@ func (srv *sessionService) DetectAnomalousActivity(ctx context.Context, userID u
 
 		// 3. Analyze for anomalies
 		now := time.Now()
-
-		// Check for too many active sessions
-		activeCount := 0
-		for _, token := range tokens {
-			if token.ExpiresAt.After(now) {
-				activeCount++
-			}
-		}
-
-		if activeCount > 10 { // Configurable threshold
-			anomalies = append(anomalies, &entity.AnomalousActivity{
-				Type:        "excessive_sessions",
-				Description: "User has an unusually high number of active sessions",
-				Severity:    "medium",
-				DetectedAt:  now,
-			})
-		}
-
-		// Check for sessions created in rapid succession
-		if len(tokens) >= 2 {
-			for i := 1; i < len(tokens); i++ {
-				timeDiff := tokens[i].CreatedAt.Sub(tokens[i-1].CreatedAt)
-				if timeDiff < 5*time.Minute { // Sessions created within 5 minutes
-					sessionID := tokens[i].ID
-					anomalies = append(anomalies, &entity.AnomalousActivity{
-						Type:        "rapid_session_creation",
-						Description: "Multiple sessions created in rapid succession",
-						Severity:    "high",
-						DetectedAt:  now,
-						SessionID:   &sessionID,
-					})
-				}
-			}
-		}
-
-		// Check for very old sessions (potential forgotten devices)
-		for _, token := range tokens {
-			if token.ExpiresAt.After(now) && now.Sub(token.CreatedAt) > 30*24*time.Hour { // 30 days
-				sessionID := token.ID
-				anomalies = append(anomalies, &entity.AnomalousActivity{
-					Type:        "long_lived_session",
-					Description: "Session has been active for an unusually long time",
-					Severity:    "low",
-					DetectedAt:  now,
-					SessionID:   &sessionID,
-				})
-			}
-		}
+		anomalies = srv.detectSessionAnomalies(tokens, now)
 
 		return nil
 	})
 
 	if err != nil {
 		srv.logger.Error("Failed to detect anomalous activity", "error", err, "userID", userID)
+
 		return nil, errors.Wrap(err, "failed to detect anomalous activity")
 	}
-
 	srv.logger.Debug("Successfully analyzed for anomalous activity", "userID", userID, "anomaliesFound", len(anomalies))
+
 	return anomalies, nil
+}
+
+// detectSessionAnomalies analyzes refresh tokens for various anomaly patterns
+func (srv *sessionService) detectSessionAnomalies(tokens []*entity.RefreshToken, now time.Time) []*entity.AnomalousActivity {
+	var anomalies []*entity.AnomalousActivity
+
+	// Check for excessive active sessions
+	if excessiveAnomaly := srv.detectExcessiveSessions(tokens, now); excessiveAnomaly != nil {
+		anomalies = append(anomalies, excessiveAnomaly)
+	}
+
+	// Check for rapid session creation
+	rapidAnomalies := srv.detectRapidSessionCreation(tokens, now)
+	anomalies = append(anomalies, rapidAnomalies...)
+
+	// Check for long-lived sessions
+	longLivedAnomalies := srv.detectLongLivedSessions(tokens, now)
+	anomalies = append(anomalies, longLivedAnomalies...)
+
+	return anomalies
+}
+
+// detectExcessiveSessions checks if user has too many active sessions
+func (srv *sessionService) detectExcessiveSessions(tokens []*entity.RefreshToken, now time.Time) *entity.AnomalousActivity {
+	activeCount := 0
+	for _, token := range tokens {
+		if token.ExpiresAt.After(now) {
+			activeCount++
+		}
+	}
+
+	if activeCount > 10 { // Configurable threshold
+		return &entity.AnomalousActivity{
+			Type:        "excessive_sessions",
+			Description: "User has an unusually high number of active sessions",
+			Severity:    "medium",
+			DetectedAt:  now,
+		}
+	}
+
+	return nil
+}
+
+// detectRapidSessionCreation checks for sessions created in rapid succession
+func (srv *sessionService) detectRapidSessionCreation(tokens []*entity.RefreshToken, now time.Time) []*entity.AnomalousActivity {
+	var anomalies []*entity.AnomalousActivity
+
+	if len(tokens) < 2 {
+		return anomalies
+	}
+
+	for i := 1; i < len(tokens); i++ {
+		timeDiff := tokens[i].CreatedAt.Sub(tokens[i-1].CreatedAt)
+		if timeDiff < 5*time.Minute { // Sessions created within 5 minutes
+			sessionID := tokens[i].ID
+			anomalies = append(anomalies, &entity.AnomalousActivity{
+				Type:        "rapid_session_creation",
+				Description: "Multiple sessions created in rapid succession",
+				Severity:    "high",
+				DetectedAt:  now,
+				SessionID:   &sessionID,
+			})
+		}
+	}
+
+	return anomalies
+}
+
+// detectLongLivedSessions checks for very old sessions (potential forgotten devices)
+func (srv *sessionService) detectLongLivedSessions(tokens []*entity.RefreshToken, now time.Time) []*entity.AnomalousActivity {
+	var anomalies []*entity.AnomalousActivity
+
+	for _, token := range tokens {
+		if token.ExpiresAt.After(now) && now.Sub(token.CreatedAt) > 30*24*time.Hour { // 30 days
+			sessionID := token.ID
+			anomalies = append(anomalies, &entity.AnomalousActivity{
+				Type:        "long_lived_session",
+				Description: "Session has been active for an unusually long time",
+				Severity:    "low",
+				DetectedAt:  now,
+				SessionID:   &sessionID,
+			})
+		}
+	}
+
+	return anomalies
 }
 
 // GetSessionStatistics provides statistical overview of user's session activity.
@@ -401,6 +455,7 @@ func (srv *sessionService) GetSessionStatistics(ctx context.Context, userID uuid
 			if errors.Is(err, repository.ErrUserNotFound) {
 				return errors.Wrap(domainerrors.ErrNotFound, "user not found")
 			}
+
 			return errors.Wrap(err, "failed to find user")
 		}
 
@@ -412,45 +467,73 @@ func (srv *sessionService) GetSessionStatistics(ctx context.Context, userID uuid
 
 		// 3. Calculate statistics
 		now := time.Now()
-		activeCount := 0
-		var oldest, newest time.Time
-
-		for i, token := range tokens {
-			if token.ExpiresAt.After(now) {
-				activeCount++
-			}
-
-			if i == 0 {
-				oldest = token.CreatedAt
-				newest = token.CreatedAt
-			} else {
-				if token.CreatedAt.Before(oldest) {
-					oldest = token.CreatedAt
-				}
-				if token.CreatedAt.After(newest) {
-					newest = token.CreatedAt
-				}
-			}
-		}
-
-		stats = &entity.SessionStatistics{
-			TotalActiveSessions: activeCount,
-			TotalSessions:       len(tokens),
-		}
-
-		if len(tokens) > 0 {
-			stats.OldestSession = &oldest
-			stats.NewestSession = &newest
-		}
+		stats = srv.calculateSessionStatistics(tokens, now)
 
 		return nil
 	})
 
 	if err != nil {
 		srv.logger.Error("Failed to get session statistics", "error", err, "userID", userID)
+
 		return nil, errors.Wrap(err, "failed to get session statistics")
 	}
-
 	srv.logger.Debug("Successfully retrieved session statistics", "userID", userID)
+
 	return stats, nil
+}
+
+// calculateSessionStatistics calculates various session statistics from refresh tokens
+func (srv *sessionService) calculateSessionStatistics(tokens []*entity.RefreshToken, now time.Time) *entity.SessionStatistics {
+	if len(tokens) == 0 {
+		return &entity.SessionStatistics{
+			TotalActiveSessions: 0,
+			TotalSessions:       0,
+		}
+	}
+
+	activeCount := srv.countActiveSessions(tokens, now)
+	oldest, newest := srv.findSessionTimeBounds(tokens)
+
+	stats := &entity.SessionStatistics{
+		TotalActiveSessions: activeCount,
+		TotalSessions:       len(tokens),
+		OldestSession:       &oldest,
+		NewestSession:       &newest,
+	}
+
+	return stats
+}
+
+// countActiveSessions counts the number of currently active sessions
+func (srv *sessionService) countActiveSessions(tokens []*entity.RefreshToken, now time.Time) int {
+	activeCount := 0
+	for _, token := range tokens {
+		if token.ExpiresAt.After(now) {
+			activeCount++
+		}
+	}
+	srv.logger.Debug("active count", "activeCount", activeCount)
+
+	return activeCount
+}
+
+// findSessionTimeBounds finds the oldest and newest session creation times
+func (srv *sessionService) findSessionTimeBounds(tokens []*entity.RefreshToken) (oldest, newest time.Time) {
+	if len(tokens) == 0 {
+		return oldest, newest
+	}
+
+	oldest = tokens[0].CreatedAt
+	newest = tokens[0].CreatedAt
+
+	for _, token := range tokens {
+		if token.CreatedAt.Before(oldest) {
+			oldest = token.CreatedAt
+		}
+		if token.CreatedAt.After(newest) {
+			newest = token.CreatedAt
+		}
+	}
+
+	return oldest, newest
 }

@@ -189,9 +189,11 @@ func (srv *profileService) SwitchToMerchant(ctx context.Context, userID uuid.UUI
 	})
 
 	if err != nil {
+		srv.logger.Error("failed to switch user to merchant", "error", err)
 
 		return errors.Wrap(err, "failed to switch user to merchant")
 	}
+	srv.logger.Debug("user switched to merchant", "userID", userID)
 
 	return nil
 }
@@ -226,9 +228,11 @@ func (srv *profileService) GetUserRole(ctx context.Context, userID uuid.UUID) ([
 	})
 
 	if err != nil {
+		srv.logger.Error("failed to get user roles", "error", err)
 
 		return nil, errors.Wrap(err, "failed to get user roles")
 	}
+	srv.logger.Debug("user roles", "roles", roles)
 
 	return roles, nil
 }

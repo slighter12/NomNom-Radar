@@ -219,9 +219,9 @@ func fromUserProfileDomain(data *entity.UserProfile) *model.UserProfileModel {
 		return nil
 	}
 
-	addresses := make([]model.AddressModel, 0, len(data.Addresses))
+	addresses := make([]*model.AddressModel, 0, len(data.Addresses))
 	for _, addr := range data.Addresses {
-		addressModel := model.AddressModel{
+		addressModel := &model.AddressModel{
 			ID:          addr.ID,
 			OwnerID:     addr.OwnerID,
 			OwnerType:   addr.OwnerType,
@@ -291,9 +291,9 @@ func fromMerchantProfileDomain(data *entity.MerchantProfile) *model.MerchantProf
 		return nil
 	}
 
-	addresses := make([]model.AddressModel, 0, len(data.Addresses))
+	addresses := make([]*model.AddressModel, 0, len(data.Addresses))
 	for _, addr := range data.Addresses {
-		addressModel := model.AddressModel{
+		addressModel := &model.AddressModel{
 			ID:          addr.ID,
 			OwnerID:     addr.OwnerID,
 			OwnerType:   addr.OwnerType,

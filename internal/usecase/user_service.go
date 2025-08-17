@@ -61,17 +61,18 @@ func (srv *userService) RegisterUser(ctx context.Context, input *RegisterUserInp
 	// Validate password strength
 	if err := srv.hasher.ValidatePasswordStrength(input.Password); err != nil {
 		srv.logger.Warn("Password validation failed during registration", "email", input.Email, "error", err)
+
 		return nil, errors.Wrap(domainerrors.ErrValidationFailed, "password does not meet security requirements")
 	}
 
 	hashedPassword, err := srv.hasher.Hash(input.Password)
 	if err != nil {
 		srv.logger.Error("Failed to hash password during registration", "error", err)
+
 		return nil, errors.Wrap(err, "failed to hash password during registration")
 	}
 
 	var registeredUser *entity.User
-
 	// Execute the entire creation process within a single database transaction
 	// to ensure data consistency (atomicity).
 	err = srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
@@ -132,17 +133,18 @@ func (srv *userService) RegisterMerchant(ctx context.Context, input *RegisterMer
 	// Validate password strength
 	if err := srv.hasher.ValidatePasswordStrength(input.Password); err != nil {
 		srv.logger.Warn("Password validation failed during merchant registration", "email", input.Email, "error", err)
+
 		return nil, errors.Wrap(domainerrors.ErrValidationFailed, "password does not meet security requirements")
 	}
 
 	hashedPassword, err := srv.hasher.Hash(input.Password)
 	if err != nil {
 		srv.logger.Error("Failed to hash password during registration", "error", err)
+
 		return nil, errors.Wrap(err, "failed to hash password during registration")
 	}
 
 	var registeredUser *entity.User
-
 	err = srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
 		userRepo := repoFactory.NewUserRepository()
 		authRepo := repoFactory.NewAuthRepository()
@@ -323,6 +325,7 @@ func (srv *userService) RefreshToken(ctx context.Context, input *RefreshTokenInp
 
 	if err != nil {
 		srv.logger.Error("Failed to execute refresh token transaction", "error", err)
+
 		return nil, errors.Wrap(err, "failed to execute refresh token transaction")
 	}
 
@@ -346,10 +349,11 @@ func (srv *userService) Logout(ctx context.Context, input *LogoutInput) error {
 	// Single operation - use direct repository instance
 	if err := srv.refreshTokenRepo.DeleteRefreshTokenByHash(ctx, tokenHash); err != nil {
 		srv.logger.Error("Failed to delete refresh token", "error", err)
+
 		return errors.Wrap(err, "failed to delete refresh token")
 	}
-
 	srv.logger.Info("Successfully logged out")
+
 	return nil
 }
 
@@ -518,10 +522,11 @@ func (srv *userService) LogoutAllDevices(ctx context.Context, userID uuid.UUID) 
 	// Single operation - use direct repository instance
 	if err := srv.refreshTokenRepo.DeleteRefreshTokensByUserID(ctx, userID); err != nil {
 		srv.logger.Error("Failed to delete all refresh tokens", "error", err, "userID", userID)
+
 		return errors.Wrap(err, "failed to delete all refresh tokens")
 	}
-
 	srv.logger.Info("Successfully logged out from all devices", "userID", userID)
+
 	return nil
 }
 
@@ -533,6 +538,7 @@ func (srv *userService) GetActiveSessions(ctx context.Context, userID uuid.UUID)
 	sessions, err := srv.refreshTokenRepo.FindRefreshTokensByUserID(ctx, userID)
 	if err != nil {
 		srv.logger.Error("Failed to get active sessions", "error", err, "userID", userID)
+
 		return nil, errors.Wrap(err, "failed to get active sessions")
 	}
 
@@ -565,10 +571,11 @@ func (srv *userService) RevokeSession(ctx context.Context, userID, tokenID uuid.
 
 	if err != nil {
 		srv.logger.Error("Failed to revoke session", "error", err, "userID", userID, "tokenID", tokenID)
+
 		return errors.Wrap(err, "failed to revoke session")
 	}
-
 	srv.logger.Info("Successfully revoked session", "userID", userID, "tokenID", tokenID)
+
 	return nil
 }
 
@@ -583,74 +590,96 @@ func (srv *userService) LinkGoogleAccount(ctx context.Context, userID uuid.UUID,
 	}
 
 	err = srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		authRepo := repoFactory.NewAuthRepository()
-		userRepo := repoFactory.NewUserRepository()
-
-		// 1. Verify the user exists
-		user, err := userRepo.FindByID(ctx, userID)
-		if err != nil {
-			return errors.Wrap(err, "failed to find user")
-		}
-
-		// 2. Check if Google account is already linked to another user
-		existingAuth, err := authRepo.FindAuthentication(ctx, entity.ProviderTypeGoogle, oauthUser.ID)
-		if err != nil && !errors.Is(err, repository.ErrAuthNotFound) {
-			return errors.Wrap(err, "failed to check existing Google authentication")
-		}
-
-		if existingAuth != nil {
-			if existingAuth.UserID == userID {
-				// Already linked to this user
-				return errors.Wrap(domainerrors.ErrConflict, "Google account already linked to this user")
-			}
-			// Linked to different user
-			return errors.Wrap(domainerrors.ErrConflict, "Google account already linked to another user")
-		}
-
-		// 3. Check if user already has a Google authentication method
-		userGoogleAuth, err := authRepo.FindAuthenticationByUserIDAndProvider(ctx, userID, entity.ProviderTypeGoogle)
-		if err != nil && !errors.Is(err, repository.ErrAuthNotFound) {
-			return errors.Wrap(err, "failed to check user's Google authentication")
-		}
-
-		if userGoogleAuth != nil {
-			// Update existing Google authentication
-			userGoogleAuth.ProviderUserID = oauthUser.ID
-			if err := authRepo.UpdateAuthentication(ctx, userGoogleAuth); err != nil {
-				return errors.Wrap(err, "failed to update Google authentication")
-			}
-		} else {
-			// Create new Google authentication
-			newAuth := &entity.Authentication{
-				UserID:         userID,
-				Provider:       entity.ProviderTypeGoogle,
-				ProviderUserID: oauthUser.ID,
-			}
-
-			if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
-				return errors.Wrap(err, "failed to create Google authentication")
-			}
-		}
-
-		// 4. Update user's email if it's different (optional, based on business rules)
-		if user.Email != oauthUser.Email {
-			srv.logger.Info("Google email differs from user email",
-				"userID", userID,
-				"userEmail", user.Email,
-				"googleEmail", oauthUser.Email)
-			// Note: In a real application, you might want to verify the email change
-			// or ask the user to confirm this change
-		}
-
-		return nil
+		return srv.performGoogleAccountLinking(ctx, repoFactory, userID, oauthUser)
 	})
 
 	if err != nil {
 		srv.logger.Error("Failed to link Google account", "error", err, "userID", userID)
+
 		return errors.Wrap(err, "failed to link Google account")
 	}
-
 	srv.logger.Info("Successfully linked Google account", "userID", userID)
+
+	return nil
+}
+
+// performGoogleAccountLinking handles the core logic for linking a Google account
+func (srv *userService) performGoogleAccountLinking(ctx context.Context, repoFactory repository.RepositoryFactory, userID uuid.UUID, oauthUser *service.OAuthUser) error {
+	authRepo := repoFactory.NewAuthRepository()
+	userRepo := repoFactory.NewUserRepository()
+
+	// 1. Verify the user exists
+	user, err := userRepo.FindByID(ctx, userID)
+	if err != nil {
+		return errors.Wrap(err, "failed to find user")
+	}
+
+	// 2. Check for conflicts with other users
+	if err := srv.checkGoogleAccountConflicts(ctx, authRepo, userID, oauthUser.ID); err != nil {
+		return err
+	}
+
+	// 3. Create or update Google authentication
+	if err := srv.createOrUpdateGoogleAuth(ctx, authRepo, userID, oauthUser.ID); err != nil {
+		return err
+	}
+
+	// Note: In a real application, you might want to verify the email change
+	// or ask the user to confirm this change
+	if user.Email != oauthUser.Email {
+		srv.logger.Info("Google email differs from user email",
+			"userID", userID,
+			"userEmail", user.Email,
+			"googleEmail", oauthUser.Email)
+	}
+
+	return nil
+}
+
+// checkGoogleAccountConflicts checks if the Google account is already linked to another user
+func (srv *userService) checkGoogleAccountConflicts(ctx context.Context, authRepo repository.AuthRepository, userID uuid.UUID, googleUserID string) error {
+	existingAuth, err := authRepo.FindAuthentication(ctx, entity.ProviderTypeGoogle, googleUserID)
+	if err != nil && !errors.Is(err, repository.ErrAuthNotFound) {
+		return errors.Wrap(err, "failed to check existing Google authentication")
+	}
+
+	if existingAuth != nil {
+		if existingAuth.UserID == userID {
+			return errors.Wrap(domainerrors.ErrConflict, "Google account already linked to this user")
+		}
+
+		return errors.Wrap(domainerrors.ErrConflict, "Google account already linked to another user")
+	}
+
+	return nil
+}
+
+// createOrUpdateGoogleAuth creates or updates the Google authentication for the user
+func (srv *userService) createOrUpdateGoogleAuth(ctx context.Context, authRepo repository.AuthRepository, userID uuid.UUID, googleUserID string) error {
+	userGoogleAuth, err := authRepo.FindAuthenticationByUserIDAndProvider(ctx, userID, entity.ProviderTypeGoogle)
+	if err != nil && !errors.Is(err, repository.ErrAuthNotFound) {
+		return errors.Wrap(err, "failed to check user's Google authentication")
+	}
+
+	if userGoogleAuth != nil {
+		// Update existing Google authentication
+		userGoogleAuth.ProviderUserID = googleUserID
+		if err := authRepo.UpdateAuthentication(ctx, userGoogleAuth); err != nil {
+			return errors.Wrap(err, "failed to update Google authentication")
+		}
+	} else {
+		// Create new Google authentication
+		newAuth := &entity.Authentication{
+			UserID:         userID,
+			Provider:       entity.ProviderTypeGoogle,
+			ProviderUserID: googleUserID,
+		}
+
+		if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
+			return errors.Wrap(err, "failed to create Google authentication")
+		}
+	}
+
 	return nil
 }
 
@@ -667,6 +696,7 @@ func (srv *userService) UnlinkGoogleAccount(ctx context.Context, userID uuid.UUI
 			if errors.Is(err, repository.ErrAuthNotFound) {
 				return errors.Wrap(domainerrors.ErrNotFound, "Google account not linked to this user")
 			}
+
 			return errors.Wrap(err, "failed to find Google authentication")
 		}
 
@@ -690,9 +720,10 @@ func (srv *userService) UnlinkGoogleAccount(ctx context.Context, userID uuid.UUI
 
 	if err != nil {
 		srv.logger.Error("Failed to unlink Google account", "error", err, "userID", userID)
+
 		return errors.Wrap(err, "failed to unlink Google account")
 	}
-
 	srv.logger.Info("Successfully unlinked Google account", "userID", userID)
+
 	return nil
 }
