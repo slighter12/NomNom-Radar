@@ -13,6 +13,7 @@ func main() {
 		model.MerchantProfileModel{},
 		model.AuthenticationModel{},
 		model.RefreshTokenModel{},
+		model.AddressModel{},
 	}
 
 	gen := gen.NewGenerator(gen.Config{

@@ -26,5 +26,8 @@ type UserRepository interface {
 	// Create persists a new user entity to the storage.
 	Create(ctx context.Context, user *entity.User) error
 
-	// Note: Update and Delete methods can be added here as needed.
+	// Update modifies an existing user entity in the storage.
+	Update(ctx context.Context, user *entity.User) error
+
+	// Note: Delete method can be added here as needed.
 }

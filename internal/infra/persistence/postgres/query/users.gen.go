@@ -36,12 +36,22 @@ func newUserModel(db *gorm.DB, opts ...gen.DOOption) userModel {
 		db: db.Session(&gorm.Session{}),
 
 		RelationField: field.NewRelation("UserProfile", "model.UserProfileModel"),
+		Addresses: struct {
+			field.RelationField
+		}{
+			RelationField: field.NewRelation("UserProfile.Addresses", "model.AddressModel"),
+		},
 	}
 
 	_userModel.MerchantProfile = userModelHasOneMerchantProfile{
 		db: db.Session(&gorm.Session{}),
 
 		RelationField: field.NewRelation("MerchantProfile", "model.MerchantProfileModel"),
+		Addresses: struct {
+			field.RelationField
+		}{
+			RelationField: field.NewRelation("MerchantProfile.Addresses", "model.AddressModel"),
+		},
 	}
 
 	_userModel.Authentications = userModelHasManyAuthentications{
@@ -159,6 +169,10 @@ type userModelHasOneUserProfile struct {
 	db *gorm.DB
 
 	field.RelationField
+
+	Addresses struct {
+		field.RelationField
+	}
 }
 
 func (a userModelHasOneUserProfile) Where(conds ...field.Expr) *userModelHasOneUserProfile {
@@ -240,6 +254,10 @@ type userModelHasOneMerchantProfile struct {
 	db *gorm.DB
 
 	field.RelationField
+
+	Addresses struct {
+		field.RelationField
+	}
 }
 
 func (a userModelHasOneMerchantProfile) Where(conds ...field.Expr) *userModelHasOneMerchantProfile {

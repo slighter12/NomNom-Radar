@@ -22,27 +22,13 @@ func NewErrorMiddleware(logger *slog.Logger) *ErrorMiddleware {
 	}
 }
 
-// HandleErrors error handling middleware function
-func (m *ErrorMiddleware) HandleErrors(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		// Execute next handler
-		err := next(c)
-		if err == nil {
-			return nil
-		}
-
-		// Handle error
-		return m.handleError(c, err)
-	}
-}
-
-// handleError handles various types of errors
-func (m *ErrorMiddleware) handleError(c echo.Context, err error) error {
+// HandleHTTPError handles errors as Echo's HTTPErrorHandler
+func (m *ErrorMiddleware) HandleHTTPError(err error, c echo.Context) {
 	// Try to parse as AppError
 	var appErr domainerrors.AppError
 	if errors.As(err, &appErr) {
 		// Use AppError information
-		return c.JSON(appErr.HTTPCode(), domainerrors.Response{
+		c.JSON(appErr.HTTPCode(), domainerrors.Response{
 			Success: false,
 			Code:    appErr.HTTPCode(),
 			Message: appErr.Message(),
@@ -51,12 +37,13 @@ func (m *ErrorMiddleware) handleError(c echo.Context, err error) error {
 				Details: appErr.Details(),
 			},
 		})
+		return
 	}
 
 	// Check if it's Echo's HTTPError
 	var httpErr *echo.HTTPError
 	if errors.As(err, &httpErr) {
-		return c.JSON(httpErr.Code, domainerrors.Response{
+		c.JSON(httpErr.Code, domainerrors.Response{
 			Success: false,
 			Code:    httpErr.Code,
 			Message: httpErr.Message.(string),
@@ -65,6 +52,7 @@ func (m *ErrorMiddleware) handleError(c echo.Context, err error) error {
 				Details: httpErr.Message.(string),
 			},
 		})
+		return
 	}
 
 	// Default to internal error, log error and return generic error
@@ -74,7 +62,7 @@ func (m *ErrorMiddleware) handleError(c echo.Context, err error) error {
 		"method", c.Request().Method,
 	)
 
-	return c.JSON(http.StatusInternalServerError, domainerrors.Response{
+	c.JSON(http.StatusInternalServerError, domainerrors.Response{
 		Success: false,
 		Code:    http.StatusInternalServerError,
 		Message: "Internal server error",

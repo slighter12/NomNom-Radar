@@ -97,6 +97,13 @@ var (
 		"",
 	)
 
+	ErrUserUpdateFailed = NewBaseError(
+		http.StatusInternalServerError,
+		"USER_UPDATE_FAILED",
+		"Failed to update user",
+		"",
+	)
+
 	// Authentication-related errors
 	ErrAuthNotFound = NewBaseError(
 		http.StatusUnauthorized,
@@ -123,6 +130,20 @@ var (
 		http.StatusInternalServerError,
 		"PASSWORD_HASH_FAILED",
 		"Password processing error",
+		"",
+	)
+
+	ErrPasswordStrength = NewBaseError(
+		http.StatusBadRequest,
+		"PASSWORD_STRENGTH",
+		"Password strength is weak",
+		"",
+	)
+
+	ErrPasswordForbiddenWords = NewBaseError(
+		http.StatusBadRequest,
+		"PASSWORD_FORBIDDEN_WORDS",
+		"Password contains forbidden words or patterns",
 		"",
 	)
 
@@ -164,11 +185,84 @@ var (
 		"",
 	)
 
+	// Address-related errors
+	ErrAddressNotFound = NewBaseError(
+		http.StatusNotFound,
+		"ADDRESS_NOT_FOUND",
+		"Address not found",
+		"",
+	)
+
+	ErrPrimaryAddressConflict = NewBaseError(
+		http.StatusConflict,
+		"PRIMARY_ADDRESS_CONFLICT",
+		"Owner already has a primary address",
+		"",
+	)
+
+	ErrAddressOwnershipViolation = NewBaseError(
+		http.StatusForbidden,
+		"ADDRESS_OWNERSHIP_VIOLATION",
+		"You don't have permission to access this address",
+		"",
+	)
+
+	// Refresh Token-related errors
+	ErrRefreshTokenNotFound = NewBaseError(
+		http.StatusNotFound,
+		"REFRESH_TOKEN_NOT_FOUND",
+		"Refresh token not found",
+		"",
+	)
+
+	ErrRefreshTokenExpired = NewBaseError(
+		http.StatusUnauthorized,
+		"REFRESH_TOKEN_EXPIRED",
+		"Refresh token has expired",
+		"",
+	)
+
+	ErrSessionLimitExceeded = NewBaseError(
+		http.StatusTooManyRequests,
+		"SESSION_LIMIT_EXCEEDED",
+		"Maximum number of active sessions exceeded",
+		"",
+	)
+
+	// Transaction-related errors
+	ErrTransactionFailed = NewBaseError(
+		http.StatusInternalServerError,
+		"TRANSACTION_FAILED",
+		"Database transaction failed",
+		"",
+	)
+
 	// General errors
 	ErrInternalError = NewBaseError(
 		http.StatusInternalServerError,
 		"INTERNAL_ERROR",
 		"Internal server error",
+		"",
+	)
+
+	ErrForbidden = NewBaseError(
+		http.StatusForbidden,
+		"FORBIDDEN",
+		"Access forbidden",
+		"",
+	)
+
+	ErrNotFound = NewBaseError(
+		http.StatusNotFound,
+		"NOT_FOUND",
+		"Resource not found",
+		"",
+	)
+
+	ErrConflict = NewBaseError(
+		http.StatusConflict,
+		"CONFLICT",
+		"Resource conflict",
 		"",
 	)
 )

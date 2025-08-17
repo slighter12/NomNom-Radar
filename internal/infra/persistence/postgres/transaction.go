@@ -34,10 +34,25 @@ func (f *gormRepositoryFactory) NewAuthRepository() repository.AuthRepository {
 	return NewAuthRepository(f.tx)
 }
 
+// NewAddressRepository creates a new address repository instance bound to the transaction.
+func (f *gormRepositoryFactory) NewAddressRepository() repository.AddressRepository {
+	return NewAddressRepository(f.tx)
+}
+
+// NewRefreshTokenRepository creates a new refresh token repository instance bound to the transaction.
+func (f *gormRepositoryFactory) NewRefreshTokenRepository() repository.RefreshTokenRepository {
+	return NewRefreshTokenRepository(f.tx)
+}
+
 // NewTransactionManager is the constructor for gormTransactionManager.
 // This function will be used as an Fx provider.
 func NewTransactionManager(db *gorm.DB, logger *slog.Logger) repository.TransactionManager {
 	return &gormTransactionManager{db: db, logger: logger}
+}
+
+// GetRepositoryFactory returns a repository factory for non-transactional operations.
+func (tm *gormTransactionManager) GetRepositoryFactory() repository.RepositoryFactory {
+	return &gormRepositoryFactory{tx: tm.db}
 }
 
 // Execute runs the given function within a single database transaction.

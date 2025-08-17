@@ -62,4 +62,7 @@ func TestUserHandler_GoogleLogin_Integration(t *testing.T) {
 	assert.Contains(t, responseBody, "client_id=test_client_id")
 	assert.Contains(t, responseBody, "redirect_uri=http%3A%2F%2Flocalhost%3A8080%2Foauth%2Fgoogle%2Fcallback")
 	assert.Contains(t, responseBody, "scope=openid+email+profile")
+	
+	// Check that state parameter is included in response
+	assert.Contains(t, responseBody, "state")
 }

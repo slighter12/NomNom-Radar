@@ -55,3 +55,30 @@ type RefreshToken struct {
 	ExpiresAt time.Time // The exact time when this refresh token will expire and become invalid.
 	CreatedAt time.Time // Timestamp of when this session was created (i.e., when the user logged in).
 }
+
+// SessionInfo represents detailed information about a user session for API responses.
+type SessionInfo struct {
+	ID        uuid.UUID  `json:"id"`
+	UserID    uuid.UUID  `json:"user_id"`
+	CreatedAt time.Time  `json:"created_at"`
+	ExpiresAt time.Time  `json:"expires_at"`
+	IsActive  bool       `json:"is_active"`
+	LastUsed  *time.Time `json:"last_used,omitempty"`
+}
+
+// AnomalousActivity represents detected suspicious session activity.
+type AnomalousActivity struct {
+	Type        string     `json:"type"`
+	Description string     `json:"description"`
+	Severity    string     `json:"severity"`
+	DetectedAt  time.Time  `json:"detected_at"`
+	SessionID   *uuid.UUID `json:"session_id,omitempty"`
+}
+
+// SessionStatistics provides overview of user's session activity.
+type SessionStatistics struct {
+	TotalActiveSessions int        `json:"total_active_sessions"`
+	OldestSession       *time.Time `json:"oldest_session,omitempty"`
+	NewestSession       *time.Time `json:"newest_session,omitempty"`
+	TotalSessions       int        `json:"total_sessions"`
+}

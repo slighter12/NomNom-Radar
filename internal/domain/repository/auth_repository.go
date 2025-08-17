@@ -7,6 +7,8 @@ import (
 	"errors"
 
 	"radar/internal/domain/entity"
+
+	"github.com/google/uuid"
 )
 
 // Domain-specific errors for authentication persistence.
@@ -28,12 +30,19 @@ type AuthRepository interface {
 	// provider="google" and providerUserID=Google's 'sub' claim.
 	FindAuthentication(ctx context.Context, provider entity.ProviderType, providerUserID string) (*entity.Authentication, error)
 
-	// CreateRefreshToken persists a new refresh token, representing a user session.
-	CreateRefreshToken(ctx context.Context, token *entity.RefreshToken) error
+	// FindAuthenticationByUserIDAndProvider finds an authentication method for a specific user and provider.
+	// This is useful when checking if a user already has a specific authentication method linked.
+	FindAuthenticationByUserIDAndProvider(ctx context.Context, userID uuid.UUID, provider entity.ProviderType) (*entity.Authentication, error)
 
-	// FindRefreshTokenByHash retrieves a refresh token record by its securely stored hash.
-	FindRefreshTokenByHash(ctx context.Context, hash string) (*entity.RefreshToken, error)
+	// UpdateAuthentication updates an existing authentication record.
+	// This is useful for updating password hashes or other authentication details.
+	UpdateAuthentication(ctx context.Context, auth *entity.Authentication) error
 
-	// DeleteRefreshTokenByHash deletes a refresh token by its hash, effectively ending a session.
-	DeleteRefreshTokenByHash(ctx context.Context, hash string) error
+	// DeleteAuthentication removes an authentication method by its ID.
+	// This ensures users can unlink authentication methods while maintaining at least one.
+	DeleteAuthentication(ctx context.Context, id uuid.UUID) error
+
+	// ListAuthenticationsByUserID returns all authentication methods for a specific user.
+	// This allows users to see and manage their linked authentication methods.
+	ListAuthenticationsByUserID(ctx context.Context, userID uuid.UUID) ([]*entity.Authentication, error)
 }

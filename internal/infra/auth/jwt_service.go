@@ -2,6 +2,8 @@
 package auth
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -101,6 +103,30 @@ func (s *jwtService) ValidateToken(tokenString string) (*service.Claims, error) 
 // GetRefreshTokenDuration returns the configured duration for refresh tokens.
 func (s *jwtService) GetRefreshTokenDuration() time.Duration {
 	return s.refreshTTL
+}
+
+// HashToken creates a SHA-256 hash of the given token for secure storage.
+// This is used to store refresh tokens securely in the database.
+func (s *jwtService) HashToken(token string) string {
+	hasher := sha256.New()
+	hasher.Write([]byte(token))
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+
+// RotateTokens generates new token pair and returns both tokens with the hash of the refresh token.
+// This method supports the token rotation mechanism for enhanced security.
+// Each time tokens are rotated, both access and refresh tokens are regenerated.
+func (s *jwtService) RotateTokens(userID uuid.UUID, roles []string) (accessToken string, refreshToken string, refreshTokenHash string, err error) {
+	// Generate new token pair
+	accessToken, refreshToken, err = s.GenerateTokens(userID, roles)
+	if err != nil {
+		return "", "", "", errors.Wrap(err, "failed to generate new token pair during rotation")
+	}
+
+	// Hash the refresh token for secure storage
+	refreshTokenHash = s.HashToken(refreshToken)
+
+	return accessToken, refreshToken, refreshTokenHash, nil
 }
 
 // generateToken is a private helper to create a JWT with specific claims.

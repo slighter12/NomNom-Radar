@@ -28,9 +28,13 @@ func newUserProfileModel(db *gorm.DB, opts ...gen.DOOption) userProfileModel {
 	tableName := _userProfileModel.userProfileModelDo.TableName()
 	_userProfileModel.ALL = field.NewAsterisk(tableName)
 	_userProfileModel.UserID = field.NewField(tableName, "user_id")
-	_userProfileModel.DefaultShippingAddress = field.NewString(tableName, "default_shipping_address")
 	_userProfileModel.LoyaltyPoints = field.NewInt(tableName, "loyalty_points")
 	_userProfileModel.UpdatedAt = field.NewTime(tableName, "updated_at")
+	_userProfileModel.Addresses = userProfileModelHasManyAddresses{
+		db: db.Session(&gorm.Session{}),
+
+		RelationField: field.NewRelation("Addresses", "model.AddressModel"),
+	}
 
 	_userProfileModel.fillFieldMap()
 
@@ -40,11 +44,11 @@ func newUserProfileModel(db *gorm.DB, opts ...gen.DOOption) userProfileModel {
 type userProfileModel struct {
 	userProfileModelDo userProfileModelDo
 
-	ALL                    field.Asterisk
-	UserID                 field.Field
-	DefaultShippingAddress field.String
-	LoyaltyPoints          field.Int
-	UpdatedAt              field.Time
+	ALL           field.Asterisk
+	UserID        field.Field
+	LoyaltyPoints field.Int
+	UpdatedAt     field.Time
+	Addresses     userProfileModelHasManyAddresses
 
 	fieldMap map[string]field.Expr
 }
@@ -62,7 +66,6 @@ func (u userProfileModel) As(alias string) *userProfileModel {
 func (u *userProfileModel) updateTableName(table string) *userProfileModel {
 	u.ALL = field.NewAsterisk(table)
 	u.UserID = field.NewField(table, "user_id")
-	u.DefaultShippingAddress = field.NewString(table, "default_shipping_address")
 	u.LoyaltyPoints = field.NewInt(table, "loyalty_points")
 	u.UpdatedAt = field.NewTime(table, "updated_at")
 
@@ -95,19 +98,103 @@ func (u *userProfileModel) GetFieldByName(fieldName string) (field.OrderExpr, bo
 func (u *userProfileModel) fillFieldMap() {
 	u.fieldMap = make(map[string]field.Expr, 4)
 	u.fieldMap["user_id"] = u.UserID
-	u.fieldMap["default_shipping_address"] = u.DefaultShippingAddress
 	u.fieldMap["loyalty_points"] = u.LoyaltyPoints
 	u.fieldMap["updated_at"] = u.UpdatedAt
+
 }
 
 func (u userProfileModel) clone(db *gorm.DB) userProfileModel {
 	u.userProfileModelDo.ReplaceConnPool(db.Statement.ConnPool)
+	u.Addresses.db = db.Session(&gorm.Session{Initialized: true})
+	u.Addresses.db.Statement.ConnPool = db.Statement.ConnPool
 	return u
 }
 
 func (u userProfileModel) replaceDB(db *gorm.DB) userProfileModel {
 	u.userProfileModelDo.ReplaceDB(db)
+	u.Addresses.db = db.Session(&gorm.Session{})
 	return u
+}
+
+type userProfileModelHasManyAddresses struct {
+	db *gorm.DB
+
+	field.RelationField
+}
+
+func (a userProfileModelHasManyAddresses) Where(conds ...field.Expr) *userProfileModelHasManyAddresses {
+	if len(conds) == 0 {
+		return &a
+	}
+
+	exprs := make([]clause.Expression, 0, len(conds))
+	for _, cond := range conds {
+		exprs = append(exprs, cond.BeCond().(clause.Expression))
+	}
+	a.db = a.db.Clauses(clause.Where{Exprs: exprs})
+	return &a
+}
+
+func (a userProfileModelHasManyAddresses) WithContext(ctx context.Context) *userProfileModelHasManyAddresses {
+	a.db = a.db.WithContext(ctx)
+	return &a
+}
+
+func (a userProfileModelHasManyAddresses) Session(session *gorm.Session) *userProfileModelHasManyAddresses {
+	a.db = a.db.Session(session)
+	return &a
+}
+
+func (a userProfileModelHasManyAddresses) Model(m *model.UserProfileModel) *userProfileModelHasManyAddressesTx {
+	return &userProfileModelHasManyAddressesTx{a.db.Model(m).Association(a.Name())}
+}
+
+func (a userProfileModelHasManyAddresses) Unscoped() *userProfileModelHasManyAddresses {
+	a.db = a.db.Unscoped()
+	return &a
+}
+
+type userProfileModelHasManyAddressesTx struct{ tx *gorm.Association }
+
+func (a userProfileModelHasManyAddressesTx) Find() (result []*model.AddressModel, err error) {
+	return result, a.tx.Find(&result)
+}
+
+func (a userProfileModelHasManyAddressesTx) Append(values ...*model.AddressModel) (err error) {
+	targetValues := make([]interface{}, len(values))
+	for i, v := range values {
+		targetValues[i] = v
+	}
+	return a.tx.Append(targetValues...)
+}
+
+func (a userProfileModelHasManyAddressesTx) Replace(values ...*model.AddressModel) (err error) {
+	targetValues := make([]interface{}, len(values))
+	for i, v := range values {
+		targetValues[i] = v
+	}
+	return a.tx.Replace(targetValues...)
+}
+
+func (a userProfileModelHasManyAddressesTx) Delete(values ...*model.AddressModel) (err error) {
+	targetValues := make([]interface{}, len(values))
+	for i, v := range values {
+		targetValues[i] = v
+	}
+	return a.tx.Delete(targetValues...)
+}
+
+func (a userProfileModelHasManyAddressesTx) Clear() error {
+	return a.tx.Clear()
+}
+
+func (a userProfileModelHasManyAddressesTx) Count() int64 {
+	return a.tx.Count()
+}
+
+func (a userProfileModelHasManyAddressesTx) Unscoped() *userProfileModelHasManyAddressesTx {
+	a.tx = a.tx.Unscoped()
+	return &a
 }
 
 type userProfileModelDo struct{ gen.DO }

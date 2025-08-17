@@ -32,12 +32,12 @@ func NewUserRepository(db *gorm.DB) repository.UserRepository {
 	}
 }
 
-// FindByID retrieves a single user by their unique ID, preloading their associated profiles.
+// FindByID retrieves a single user by their unique ID, preloading their associated profiles and addresses.
 func (repo *userRepository) FindByID(ctx context.Context, id uuid.UUID) (*entity.User, error) {
-	// Use the type-safe query builder 'Q'
+	// Use the type-safe query builder 'Q' with proper preloading of nested associations
 	userM, err := repo.q.UserModel.WithContext(ctx).
-		Preload(repo.q.UserModel.UserProfile).
-		Preload(repo.q.UserModel.MerchantProfile).
+		Preload(repo.q.UserModel.UserProfile.Addresses).
+		Preload(repo.q.UserModel.MerchantProfile.Addresses).
 		Where(repo.q.UserModel.ID.Eq(id)).
 		First() // First() returns a *postgres.UserModel
 
@@ -54,11 +54,11 @@ func (repo *userRepository) FindByID(ctx context.Context, id uuid.UUID) (*entity
 	return toUserDomain(userM), nil
 }
 
-// FindByEmail retrieves a single user by their email address, preloading profiles.
+// FindByEmail retrieves a single user by their email address, preloading profiles and addresses.
 func (repo *userRepository) FindByEmail(ctx context.Context, email string) (*entity.User, error) {
 	userM, err := repo.q.UserModel.WithContext(ctx).
-		Preload(repo.q.UserModel.UserProfile).
-		Preload(repo.q.UserModel.MerchantProfile).
+		Preload(repo.q.UserModel.UserProfile.Addresses).
+		Preload(repo.q.UserModel.MerchantProfile.Addresses).
 		Where(repo.q.UserModel.Email.Eq(email)).
 		First()
 
@@ -89,14 +89,61 @@ func (repo *userRepository) Create(ctx context.Context, user *entity.User) error
 		if isNotNullConstraintViolation(err) {
 			return domainerrors.ErrUserCreationFailed.WrapMessage("missing required user information")
 		}
+		if isForeignKeyConstraintViolation(err) {
+			return domainerrors.ErrUserCreationFailed.WrapMessage("invalid foreign key reference")
+		}
 		// For other database errors, return a generic database error
-		return domainerrors.NewDatabaseExecuteError(err, "")
+		return domainerrors.NewDatabaseExecuteError(err, "failed to create user")
 	}
 
 	// Update the user entity with the generated ID and timestamps
 	user.ID = userM.ID
 	user.CreatedAt = userM.CreatedAt
 	user.UpdatedAt = userM.UpdatedAt
+
+	// Update profile IDs if they exist
+	if user.UserProfile != nil && userM.UserProfile != nil {
+		user.UserProfile.UserID = userM.UserProfile.UserID
+		user.UserProfile.UpdatedAt = userM.UserProfile.UpdatedAt
+	}
+	if user.MerchantProfile != nil && userM.MerchantProfile != nil {
+		user.MerchantProfile.UserID = userM.MerchantProfile.UserID
+		user.MerchantProfile.UpdatedAt = userM.MerchantProfile.UpdatedAt
+	}
+
+	return nil
+}
+
+// Update modifies an existing user entity, including its associated profiles, in the database.
+func (repo *userRepository) Update(ctx context.Context, user *entity.User) error {
+	// Map the pure domain entity to a GORM persistence model.
+	userM := fromUserDomain(user)
+
+	// Execute the update using the database connection.
+	// Use Session with FullSaveAssociations to update nested associations
+	if err := repo.q.UserModel.WithContext(ctx).Session(&gorm.Session{FullSaveAssociations: true}).Save(userM); err != nil {
+		// Convert PostgreSQL errors to domain errors
+		if isUniqueConstraintViolation(err) {
+			return domainerrors.ErrUserAlreadyExists.WrapMessage("email already exists")
+		}
+		if isNotNullConstraintViolation(err) {
+			return domainerrors.ErrUserUpdateFailed.WrapMessage("missing required user information")
+		}
+		if isForeignKeyConstraintViolation(err) {
+			return domainerrors.ErrUserUpdateFailed.WrapMessage("invalid foreign key reference")
+		}
+		// For other database errors, return a generic database error
+		return domainerrors.NewDatabaseExecuteError(err, "failed to update user")
+	}
+
+	// Update the user entity with the updated timestamps
+	user.UpdatedAt = userM.UpdatedAt
+	if user.UserProfile != nil && userM.UserProfile != nil {
+		user.UserProfile.UpdatedAt = userM.UserProfile.UpdatedAt
+	}
+	if user.MerchantProfile != nil && userM.MerchantProfile != nil {
+		user.MerchantProfile.UpdatedAt = userM.MerchantProfile.UpdatedAt
+	}
 
 	return nil
 }
@@ -142,11 +189,27 @@ func toUserProfileDomain(data *model.UserProfileModel) *entity.UserProfile {
 		return nil
 	}
 
+	addresses := make([]*entity.Address, 0, len(data.Addresses))
+	for _, addr := range data.Addresses {
+		addresses = append(addresses, &entity.Address{
+			ID:          addr.ID,
+			OwnerID:     addr.OwnerID,
+			OwnerType:   addr.OwnerType,
+			Label:       addr.Label,
+			FullAddress: addr.FullAddress,
+			Latitude:    addr.Latitude,
+			Longitude:   addr.Longitude,
+			IsPrimary:   addr.IsPrimary,
+			CreatedAt:   addr.CreatedAt,
+			UpdatedAt:   addr.UpdatedAt,
+		})
+	}
+
 	return &entity.UserProfile{
-		UserID:                 data.UserID,
-		DefaultShippingAddress: data.DefaultShippingAddress,
-		LoyaltyPoints:          data.LoyaltyPoints,
-		UpdatedAt:              data.UpdatedAt,
+		UserID:        data.UserID,
+		Addresses:     addresses,
+		LoyaltyPoints: data.LoyaltyPoints,
+		UpdatedAt:     data.UpdatedAt,
 	}
 }
 
@@ -155,11 +218,38 @@ func fromUserProfileDomain(data *entity.UserProfile) *model.UserProfileModel {
 	if data == nil {
 		return nil
 	}
-	// The UserID is set by the association when creating the parent userModel.
+
+	addresses := make([]model.AddressModel, 0, len(data.Addresses))
+	for _, addr := range data.Addresses {
+		addressModel := model.AddressModel{
+			ID:          addr.ID,
+			OwnerID:     addr.OwnerID,
+			OwnerType:   addr.OwnerType,
+			Label:       addr.Label,
+			FullAddress: addr.FullAddress,
+			Latitude:    addr.Latitude,
+			Longitude:   addr.Longitude,
+			IsPrimary:   addr.IsPrimary,
+			CreatedAt:   addr.CreatedAt,
+			UpdatedAt:   addr.UpdatedAt,
+		}
+
+		// Ensure polymorphic association is set correctly
+		if addressModel.OwnerType == "" {
+			addressModel.OwnerType = "user_profiles"
+		}
+		if addressModel.OwnerID == uuid.Nil {
+			addressModel.OwnerID = data.UserID
+		}
+
+		addresses = append(addresses, addressModel)
+	}
+
 	return &model.UserProfileModel{
-		UserID:                 data.UserID,
-		DefaultShippingAddress: data.DefaultShippingAddress,
-		LoyaltyPoints:          data.LoyaltyPoints,
+		UserID:        data.UserID,
+		Addresses:     addresses,
+		LoyaltyPoints: data.LoyaltyPoints,
+		UpdatedAt:     data.UpdatedAt,
 	}
 }
 
@@ -169,12 +259,28 @@ func toMerchantProfileDomain(data *model.MerchantProfileModel) *entity.MerchantP
 		return nil
 	}
 
+	addresses := make([]*entity.Address, 0, len(data.Addresses))
+	for _, addr := range data.Addresses {
+		addresses = append(addresses, &entity.Address{
+			ID:          addr.ID,
+			OwnerID:     addr.OwnerID,
+			OwnerType:   addr.OwnerType,
+			Label:       addr.Label,
+			FullAddress: addr.FullAddress,
+			Latitude:    addr.Latitude,
+			Longitude:   addr.Longitude,
+			IsPrimary:   addr.IsPrimary,
+			CreatedAt:   addr.CreatedAt,
+			UpdatedAt:   addr.UpdatedAt,
+		})
+	}
+
 	return &entity.MerchantProfile{
 		UserID:           data.UserID,
 		StoreName:        data.StoreName,
 		StoreDescription: data.StoreDescription,
 		BusinessLicense:  data.BusinessLicense,
-		StoreAddress:     data.StoreAddress,
+		Addresses:        addresses,
 		UpdatedAt:        data.UpdatedAt,
 	}
 }
@@ -184,12 +290,39 @@ func fromMerchantProfileDomain(data *entity.MerchantProfile) *model.MerchantProf
 	if data == nil {
 		return nil
 	}
-	// The UserID is set by the association when creating the parent userModel.
+
+	addresses := make([]model.AddressModel, 0, len(data.Addresses))
+	for _, addr := range data.Addresses {
+		addressModel := model.AddressModel{
+			ID:          addr.ID,
+			OwnerID:     addr.OwnerID,
+			OwnerType:   addr.OwnerType,
+			Label:       addr.Label,
+			FullAddress: addr.FullAddress,
+			Latitude:    addr.Latitude,
+			Longitude:   addr.Longitude,
+			IsPrimary:   addr.IsPrimary,
+			CreatedAt:   addr.CreatedAt,
+			UpdatedAt:   addr.UpdatedAt,
+		}
+
+		// Ensure polymorphic association is set correctly
+		if addressModel.OwnerType == "" {
+			addressModel.OwnerType = "merchant_profiles"
+		}
+		if addressModel.OwnerID == uuid.Nil {
+			addressModel.OwnerID = data.UserID
+		}
+
+		addresses = append(addresses, addressModel)
+	}
+
 	return &model.MerchantProfileModel{
 		UserID:           data.UserID,
 		StoreName:        data.StoreName,
 		StoreDescription: data.StoreDescription,
 		BusinessLicense:  data.BusinessLicense,
-		StoreAddress:     data.StoreAddress,
+		Addresses:        addresses,
+		UpdatedAt:        data.UpdatedAt,
 	}
 }

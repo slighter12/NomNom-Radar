@@ -26,4 +26,11 @@ type TokenService interface {
 
 	// GetRefreshTokenDuration returns the configured duration for refresh tokens.
 	GetRefreshTokenDuration() time.Duration
+
+	// HashToken creates a SHA-256 hash of the given token for secure storage.
+	HashToken(token string) string
+
+	// RotateTokens generates new token pair and returns both tokens with the hash of the refresh token.
+	// This method supports the token rotation mechanism for enhanced security.
+	RotateTokens(userID uuid.UUID, roles []string) (accessToken string, refreshToken string, refreshTokenHash string, err error)
 }

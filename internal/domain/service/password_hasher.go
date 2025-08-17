@@ -10,4 +10,7 @@ type PasswordHasher interface {
 
 	// Check compares a plaintext password with a hash to see if they match.
 	Check(password, hash string) bool
+
+	// ValidatePasswordStrength validates that a password meets security requirements.
+	ValidatePasswordStrength(password string) error
 }

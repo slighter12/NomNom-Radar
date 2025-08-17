@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestAuthService_VerifyToken(t *testing.T) {
+func TestAuthService_VerifyIDToken(t *testing.T) {
 	logger := slog.Default()
 	config := &config.Config{}
 	config.GoogleOAuth.ClientID = "test_client_id"
@@ -22,7 +22,7 @@ func TestAuthService_VerifyToken(t *testing.T) {
 	mockJWT := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0X3VzZXJfMTIzIiwiZW1haWwiOiJ0ZXN0QGV4YW1wbGUuY29tIiwibmFtZSI6IlRlc3QgVXNlciIsImlhdCI6MTYzNTU5NzIwMCwiZXhwIjoxNjM1NjgzNjAwLCJhdWQiOiJ0ZXN0X2NsaWVudF9pZCIsImlzcyI6Imh0dHBzOi8vYWNjb3VudHMuZ29vZ2xlLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlfQ.invalid_signature"
 
 	// This should fail validation but not parsing
-	oauthUser, err := authService.VerifyToken(ctx, mockJWT)
+	oauthUser, err := authService.VerifyIDToken(ctx, mockJWT)
 	assert.Error(t, err) // Should fail validation
 	assert.Nil(t, oauthUser)
 	assert.Contains(t, err.Error(), "token verification failed")
@@ -71,8 +71,45 @@ func TestAuthService_InvalidJWT(t *testing.T) {
 	// Test invalid JWT format
 	invalidJWT := "invalid_token_format"
 
-	oauthUser, err := authService.VerifyToken(ctx, invalidJWT)
+	oauthUser, err := authService.VerifyIDToken(ctx, invalidJWT)
 	assert.Error(t, err)
 	assert.Nil(t, oauthUser)
 	assert.Contains(t, err.Error(), "invalid JWT format")
+}
+
+func TestAuthService_ValidateTokenAudience(t *testing.T) {
+	logger := slog.Default()
+	config := &config.Config{}
+	config.GoogleOAuth.ClientID = "test_client_id"
+	authService := NewAuthService(config, logger)
+	ctx := context.Background()
+
+	// Test with valid JWT format but different audience
+	validJWT := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0X3VzZXJfMTIzIiwiZW1haWwiOiJ0ZXN0QGV4YW1wbGUuY29tIiwibmFtZSI6IlRlc3QgVXNlciIsImlhdCI6MTYzNTU5NzIwMCwiZXhwIjoxNjM1NjgzNjAwLCJhdWQiOiJ0ZXN0X2NsaWVudF9pZCIsImlzcyI6Imh0dHBzOi8vYWNjb3VudHMuZ29vZ2xlLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlfQ.invalid_signature"
+
+	// Test matching audience
+	err := authService.ValidateTokenAudience(ctx, validJWT, "test_client_id")
+	assert.NoError(t, err)
+
+	// Test mismatched audience
+	err = authService.ValidateTokenAudience(ctx, validJWT, "different_client_id")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid audience")
+}
+
+func TestAuthService_VerifyGoogleIDToken(t *testing.T) {
+	logger := slog.Default()
+	config := &config.Config{}
+	config.GoogleOAuth.ClientID = "test_client_id"
+	authService := NewAuthService(config, logger)
+	ctx := context.Background()
+
+	// Test with a mock JWT token (this will fail validation but not parsing)
+	mockJWT := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0X3VzZXJfMTIzIiwiZW1haWwiOiJ0ZXN0QGV4YW1wbGUuY29tIiwibmFtZSI6IlRlc3QgVXNlciIsImdpdmVuX25hbWUiOiJUZXN0IiwiZmFtaWx5X25hbWUiOiJVc2VyIiwicGljdHVyZSI6Imh0dHBzOi8vZXhhbXBsZS5jb20vYXZhdGFyLmpwZyIsImlhdCI6MTYzNTU5NzIwMCwiZXhwIjoxNjM1NjgzNjAwLCJhdWQiOiJ0ZXN0X2NsaWVudF9pZCIsImlzcyI6Imh0dHBzOi8vYWNjb3VudHMuZ29vZ2xlLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlfQ.invalid_signature"
+
+	// This should fail validation but not parsing
+	googleUserInfo, err := authService.VerifyGoogleIDToken(ctx, mockJWT)
+	assert.Error(t, err) // Should fail validation
+	assert.Nil(t, googleUserInfo)
+	assert.Contains(t, err.Error(), "token verification failed")
 }

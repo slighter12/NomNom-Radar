@@ -8,6 +8,12 @@ The Google OAuth integration supports two authentication flows:
 1. **ID Token Flow** (Recommended) - Direct verification of Google ID tokens
 2. **Authorization Code Flow** (Future) - Exchange authorization codes for tokens
 
+## Security Features
+
+- **CSRF Protection**: All OAuth flows include a cryptographically secure `state` parameter to prevent Cross-Site Request Forgery attacks
+- **State Expiration**: State parameters expire after 10 minutes and are single-use only
+- **Secure State Storage**: State parameters are stored in memory with automatic cleanup
+
 ## API Endpoints
 
 ### 1. Initiate Google OAuth Flow
@@ -25,14 +31,20 @@ The Google OAuth integration supports two authentication flows:
 ```json
 {
   "message": "Google OAuth URL generated successfully",
-  "oauth_url": "https://accounts.google.com/oauth/authorize?client_id=...&redirect_uri=...&scope=...&response_type=code",
+  "oauth_url": "https://accounts.google.com/oauth/authorize?client_id=...&redirect_uri=...&scope=...&response_type=code&state=...",
+  "state": "generated_state_parameter",
   "redirect_url": "/oauth/google?redirect=true",
-  "note": "Use redirect_url for direct redirect, or oauth_url for frontend implementation"
+  "note": "Use redirect_url for direct redirect, or oauth_url for frontend implementation. Store the state parameter to verify the callback."
 }
 ```
 
 **Redirect Response (when `redirect=true`):**
 - HTTP 302 redirect to Google OAuth page
+
+**Security Notes:**
+- The `state` parameter is automatically generated and included in the OAuth URL
+- Store this `state` parameter securely to validate the callback
+- The state expires after 10 minutes and can only be used once
 
 **Usage:**
 ```bash
@@ -52,9 +64,14 @@ curl http://localhost:4433/oauth/google?redirect=true
 **Request Body:**
 ```json
 {
-  "id_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+  "id_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "state": "stored_state_parameter"
 }
 ```
+
+**Query Parameters (Alternative):**
+- `id_token`: Google ID token
+- `state`: State parameter for CSRF protection
 
 **Response:**
 ```json
@@ -78,29 +95,10 @@ curl http://localhost:4433/oauth/google?redirect=true
 }
 ```
 
-## Configuration
-
-### Required Environment Variables
-
-Add the following to your `config.yaml`:
-
-```yaml
-googleOAuth:
-  clientId: "your_google_client_id_here"
-  clientSecret: "your_google_client_secret_here"
-  redirectUri: "http://localhost:4433/oauth/google/callback"
-  scopes: "openid email profile"
-```
-
-### Google Console Setup
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select existing one
-3. Enable Google+ API
-4. Go to "Credentials" → "Create Credentials" → "OAuth 2.0 Client IDs"
-5. Configure authorized redirect URIs:
-   - `http://localhost:4433/oauth/google/callback` (for development)
-   - `https://yourdomain.com/oauth/google/callback` (for production)
+**CSRF Protection:**
+- The `state` parameter must match the one generated during the initial OAuth request
+- Invalid or expired state parameters will return a `400 Bad Request` error
+- State parameters are automatically validated and cleaned up after use
 
 ## Frontend Integration
 
@@ -124,19 +122,30 @@ googleOAuth:
 </div>
 
 <script>
-function handleCredentialResponse(response) {
-    fetch('/oauth/google/callback', {
+async function handleCredentialResponse(response) {
+    // Step 1: Get OAuth URL with state parameter
+    const oauthResponse = await fetch('/oauth/google');
+    const oauthData = await oauthResponse.json();
+    
+    // Store the state parameter
+    const state = oauthData.state;
+    
+    // Step 2: Send ID token with state for verification
+    const callbackResponse = await fetch('/oauth/google/callback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_token: response.credential })
-    })
-    .then(response => response.json())
-    .then(data => {
-        // Store tokens and redirect
-        localStorage.setItem('access_token', data.access_token);
-        localStorage.setItem('refresh_token', data.refresh_token);
-        window.location.href = '/dashboard';
+        body: JSON.stringify({ 
+            id_token: response.credential,
+            state: state
+        })
     });
+    
+    const data = await callbackResponse.json();
+    
+    // Store tokens and redirect
+    localStorage.setItem('access_token', data.access_token);
+    localStorage.setItem('refresh_token', data.refresh_token);
+    window.location.href = '/dashboard';
 }
 </script>
 ```
@@ -144,39 +153,43 @@ function handleCredentialResponse(response) {
 ### Method 2: Manual OAuth Flow
 
 ```javascript
-// Step 1: Get OAuth URL
+// Step 1: Get OAuth URL with state parameter
 const response = await fetch('/oauth/google');
 const data = await response.json();
+
+// Store the state parameter securely
+const state = data.state;
 
 // Step 2: Redirect to Google
 window.location.href = data.oauth_url;
 
-// Step 3: Handle callback (you'll need to implement this)
-// Google will redirect back to your redirect URI with an authorization code
+// Step 3: Handle callback with state validation
+// Google will redirect back to your redirect URI with an authorization code and state
+// You'll need to implement the callback handler to validate the state parameter
 ```
 
 ## Security Considerations
 
-1. **ID Token Verification**: The backend verifies:
+1. **State Parameter Validation**: Always validate the state parameter in callbacks
+2. **ID Token Verification**: The backend verifies:
    - Token signature (issuer validation)
    - Audience (client ID validation)
    - Expiration time
    - Email verification status
-
-2. **HTTPS**: Always use HTTPS in production
-
-3. **Client ID Validation**: Ensure the client ID matches your Google Console configuration
-
-4. **Token Storage**: Store tokens securely (httpOnly cookies recommended)
+3. **HTTPS**: Always use HTTPS in production
+4. **Client ID Validation**: Ensure the client ID matches your Google Console configuration
+5. **Token Storage**: Store tokens securely (httpOnly cookies recommended)
+6. **State Storage**: Store state parameters securely on the client side
 
 ## Error Handling
 
 Common error scenarios:
 
-1. **Invalid ID Token**: Token format is incorrect or expired
-2. **Invalid Audience**: Client ID doesn't match
-3. **Email Not Verified**: User's email is not verified with Google
-4. **Token Expired**: ID token has expired
+1. **Invalid State Parameter**: State is missing, expired, or already used
+2. **Invalid ID Token**: Token format is incorrect or expired
+3. **Invalid Audience**: Client ID doesn't match
+4. **Email Not Verified**: User's email is not verified with Google
+5. **Token Expired**: ID token has expired
 
 ## Testing
 
@@ -185,6 +198,7 @@ Use the provided example page (`examples/google-login.html`) to test the integra
 1. Update the `YOUR_GOOGLE_CLIENT_ID` in the HTML file
 2. Open the page in a browser
 3. Test different authentication methods
+4. Verify state parameter validation
 
 ## Future Enhancements
 
@@ -192,3 +206,4 @@ Use the provided example page (`examples/google-login.html`) to test the integra
 2. **Refresh Token Handling**: Automatic token refresh
 3. **Google People API**: Fetch additional user profile information
 4. **Multiple OAuth Providers**: Support for GitHub, Facebook, etc.
+5. **Enhanced State Management**: Database-backed state storage for distributed systems

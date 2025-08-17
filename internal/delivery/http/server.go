@@ -16,7 +16,6 @@ import (
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/pkg/errors"
-	slogecho "github.com/samber/slog-echo"
 	"go.uber.org/fx"
 )
 
@@ -38,18 +37,24 @@ type httpServer struct {
 func NewServer(params HTTPParams) (delivery.Delivery, error) {
 	echoServer := echo.New()
 	echoServer.HideBanner = true
-	// 使用自定義的 logger middleware，可控制是否啟用日誌
+
+	// Set up middleware in correct order
+	// 1. Recover middleware first (to catch panics early)
+	echoServer.Use(echomiddleware.Recover())
+
+	// 2. Logger middleware
 	loggerMiddleware := middleware.NewLoggerMiddleware(params.Logger, params.Config)
 	echoServer.Use(loggerMiddleware.Handle)
 
-	echoServer.Validator = validator.New()
-	echoServer.Use(echomiddleware.Recover())
+	// 3. CORS middleware
 	echoServer.Use(echomiddleware.CORS())
 
-	// register error handler middleware
+	// Set up centralized error handler
 	errorMiddleware := middleware.NewErrorMiddleware(params.Logger)
-	echoServer.Use(errorMiddleware.HandleErrors)
-	echoServer.Use(slogecho.New(params.Logger))
+	echoServer.HTTPErrorHandler = errorMiddleware.HandleHTTPError
+
+	// Set up validator
+	echoServer.Validator = validator.New()
 
 	router := router.NewRouter(params.RouterParams)
 	router.RegisterRoutes(echoServer)

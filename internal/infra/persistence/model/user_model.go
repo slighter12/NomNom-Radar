@@ -28,10 +28,10 @@ func (UserModel) TableName() string {
 
 // UserProfileModel is the GORM-specific struct for the 'user_profiles' table.
 type UserProfileModel struct {
-	UserID                 uuid.UUID `gorm:"primaryKey"`
-	DefaultShippingAddress string    `gorm:"type:text"`
-	LoyaltyPoints          int
-	UpdatedAt              time.Time
+	UserID        uuid.UUID      `gorm:"primaryKey"`
+	Addresses     []AddressModel `gorm:"polymorphic:Owner;"`
+	LoyaltyPoints int
+	UpdatedAt     time.Time
 }
 
 // TableName explicitly sets the table name for GORM.
@@ -41,11 +41,11 @@ func (UserProfileModel) TableName() string {
 
 // MerchantProfileModel is the GORM-specific struct for the 'merchant_profiles' table.
 type MerchantProfileModel struct {
-	UserID           uuid.UUID `gorm:"primaryKey"`
-	StoreName        string    `gorm:"type:varchar(100);not null"`
-	StoreDescription string    `gorm:"type:text"`
-	BusinessLicense  string    `gorm:"type:varchar(255);not null;unique"`
-	StoreAddress     string    `gorm:"type:text"`
+	UserID           uuid.UUID      `gorm:"primaryKey"`
+	Addresses        []AddressModel `gorm:"polymorphic:Owner;"`
+	StoreName        string         `gorm:"type:varchar(100);not null"`
+	StoreDescription string         `gorm:"type:text"`
+	BusinessLicense  string         `gorm:"type:varchar(255);not null;unique"`
 	UpdatedAt        time.Time
 }
 

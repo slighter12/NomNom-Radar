@@ -31,8 +31,12 @@ func newMerchantProfileModel(db *gorm.DB, opts ...gen.DOOption) merchantProfileM
 	_merchantProfileModel.StoreName = field.NewString(tableName, "store_name")
 	_merchantProfileModel.StoreDescription = field.NewString(tableName, "store_description")
 	_merchantProfileModel.BusinessLicense = field.NewString(tableName, "business_license")
-	_merchantProfileModel.StoreAddress = field.NewString(tableName, "store_address")
 	_merchantProfileModel.UpdatedAt = field.NewTime(tableName, "updated_at")
+	_merchantProfileModel.Addresses = merchantProfileModelHasManyAddresses{
+		db: db.Session(&gorm.Session{}),
+
+		RelationField: field.NewRelation("Addresses", "model.AddressModel"),
+	}
 
 	_merchantProfileModel.fillFieldMap()
 
@@ -47,8 +51,8 @@ type merchantProfileModel struct {
 	StoreName        field.String
 	StoreDescription field.String
 	BusinessLicense  field.String
-	StoreAddress     field.String
 	UpdatedAt        field.Time
+	Addresses        merchantProfileModelHasManyAddresses
 
 	fieldMap map[string]field.Expr
 }
@@ -69,7 +73,6 @@ func (m *merchantProfileModel) updateTableName(table string) *merchantProfileMod
 	m.StoreName = field.NewString(table, "store_name")
 	m.StoreDescription = field.NewString(table, "store_description")
 	m.BusinessLicense = field.NewString(table, "business_license")
-	m.StoreAddress = field.NewString(table, "store_address")
 	m.UpdatedAt = field.NewTime(table, "updated_at")
 
 	m.fillFieldMap()
@@ -104,18 +107,102 @@ func (m *merchantProfileModel) fillFieldMap() {
 	m.fieldMap["store_name"] = m.StoreName
 	m.fieldMap["store_description"] = m.StoreDescription
 	m.fieldMap["business_license"] = m.BusinessLicense
-	m.fieldMap["store_address"] = m.StoreAddress
 	m.fieldMap["updated_at"] = m.UpdatedAt
+
 }
 
 func (m merchantProfileModel) clone(db *gorm.DB) merchantProfileModel {
 	m.merchantProfileModelDo.ReplaceConnPool(db.Statement.ConnPool)
+	m.Addresses.db = db.Session(&gorm.Session{Initialized: true})
+	m.Addresses.db.Statement.ConnPool = db.Statement.ConnPool
 	return m
 }
 
 func (m merchantProfileModel) replaceDB(db *gorm.DB) merchantProfileModel {
 	m.merchantProfileModelDo.ReplaceDB(db)
+	m.Addresses.db = db.Session(&gorm.Session{})
 	return m
+}
+
+type merchantProfileModelHasManyAddresses struct {
+	db *gorm.DB
+
+	field.RelationField
+}
+
+func (a merchantProfileModelHasManyAddresses) Where(conds ...field.Expr) *merchantProfileModelHasManyAddresses {
+	if len(conds) == 0 {
+		return &a
+	}
+
+	exprs := make([]clause.Expression, 0, len(conds))
+	for _, cond := range conds {
+		exprs = append(exprs, cond.BeCond().(clause.Expression))
+	}
+	a.db = a.db.Clauses(clause.Where{Exprs: exprs})
+	return &a
+}
+
+func (a merchantProfileModelHasManyAddresses) WithContext(ctx context.Context) *merchantProfileModelHasManyAddresses {
+	a.db = a.db.WithContext(ctx)
+	return &a
+}
+
+func (a merchantProfileModelHasManyAddresses) Session(session *gorm.Session) *merchantProfileModelHasManyAddresses {
+	a.db = a.db.Session(session)
+	return &a
+}
+
+func (a merchantProfileModelHasManyAddresses) Model(m *model.MerchantProfileModel) *merchantProfileModelHasManyAddressesTx {
+	return &merchantProfileModelHasManyAddressesTx{a.db.Model(m).Association(a.Name())}
+}
+
+func (a merchantProfileModelHasManyAddresses) Unscoped() *merchantProfileModelHasManyAddresses {
+	a.db = a.db.Unscoped()
+	return &a
+}
+
+type merchantProfileModelHasManyAddressesTx struct{ tx *gorm.Association }
+
+func (a merchantProfileModelHasManyAddressesTx) Find() (result []*model.AddressModel, err error) {
+	return result, a.tx.Find(&result)
+}
+
+func (a merchantProfileModelHasManyAddressesTx) Append(values ...*model.AddressModel) (err error) {
+	targetValues := make([]interface{}, len(values))
+	for i, v := range values {
+		targetValues[i] = v
+	}
+	return a.tx.Append(targetValues...)
+}
+
+func (a merchantProfileModelHasManyAddressesTx) Replace(values ...*model.AddressModel) (err error) {
+	targetValues := make([]interface{}, len(values))
+	for i, v := range values {
+		targetValues[i] = v
+	}
+	return a.tx.Replace(targetValues...)
+}
+
+func (a merchantProfileModelHasManyAddressesTx) Delete(values ...*model.AddressModel) (err error) {
+	targetValues := make([]interface{}, len(values))
+	for i, v := range values {
+		targetValues[i] = v
+	}
+	return a.tx.Delete(targetValues...)
+}
+
+func (a merchantProfileModelHasManyAddressesTx) Clear() error {
+	return a.tx.Clear()
+}
+
+func (a merchantProfileModelHasManyAddressesTx) Count() int64 {
+	return a.tx.Count()
+}
+
+func (a merchantProfileModelHasManyAddressesTx) Unscoped() *merchantProfileModelHasManyAddressesTx {
+	a.tx = a.tx.Unscoped()
+	return &a
 }
 
 type merchantProfileModelDo struct{ gen.DO }

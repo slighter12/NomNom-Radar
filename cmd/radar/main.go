@@ -55,6 +55,8 @@ func injectRepo() fx.Option {
 		fx.Provide(
 			postgres.NewUserRepository,
 			postgres.NewAuthRepository,
+			postgres.NewAddressRepository,
+			postgres.NewRefreshTokenRepository,
 			postgres.NewTransactionManager,
 		),
 	)

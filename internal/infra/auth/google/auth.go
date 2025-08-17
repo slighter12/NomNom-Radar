@@ -44,12 +44,12 @@ func NewAuthService(cfg *config.Config, logger *slog.Logger) service.OAuthAuthSe
 	}
 }
 
-// VerifyToken implements service.OAuthAuthService interface
-func (s *AuthServiceImpl) VerifyToken(ctx context.Context, token string) (*service.OAuthUser, error) {
+// VerifyIDToken implements service.OAuthAuthService interface
+func (s *AuthServiceImpl) VerifyIDToken(ctx context.Context, idToken string) (*service.OAuthUser, error) {
 	s.logger.Info("Verifying Google ID token", "clientID", s.clientID)
 
 	// Parse the JWT token to get claims
-	claims, err := s.parseIDToken(token)
+	claims, err := s.parseIDToken(idToken)
 	if err != nil {
 		s.logger.Error("Failed to parse ID token", "error", err)
 
@@ -65,12 +65,18 @@ func (s *AuthServiceImpl) VerifyToken(ctx context.Context, token string) (*servi
 
 	// Convert to OAuth user
 	oauthUser := &service.OAuthUser{
-		ID:         claims.Sub,
-		Email:      claims.Email,
-		Name:       claims.Name,
-		Provider:   entity.ProviderTypeGoogle,
-		ProfileURL: "", // Can be added later
-		AvatarURL:  claims.Picture,
+		ID:            claims.Sub,
+		Email:         claims.Email,
+		Name:          claims.Name,
+		Provider:      entity.ProviderTypeGoogle,
+		ProfileURL:    "", // Can be added later
+		AvatarURL:     claims.Picture,
+		EmailVerified: claims.EmailVerified,
+		Locale:        "", // Can be added if available in claims
+		ExtraData: map[string]any{
+			"given_name":  claims.GivenName,
+			"family_name": claims.FamilyName,
+		},
 	}
 
 	s.logger.Info("Google ID token verified successfully",
@@ -78,6 +84,65 @@ func (s *AuthServiceImpl) VerifyToken(ctx context.Context, token string) (*servi
 		slog.String("email", oauthUser.Email))
 
 	return oauthUser, nil
+}
+
+// VerifyGoogleIDToken specifically verifies a Google ID token and returns Google user info
+func (s *AuthServiceImpl) VerifyGoogleIDToken(ctx context.Context, idToken string) (*service.GoogleUserInfo, error) {
+	s.logger.Info("Verifying Google ID token for detailed info", "clientID", s.clientID)
+
+	// Parse the JWT token to get claims
+	claims, err := s.parseIDToken(idToken)
+	if err != nil {
+		s.logger.Error("Failed to parse ID token", "error", err)
+		return nil, errors.Wrap(err, "invalid ID token")
+	}
+
+	// Verify the token
+	if err := s.verifyTokenClaims(claims); err != nil {
+		s.logger.Error("Token verificatioailed", "error", err)
+		return nil, errors.Wrap(err, "token verification failed")
+	}
+
+	// Convert to Google user info
+	googleUserInfo := &service.GoogleUserInfo{
+		Sub:           claims.Sub,
+		Email:         claims.Email,
+		Name:          claims.Name,
+		GivenName:     claims.GivenName,
+		FamilyName:    claims.FamilyName,
+		Picture:       claims.Picture,
+		EmailVerified: claims.EmailVerified,
+		Locale:        "", // Add if available in claims
+	}
+
+	s.logger.Info("Google ID token verified successfully for detailed info",
+		slog.String("userID", googleUserInfo.Sub),
+		slog.String("email", googleUserInfo.Email))
+
+	return googleUserInfo, nil
+}
+
+// ValidateTokenAudience validates that the token was issued for the correct client ID
+func (s *AuthServiceImpl) ValidateTokenAudience(ctx context.Context, idToken string, expectedClientID string) error {
+	s.logger.Info("Validating token audience", "expectedClientID", expectedClientID)
+
+	// Parse the JWT token to get claims
+	claims, err := s.parseIDToken(idToken)
+	if err != nil {
+		s.logger.Error("Failed to parse ID token for audience validation", "error", err)
+		return errors.Wrap(err, "invalid ID token")
+	}
+
+	// Check audience (client ID)
+	if claims.Aud != expectedClientID {
+		s.logger.Error("Token audience mismatch",
+			"expected", expectedClientID,
+			"actual", claims.Aud)
+		return errors.Errorf("invalid audience: expected %s, got %s", expectedClientID, claims.Aud)
+	}
+
+	s.logger.Info("Token audience validation successful", "clientID", expectedClientID)
+	return nil
 }
 
 // GetProvider returns the OAuth provider type

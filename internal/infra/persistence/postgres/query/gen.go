@@ -18,6 +18,7 @@ import (
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
 		db:                   db,
+		AddressModel:         newAddressModel(db, opts...),
 		AuthenticationModel:  newAuthenticationModel(db, opts...),
 		MerchantProfileModel: newMerchantProfileModel(db, opts...),
 		RefreshTokenModel:    newRefreshTokenModel(db, opts...),
@@ -29,6 +30,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 type Query struct {
 	db *gorm.DB
 
+	AddressModel         addressModel
 	AuthenticationModel  authenticationModel
 	MerchantProfileModel merchantProfileModel
 	RefreshTokenModel    refreshTokenModel
@@ -41,6 +43,7 @@ func (q *Query) Available() bool { return q.db != nil }
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
 		db:                   db,
+		AddressModel:         q.AddressModel.clone(db),
 		AuthenticationModel:  q.AuthenticationModel.clone(db),
 		MerchantProfileModel: q.MerchantProfileModel.clone(db),
 		RefreshTokenModel:    q.RefreshTokenModel.clone(db),
@@ -60,6 +63,7 @@ func (q *Query) WriteDB() *Query {
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
 		db:                   db,
+		AddressModel:         q.AddressModel.replaceDB(db),
 		AuthenticationModel:  q.AuthenticationModel.replaceDB(db),
 		MerchantProfileModel: q.MerchantProfileModel.replaceDB(db),
 		RefreshTokenModel:    q.RefreshTokenModel.replaceDB(db),
@@ -69,6 +73,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 }
 
 type queryCtx struct {
+	AddressModel         *addressModelDo
 	AuthenticationModel  *authenticationModelDo
 	MerchantProfileModel *merchantProfileModelDo
 	RefreshTokenModel    *refreshTokenModelDo
@@ -78,6 +83,7 @@ type queryCtx struct {
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
+		AddressModel:         q.AddressModel.WithContext(ctx),
 		AuthenticationModel:  q.AuthenticationModel.WithContext(ctx),
 		MerchantProfileModel: q.MerchantProfileModel.WithContext(ctx),
 		RefreshTokenModel:    q.RefreshTokenModel.WithContext(ctx),
