@@ -98,11 +98,13 @@ linters:
       - linters:
           - contextcheck
           - cyclop
+          - errcheck
           - funlen
           - gocognit
           - goconst
           - gocritic
           - lll
+          - unparam
           - varnamelen
           - wrapcheck
         path: _test\.go
@@ -115,6 +117,11 @@ linters:
       - linters:
           - lll
         source: '^//go:generate '
+      - linters:
+          - gosec
+        excludes:
+          - G404
+        path: _test.go
     paths:
       - cmd/generator
       - cmd/gen

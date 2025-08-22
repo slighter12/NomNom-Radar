@@ -3,15 +3,25 @@ package auth
 import (
 	"testing"
 
-	domainerrors "radar/internal/domain/errors"
+	"radar/config"
 
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/bcrypt"
 )
 
 func TestBcryptHasher_Hash(t *testing.T) {
-	hasher := NewBcryptHasher()
+	cfg := &config.Config{
+		PasswordStrength: &config.PasswordStrengthConfig{
+			MinLength:        8,
+			RequireUppercase: true,
+			RequireLowercase: true,
+			RequireNumbers:   true,
+			RequireSpecial:   true,
+			MaxLength:        128,
+		},
+	}
+	hasher, err := NewBcryptHasher(0, cfg)
+	assert.NoError(t, err)
 
 	// Test valid strong password
 	strongPassword := "StrongPass123!"
@@ -25,12 +35,22 @@ func TestBcryptHasher_Hash(t *testing.T) {
 }
 
 func TestBcryptHasher_HashWithWeakPassword(t *testing.T) {
-	hasher := NewBcryptHasher()
+	cfg := &config.Config{
+		PasswordStrength: &config.PasswordStrengthConfig{
+			MinLength:        8,
+			RequireUppercase: true,
+			RequireLowercase: true,
+			RequireNumbers:   true,
+			RequireSpecial:   true,
+			MaxLength:        128,
+		},
+	}
+	hasher, err := NewBcryptHasher(0, cfg)
+	assert.NoError(t, err)
 
 	// Test weak passwords that should fail validation
 	weakPasswords := []string{
 		"123",         // Too short
-		"password",    // Forbidden word
 		"PASSWORD123", // No lowercase
 		"password123", // No uppercase
 		"PasswordABC", // No numbers
@@ -44,7 +64,18 @@ func TestBcryptHasher_HashWithWeakPassword(t *testing.T) {
 }
 
 func TestBcryptHasher_Check(t *testing.T) {
-	hasher := NewBcryptHasher()
+	cfg := &config.Config{
+		PasswordStrength: &config.PasswordStrengthConfig{
+			MinLength:        8,
+			RequireUppercase: true,
+			RequireLowercase: true,
+			RequireNumbers:   true,
+			RequireSpecial:   true,
+			MaxLength:        128,
+		},
+	}
+	hasher, err := NewBcryptHasher(0, cfg)
+	assert.NoError(t, err)
 	password := "StrongPass123!"
 
 	// Generate hash
@@ -65,7 +96,18 @@ func TestBcryptHasher_Check(t *testing.T) {
 }
 
 func TestBcryptHasher_ValidatePasswordStrength(t *testing.T) {
-	hasher := NewBcryptHasher()
+	cfg := &config.Config{
+		PasswordStrength: &config.PasswordStrengthConfig{
+			MinLength:        8,
+			RequireUppercase: true,
+			RequireLowercase: true,
+			RequireNumbers:   true,
+			RequireSpecial:   true,
+			MaxLength:        128,
+		},
+	}
+	hasher, err := NewBcryptHasher(0, cfg)
+	assert.NoError(t, err)
 
 	// Test valid passwords
 	validPasswords := []string{
@@ -90,8 +132,6 @@ func TestBcryptHasher_ValidatePasswordStrength(t *testing.T) {
 		{"password123!", "must contain at least one uppercase letter"},
 		{"PasswordABC!", "must contain at least one number"},
 		{"Password123", "must contain at least one special character"},
-		{"Password123!", "contains forbidden words"},
-		{"MyAdmin123!", "contains forbidden words"},
 	}
 
 	for _, tc := range testCases {
@@ -103,7 +143,18 @@ func TestBcryptHasher_ValidatePasswordStrength(t *testing.T) {
 
 func TestBcryptHasher_WithCustomCost(t *testing.T) {
 	customCost := 6 // Lower cost for faster testing
-	hasher := NewBcryptHasherWithCost(customCost)
+	cfg := &config.Config{
+		PasswordStrength: &config.PasswordStrengthConfig{
+			MinLength:        8,
+			RequireUppercase: true,
+			RequireLowercase: true,
+			RequireNumbers:   true,
+			RequireSpecial:   true,
+			MaxLength:        128,
+		},
+	}
+	hasher, err := NewBcryptHasher(customCost, cfg)
+	assert.NoError(t, err)
 
 	password := "StrongPass123!"
 	hash, err := hasher.Hash(password)
@@ -119,47 +170,27 @@ func TestBcryptHasher_WithCustomCost(t *testing.T) {
 	assert.True(t, hasher.Check(password, hash))
 }
 
-func TestBcryptHasher_PasswordStrengthHelpers(t *testing.T) {
-	hasher := &bcryptHasher{}
-
-	// Test hasUppercase
-	assert.True(t, hasher.hasUppercase("Password"))
-	assert.False(t, hasher.hasUppercase("password"))
-
-	// Test hasLowercase
-	assert.True(t, hasher.hasLowercase("Password"))
-	assert.False(t, hasher.hasLowercase("PASSWORD"))
-
-	// Test hasNumbers
-	assert.True(t, hasher.hasNumbers("Password123"))
-	assert.False(t, hasher.hasNumbers("Password"))
-
-	// Test hasSpecialChars
-	assert.True(t, hasher.hasSpecialChars("Password!"))
-	assert.False(t, hasher.hasSpecialChars("Password"))
-
-	// Test containsForbiddenWords
-	forbiddenWords := []string{"password", "admin"}
-	assert.True(t, hasher.containsForbiddenWords("MyPassword123", forbiddenWords))
-	assert.True(t, hasher.containsForbiddenWords("AdminUser", forbiddenWords))
-	assert.False(t, hasher.containsForbiddenWords("SecurePass123", forbiddenWords))
-}
-
 func TestBcryptHasher_EdgeCases(t *testing.T) {
-	hasher := NewBcryptHasher()
+	cfg := &config.Config{
+		PasswordStrength: &config.PasswordStrengthConfig{
+			MinLength:        8,
+			RequireUppercase: true,
+			RequireLowercase: true,
+			RequireNumbers:   true,
+			RequireSpecial:   true,
+			MaxLength:        128,
+		},
+	}
+	hasher, err := NewBcryptHasher(0, cfg)
+	assert.NoError(t, err)
 
 	// Test empty password
-	err := hasher.ValidatePasswordStrength("")
+	err = hasher.ValidatePasswordStrength("")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "must be at least 8 characters long")
 
-	// Test forbidden words
-	longPassword := "VeryLongPassword123!" + string(make([]byte, 1000))
-	err = hasher.ValidatePasswordStrength(longPassword)
-	assert.True(t, errors.Is(err, domainerrors.ErrPasswordForbiddenWords)) // Should be valid if it meets all requirements
-
 	// Test password with unicode characters
-	unicodePassword := "Pässphräse123!" //nolint:gosec // This is a test password, not a real password
+	unicodePassword := "Pässphräse123!"
 	err = hasher.ValidatePasswordStrength(unicodePassword)
 	assert.NoError(t, err) // Should be valid
 
@@ -169,151 +200,36 @@ func TestBcryptHasher_EdgeCases(t *testing.T) {
 	assert.Error(t, err) // Should fail because no letters or numbers
 }
 
-// TestBcryptHasher_ValidatePasswordLength tests the password length validation function
-func TestBcryptHasher_ValidatePasswordLength(t *testing.T) {
-	hasher := &bcryptHasher{cost: bcrypt.DefaultCost}
-	config := hasher.getPasswordStrengthConfig()
-
-	// Test valid lengths
-	validPasswords := []string{
-		"12345678",           // Exactly 8 characters
-		"123456789",          // 9 characters
-		"123456789012345678", // 18 characters
+// TestBcryptHasher_WithCustomConfig tests the hasher with custom password strength configuration
+func TestBcryptHasher_WithCustomConfig(t *testing.T) {
+	customConfig := &config.Config{
+		PasswordStrength: &config.PasswordStrengthConfig{
+			MinLength:        10,
+			RequireUppercase: true,
+			RequireLowercase: true,
+			RequireNumbers:   true,
+			RequireSpecial:   false, // Disable special character requirement
+			MaxLength:        50,
+		},
 	}
 
-	for _, password := range validPasswords {
-		err := hasher.validatePasswordLength(password, config.MinLength)
-		assert.NoError(t, err, "Expected no error for password with length %d: %s", len(password), password)
-	}
+	hasher, err := NewBcryptHasher(0, customConfig)
+	assert.NoError(t, err)
 
-	// Test invalid lengths
-	invalidPasswords := []string{
-		"",        // Empty string
-		"1",       // 1 character
-		"12",      // 2 characters
-		"123",     // 3 characters
-		"1234",    // 4 characters
-		"12345",   // 5 characters
-		"123456",  // 6 characters
-		"1234567", // 7 characters
-	}
+	// Test password that meets custom requirements
+	validPassword := "StrongPass123" // 13 chars, no special chars required
+	err = hasher.ValidatePasswordStrength(validPassword)
+	assert.NoError(t, err, "Expected no error for password meeting custom requirements")
 
-	for _, password := range invalidPasswords {
-		err := hasher.validatePasswordLength(password, config.MinLength)
-		assert.Error(t, err, "Expected error for password with length %d: %s", len(password), password)
-		assert.Contains(t, err.Error(), "must be at least 8 characters long")
-	}
-}
+	// Test password that's too short for custom config
+	shortPassword := "Pass123" // Only 7 chars, but min is 10
+	err = hasher.ValidatePasswordStrength(shortPassword)
+	assert.Error(t, err, "Expected error for password too short for custom config")
+	assert.Contains(t, err.Error(), "must be at least 10 characters long")
 
-// TestBcryptHasher_ValidatePasswordCharacters tests the password character validation function
-func TestBcryptHasher_ValidatePasswordCharacters(t *testing.T) {
-	hasher := &bcryptHasher{cost: bcrypt.DefaultCost}
-	config := hasher.getPasswordStrengthConfig()
-
-	// Test valid character combinations
-	validPasswords := []string{
-		"StrongPass123!",   // All requirements met
-		"MySecure@Pass1",   // All requirements met
-		"Complex#Secret9",  // All requirements met
-		"Valid$Phrase2024", // All requirements met
-	}
-
-	for _, password := range validPasswords {
-		err := hasher.validatePasswordCharacters(password, config)
-		assert.NoError(t, err, "Expected no error for valid password: %s", password)
-	}
-
-	// Test missing uppercase
-	configNoUpper := config
-	configNoUpper.RequireUppercase = false
-	validNoUpper := "lowercase123!"
-	err := hasher.validatePasswordCharacters(validNoUpper, configNoUpper)
-	assert.NoError(t, err, "Expected no error for password without uppercase requirement")
-
-	// Test missing lowercase
-	configNoLower := config
-	configNoLower.RequireLowercase = false
-	validNoLower := "UPPERCASE123!"
-	err = hasher.validatePasswordCharacters(validNoLower, configNoLower)
-	assert.NoError(t, err, "Expected no error for password without lowercase requirement")
-
-	// Test missing numbers
-	configNoNumbers := config
-	configNoNumbers.RequireNumbers = false
-	validNoNumbers := "StrongPass!"
-	err = hasher.validatePasswordCharacters(validNoNumbers, configNoNumbers)
-	assert.NoError(t, err, "Expected no error for password without numbers requirement")
-
-	// Test missing special characters
-	configNoSpecial := config
-	configNoSpecial.RequireSpecial = false
-	validNoSpecial := "StrongPass123"
-	err = hasher.validatePasswordCharacters(validNoSpecial, configNoSpecial)
-	assert.NoError(t, err, "Expected no error for password without special characters requirement")
-
-	// Test invalid passwords with specific missing requirements
-	testCases := []struct {
-		password    string
-		expectedErr string
-	}{
-		{"password123!", "must contain at least one uppercase letter"},
-		{"PASSWORD123!", "must contain at least one lowercase letter"},
-		{"PasswordABC!", "must contain at least one number"},
-		{"Password123", "must contain at least one special character"},
-	}
-
-	for _, tc := range testCases {
-		err := hasher.validatePasswordCharacters(tc.password, config)
-		assert.Error(t, err, "Expected error for password: %s", tc.password)
-		assert.Contains(t, err.Error(), tc.expectedErr, "Error message should contain: %s", tc.expectedErr)
-	}
-}
-
-// TestBcryptHasher_ValidatePasswordForbiddenWords tests the forbidden words validation function
-func TestBcryptHasher_ValidatePasswordForbiddenWords(t *testing.T) {
-	hasher := &bcryptHasher{cost: bcrypt.DefaultCost}
-	config := hasher.getPasswordStrengthConfig()
-
-	// Test valid passwords without forbidden words
-	validPasswords := []string{
-		"StrongPass123!",
-		"MySecure@Pass1",
-		"Complex#Secret9",
-		"Valid$Phrase2024",
-		"RandomString123!",
-	}
-
-	for _, password := range validPasswords {
-		err := hasher.validatePasswordForbiddenWords(password, config.ForbiddenWords)
-		assert.NoError(t, err, "Expected no error for valid password: %s", password)
-	}
-
-	// Test passwords with forbidden words
-	forbiddenWords := []string{
-		"password", "123456", "qwerty", "admin", "user",
-		"login", "welcome", "test", "guest", "root",
-	}
-
-	for _, forbiddenWord := range forbiddenWords {
-		// Test exact match
-		err := hasher.validatePasswordForbiddenWords(forbiddenWord, config.ForbiddenWords)
-		assert.Error(t, err, "Expected error for forbidden word: %s", forbiddenWord)
-		assert.Contains(t, err.Error(), "contains forbidden words")
-
-		// Test with additional characters
-		passwordWithForbidden := forbiddenWord + "123!"
-		err = hasher.validatePasswordForbiddenWords(passwordWithForbidden, config.ForbiddenWords)
-		assert.Error(t, err, "Expected error for password containing forbidden word: %s", passwordWithForbidden)
-		assert.Contains(t, err.Error(), "contains forbidden words")
-
-		// Test case insensitive
-		passwordUpper := "PASSWORD123!"
-		err = hasher.validatePasswordForbiddenWords(passwordUpper, config.ForbiddenWords)
-		assert.Error(t, err, "Expected error for password with uppercase forbidden word: %s", passwordUpper)
-		assert.Contains(t, err.Error(), "contains forbidden words")
-	}
-
-	// Test empty forbidden words list
-	err := hasher.validatePasswordForbiddenWords("AnyPassword123!", []string{})
-	assert.NoError(t, err, "Expected no error when no forbidden words are configured")
+	// Test password that's too long for custom config
+	longPassword := "ThisIsAVeryLongPasswordThatExceedsTheMaximumLengthLimit123"
+	err = hasher.ValidatePasswordStrength(longPassword)
+	assert.Error(t, err, "Expected error for password too long for custom config")
+	assert.Contains(t, err.Error(), "must be no more than 50 characters long")
 }

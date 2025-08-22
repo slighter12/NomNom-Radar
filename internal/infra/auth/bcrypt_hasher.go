@@ -4,13 +4,11 @@ package auth
 import (
 	"fmt"
 	"regexp"
-	"strings"
 	"unicode"
 
-	domainerrors "radar/internal/domain/errors"
+	"radar/config"
 	"radar/internal/domain/service"
 
-	"github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -18,32 +16,22 @@ import (
 type bcryptHasher struct {
 	// cost is the bcrypt cost factor for hashing
 	cost int
+	// passwordStrengthConfig holds the password strength configuration
+	passwordStrengthConfig *config.PasswordStrengthConfig
+	specialChars           *regexp.Regexp
 }
 
-// PasswordStrengthConfig defines password strength requirements
-type PasswordStrengthConfig struct {
-	MinLength        int
-	RequireUppercase bool
-	RequireLowercase bool
-	RequireNumbers   bool
-	RequireSpecial   bool
-	ForbiddenWords   []string
-}
-
-// NewBcryptHasher is the constructor for bcryptHasher.
-// It returns the implementation as a service.PasswordHasher interface.
-func NewBcryptHasher() service.PasswordHasher {
-	return &bcryptHasher{
-		cost: bcrypt.DefaultCost, // Use bcrypt default cost (10)
+// NewBcryptHasher creates a bcrypt hasher with custom configuration.
+func NewBcryptHasher(cost int, cfg *config.Config) (service.PasswordHasher, error) {
+	if cost == 0 {
+		cost = bcrypt.DefaultCost
 	}
-}
 
-// NewBcryptHasherWithCost creates a bcrypt hasher with custom cost factor.
-// Higher cost means more secure but slower hashing.
-func NewBcryptHasherWithCost(cost int) service.PasswordHasher {
 	return &bcryptHasher{
-		cost: cost,
-	}
+		cost:                   cost,
+		passwordStrengthConfig: cfg.PasswordStrength,
+		specialChars:           regexp.MustCompile(`[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~` + "`" + `]`),
+	}, nil
 }
 
 // Hash generates a salted hash from a plaintext password using bcrypt.
@@ -51,12 +39,12 @@ func NewBcryptHasherWithCost(cost int) service.PasswordHasher {
 func (h *bcryptHasher) Hash(password string) (string, error) {
 	// Validate password strength before hashing
 	if err := h.ValidatePasswordStrength(password); err != nil {
-		return "", errors.Wrap(err, "password does not meet strength requirements")
+		return "", fmt.Errorf("password does not meet strength requirements: %w", err)
 	}
 
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), h.cost)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to hash password")
+		return "", fmt.Errorf("failed to hash password: %w", err)
 	}
 
 	return string(bytes), nil
@@ -71,76 +59,50 @@ func (h *bcryptHasher) Check(password, hash string) bool {
 
 // ValidatePasswordStrength validates that a password meets security requirements.
 func (h *bcryptHasher) ValidatePasswordStrength(password string) error {
-	config := h.getPasswordStrengthConfig()
-
 	// Validate all password requirements
-	if err := h.validatePasswordLength(password, config.MinLength); err != nil {
+	if err := h.validatePasswordLength(password, h.passwordStrengthConfig.MinLength, h.passwordStrengthConfig.MaxLength); err != nil {
 		return err
 	}
 
-	if err := h.validatePasswordCharacters(password, config); err != nil {
-		return err
-	}
-
-	if err := h.validatePasswordForbiddenWords(password, config.ForbiddenWords); err != nil {
+	if err := h.validatePasswordCharacters(password); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-// validatePasswordLength checks if password meets minimum length requirement
-func (h *bcryptHasher) validatePasswordLength(password string, minLength int) error {
+// validatePasswordLength checks if password meets length requirements
+func (h *bcryptHasher) validatePasswordLength(password string, minLength, maxLength int) error {
 	if len(password) < minLength {
 		return fmt.Errorf("password must be at least %d characters long", minLength)
+	}
+
+	if maxLength > 0 && len(password) > maxLength {
+		return fmt.Errorf("password must be no more than %d characters long", maxLength)
 	}
 
 	return nil
 }
 
 // validatePasswordCharacters checks if password contains required character types
-func (h *bcryptHasher) validatePasswordCharacters(password string, config PasswordStrengthConfig) error {
-	if config.RequireUppercase && !h.hasUppercase(password) {
-		return errors.New("password must contain at least one uppercase letter")
+func (h *bcryptHasher) validatePasswordCharacters(password string) error {
+	if h.passwordStrengthConfig.RequireUppercase && !h.hasUppercase(password) {
+		return fmt.Errorf("password must contain at least one uppercase letter")
 	}
 
-	if config.RequireLowercase && !h.hasLowercase(password) {
-		return errors.New("password must contain at least one lowercase letter")
+	if h.passwordStrengthConfig.RequireLowercase && !h.hasLowercase(password) {
+		return fmt.Errorf("password must contain at least one lowercase letter")
 	}
 
-	if config.RequireNumbers && !h.hasNumbers(password) {
-		return errors.New("password must contain at least one number")
+	if h.passwordStrengthConfig.RequireNumbers && !h.hasNumbers(password) {
+		return fmt.Errorf("password must contain at least one number")
 	}
 
-	if config.RequireSpecial && !h.hasSpecialChars(password) {
-		return errors.New("password must contain at least one special character")
-	}
-
-	return nil
-}
-
-// validatePasswordForbiddenWords checks if password contains forbidden words
-func (h *bcryptHasher) validatePasswordForbiddenWords(password string, forbiddenWords []string) error {
-	if h.containsForbiddenWords(password, forbiddenWords) {
-		return domainerrors.ErrPasswordForbiddenWords.WrapMessage("password contains forbidden words or patterns")
+	if h.passwordStrengthConfig.RequireSpecial && !h.hasSpecialChars(password) {
+		return fmt.Errorf("password must contain at least one special character")
 	}
 
 	return nil
-}
-
-// getPasswordStrengthConfig returns the default password strength configuration
-func (h *bcryptHasher) getPasswordStrengthConfig() PasswordStrengthConfig {
-	return PasswordStrengthConfig{
-		MinLength:        8,
-		RequireUppercase: true,
-		RequireLowercase: true,
-		RequireNumbers:   true,
-		RequireSpecial:   true,
-		ForbiddenWords: []string{
-			"password", "123456", "qwerty", "admin", "user",
-			"login", "welcome", "test", "guest", "root",
-		},
-	}
 }
 
 // hasUppercase checks if password contains uppercase letters
@@ -178,20 +140,5 @@ func (h *bcryptHasher) hasNumbers(password string) bool {
 
 // hasSpecialChars checks if password contains special characters
 func (h *bcryptHasher) hasSpecialChars(password string) bool {
-	// Define special characters pattern
-	specialChars := regexp.MustCompile(`[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~` + "`" + `]`)
-
-	return specialChars.MatchString(password)
-}
-
-// containsForbiddenWords checks if password contains any forbidden words
-func (h *bcryptHasher) containsForbiddenWords(password string, forbiddenWords []string) bool {
-	lowerPassword := strings.ToLower(password)
-	for _, word := range forbiddenWords {
-		if strings.Contains(lowerPassword, strings.ToLower(word)) {
-			return true
-		}
-	}
-
-	return false
+	return h.specialChars.MatchString(password)
 }

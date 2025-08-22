@@ -33,3 +33,6 @@ config.yaml
 # ide config folder
 .kiro/
 .vscode/
+
+# macos
+.DS_Store

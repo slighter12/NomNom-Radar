@@ -47,3 +47,11 @@ googleOAuth:
   clientSecret: "your_google_client_secret_here"
   redirectUri: "http://localhost:4433/oauth/google/callback"
   scopes: "openid email profile"
+
+passwordStrength:
+  minLength: 8
+  requireUppercase: true
+  requireLowercase: true
+  requireNumbers: true
+  requireSpecial: true
+  maxLength: 128

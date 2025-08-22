@@ -45,6 +45,18 @@ type Config struct {
 		RedirectURI  string `json:"redirectUri" yaml:"redirectUri"`
 		Scopes       string `json:"scopes" yaml:"scopes"`
 	} `json:"googleOAuth" yaml:"googleOAuth"`
+
+	PasswordStrength *PasswordStrengthConfig `json:"passwordStrength" yaml:"passwordStrength"`
+}
+
+// PasswordStrengthConfig defines password strength requirements
+type PasswordStrengthConfig struct {
+	MinLength        int  `json:"minLength" yaml:"minLength"`
+	RequireUppercase bool `json:"requireUppercase" yaml:"requireUppercase"`
+	RequireLowercase bool `json:"requireLowercase" yaml:"requireLowercase"`
+	RequireNumbers   bool `json:"requireNumbers" yaml:"requireNumbers"`
+	RequireSpecial   bool `json:"requireSpecial" yaml:"requireSpecial"`
+	MaxLength        int  `json:"maxLength" yaml:"maxLength"`
 }
 
 type Log struct {
