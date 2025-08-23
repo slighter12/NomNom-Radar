@@ -14,21 +14,23 @@ import (
 
 // bcryptHasher is a concrete implementation of the PasswordHasher interface using bcrypt.
 type bcryptHasher struct {
-	// cost is the bcrypt cost factor for hashing
-	cost int
+	// bcryptCost holds the bcrypt cost factor for hashing
+	bcryptCost int
 	// passwordStrengthConfig holds the password strength configuration
 	passwordStrengthConfig *config.PasswordStrengthConfig
 	specialChars           *regexp.Regexp
 }
 
 // NewBcryptHasher creates a bcrypt hasher with custom configuration.
-func NewBcryptHasher(cost int, cfg *config.Config) (service.PasswordHasher, error) {
-	if cost == 0 {
-		cost = bcrypt.DefaultCost
+func NewBcryptHasher(cfg *config.Config) (service.PasswordHasher, error) {
+	// Get bcrypt cost from config, use default if not specified
+	bcryptCost := bcrypt.DefaultCost
+	if cfg.Auth != nil && cfg.Auth.BcryptCost > 0 {
+		bcryptCost = cfg.Auth.BcryptCost
 	}
 
 	return &bcryptHasher{
-		cost:                   cost,
+		bcryptCost:             bcryptCost,
 		passwordStrengthConfig: cfg.PasswordStrength,
 		specialChars:           regexp.MustCompile(`[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~` + "`" + `]`),
 	}, nil
@@ -42,7 +44,7 @@ func (h *bcryptHasher) Hash(password string) (string, error) {
 		return "", fmt.Errorf("password does not meet strength requirements: %w", err)
 	}
 
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), h.cost)
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), h.bcryptCost)
 	if err != nil {
 		return "", fmt.Errorf("failed to hash password: %w", err)
 	}

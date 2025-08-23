@@ -11,6 +11,9 @@ import (
 
 func TestBcryptHasher_Hash(t *testing.T) {
 	cfg := &config.Config{
+		Auth: &config.AuthConfig{
+			BcryptCost: 12,
+		},
 		PasswordStrength: &config.PasswordStrengthConfig{
 			MinLength:        8,
 			RequireUppercase: true,
@@ -20,7 +23,7 @@ func TestBcryptHasher_Hash(t *testing.T) {
 			MaxLength:        128,
 		},
 	}
-	hasher, err := NewBcryptHasher(0, cfg)
+	hasher, err := NewBcryptHasher(cfg)
 	assert.NoError(t, err)
 
 	// Test valid strong password
@@ -36,6 +39,9 @@ func TestBcryptHasher_Hash(t *testing.T) {
 
 func TestBcryptHasher_HashWithWeakPassword(t *testing.T) {
 	cfg := &config.Config{
+		Auth: &config.AuthConfig{
+			BcryptCost: 12,
+		},
 		PasswordStrength: &config.PasswordStrengthConfig{
 			MinLength:        8,
 			RequireUppercase: true,
@@ -45,7 +51,7 @@ func TestBcryptHasher_HashWithWeakPassword(t *testing.T) {
 			MaxLength:        128,
 		},
 	}
-	hasher, err := NewBcryptHasher(0, cfg)
+	hasher, err := NewBcryptHasher(cfg)
 	assert.NoError(t, err)
 
 	// Test weak passwords that should fail validation
@@ -65,6 +71,9 @@ func TestBcryptHasher_HashWithWeakPassword(t *testing.T) {
 
 func TestBcryptHasher_Check(t *testing.T) {
 	cfg := &config.Config{
+		Auth: &config.AuthConfig{
+			BcryptCost: 12,
+		},
 		PasswordStrength: &config.PasswordStrengthConfig{
 			MinLength:        8,
 			RequireUppercase: true,
@@ -74,7 +83,7 @@ func TestBcryptHasher_Check(t *testing.T) {
 			MaxLength:        128,
 		},
 	}
-	hasher, err := NewBcryptHasher(0, cfg)
+	hasher, err := NewBcryptHasher(cfg)
 	assert.NoError(t, err)
 	password := "StrongPass123!"
 
@@ -97,6 +106,9 @@ func TestBcryptHasher_Check(t *testing.T) {
 
 func TestBcryptHasher_ValidatePasswordStrength(t *testing.T) {
 	cfg := &config.Config{
+		Auth: &config.AuthConfig{
+			BcryptCost: 12,
+		},
 		PasswordStrength: &config.PasswordStrengthConfig{
 			MinLength:        8,
 			RequireUppercase: true,
@@ -106,7 +118,7 @@ func TestBcryptHasher_ValidatePasswordStrength(t *testing.T) {
 			MaxLength:        128,
 		},
 	}
-	hasher, err := NewBcryptHasher(0, cfg)
+	hasher, err := NewBcryptHasher(cfg)
 	assert.NoError(t, err)
 
 	// Test valid passwords
@@ -144,6 +156,9 @@ func TestBcryptHasher_ValidatePasswordStrength(t *testing.T) {
 func TestBcryptHasher_WithCustomCost(t *testing.T) {
 	customCost := 6 // Lower cost for faster testing
 	cfg := &config.Config{
+		Auth: &config.AuthConfig{
+			BcryptCost: customCost,
+		},
 		PasswordStrength: &config.PasswordStrengthConfig{
 			MinLength:        8,
 			RequireUppercase: true,
@@ -153,7 +168,7 @@ func TestBcryptHasher_WithCustomCost(t *testing.T) {
 			MaxLength:        128,
 		},
 	}
-	hasher, err := NewBcryptHasher(customCost, cfg)
+	hasher, err := NewBcryptHasher(cfg)
 	assert.NoError(t, err)
 
 	password := "StrongPass123!"
@@ -172,6 +187,9 @@ func TestBcryptHasher_WithCustomCost(t *testing.T) {
 
 func TestBcryptHasher_EdgeCases(t *testing.T) {
 	cfg := &config.Config{
+		Auth: &config.AuthConfig{
+			BcryptCost: 12,
+		},
 		PasswordStrength: &config.PasswordStrengthConfig{
 			MinLength:        8,
 			RequireUppercase: true,
@@ -181,7 +199,7 @@ func TestBcryptHasher_EdgeCases(t *testing.T) {
 			MaxLength:        128,
 		},
 	}
-	hasher, err := NewBcryptHasher(0, cfg)
+	hasher, err := NewBcryptHasher(cfg)
 	assert.NoError(t, err)
 
 	// Test empty password
@@ -203,6 +221,9 @@ func TestBcryptHasher_EdgeCases(t *testing.T) {
 // TestBcryptHasher_WithCustomConfig tests the hasher with custom password strength configuration
 func TestBcryptHasher_WithCustomConfig(t *testing.T) {
 	customConfig := &config.Config{
+		Auth: &config.AuthConfig{
+			BcryptCost: 12,
+		},
 		PasswordStrength: &config.PasswordStrengthConfig{
 			MinLength:        10,
 			RequireUppercase: true,
@@ -213,7 +234,7 @@ func TestBcryptHasher_WithCustomConfig(t *testing.T) {
 		},
 	}
 
-	hasher, err := NewBcryptHasher(0, customConfig)
+	hasher, err := NewBcryptHasher(customConfig)
 	assert.NoError(t, err)
 
 	// Test password that meets custom requirements

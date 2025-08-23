@@ -46,7 +46,14 @@ type Config struct {
 		Scopes       string `json:"scopes" yaml:"scopes"`
 	} `json:"googleOAuth" yaml:"googleOAuth"`
 
+	Auth *AuthConfig `json:"auth" yaml:"auth"`
+
 	PasswordStrength *PasswordStrengthConfig `json:"passwordStrength" yaml:"passwordStrength"`
+}
+
+// AuthConfig defines authentication-related configuration
+type AuthConfig struct {
+	BcryptCost int `json:"bcryptCost" yaml:"bcryptCost"`
 }
 
 // PasswordStrengthConfig defines password strength requirements

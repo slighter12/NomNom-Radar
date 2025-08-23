@@ -43,10 +43,13 @@ secretKey:
   refresh: "refresh_secret"
 
 googleOAuth:
-  clientId: "your_google_client_id_here"
-  clientSecret: "your_google_client_secret_here"
-  redirectUri: "http://localhost:4433/oauth/google/callback"
+  clientId: "demo_google_client_id"
+  clientSecret: "demo_google_client_secret"
+  redirectUri: "http://localhost:8080/oauth/google/callback"
   scopes: "openid email profile"
+
+auth:
+  bcryptCost: 12
 
 passwordStrength:
   minLength: 8
