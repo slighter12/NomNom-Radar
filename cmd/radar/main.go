@@ -68,7 +68,6 @@ func injectService() fx.Option {
 			auth.NewBcryptHasher,
 			auth.NewJWTService,
 			google.NewOAuthService,
-			google.NewAuthService,
 		),
 	)
 }

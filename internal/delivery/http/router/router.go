@@ -49,7 +49,6 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 	// OAuth routes - separate group for better organization
 	oauthGroup := e.Group("/oauth")
 	{
-		oauthGroup.GET("/google", r.userHandler.GoogleLogin)              // Redirect to Google
 		oauthGroup.POST("/google/callback", r.userHandler.GoogleCallback) // Handle callback
 	}
 

@@ -43,10 +43,9 @@ secretKey:
   refresh: "refresh_secret"
 
 googleOAuth:
+  # Only ClientID is needed for ID token verification
+  # ClientSecret and RedirectURI are not needed for client-side OAuth flows
   clientId: "demo_google_client_id"
-  clientSecret: "demo_google_client_secret"
-  redirectUri: "http://localhost:8080/oauth/google/callback"
-  scopes: "openid email profile"
 
 auth:
   bcryptCost: 12

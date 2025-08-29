@@ -39,16 +39,17 @@ type Config struct {
 		Refresh string `json:"refresh" yaml:"refresh"`
 	} `json:"secretKey" yaml:"secretKey"`
 
-	GoogleOAuth struct {
-		ClientID     string `json:"clientId" yaml:"clientId"`
-		ClientSecret string `json:"clientSecret" yaml:"clientSecret"`
-		RedirectURI  string `json:"redirectUri" yaml:"redirectUri"`
-		Scopes       string `json:"scopes" yaml:"scopes"`
-	} `json:"googleOAuth" yaml:"googleOAuth"`
+	GoogleOAuth *GoogleOAuthConfig `json:"googleOAuth" yaml:"googleOAuth"`
 
 	Auth *AuthConfig `json:"auth" yaml:"auth"`
 
 	PasswordStrength *PasswordStrengthConfig `json:"passwordStrength" yaml:"passwordStrength"`
+}
+
+type GoogleOAuthConfig struct {
+	ClientID string `json:"clientId" yaml:"clientId"`
+	// Note: ClientSecret and RedirectURI are not needed for ID token verification
+	// These are only needed for server-side OAuth flows, which we don't use
 }
 
 // AuthConfig defines authentication-related configuration

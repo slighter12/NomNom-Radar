@@ -16,17 +16,17 @@ import (
 
 // UserHandler holds dependencies for user-related handlers.
 type UserHandler struct {
-	uc                 usecase.UserUsecase
-	logger             *slog.Logger
-	googleOAuthService service.OAuthService
+	uc                usecase.UserUsecase
+	logger            *slog.Logger
+	googleAuthService service.OAuthAuthService
 }
 
 // NewUserHandler is the constructor for UserHandler, injected by Fx.
-func NewUserHandler(uc usecase.UserUsecase, logger *slog.Logger, googleOAuthService service.OAuthService) *UserHandler {
+func NewUserHandler(uc usecase.UserUsecase, logger *slog.Logger, googleAuthService service.OAuthAuthService) *UserHandler {
 	return &UserHandler{
-		uc:                 uc,
-		logger:             logger,
-		googleOAuthService: googleOAuthService,
+		uc:                uc,
+		logger:            logger,
+		googleAuthService: googleAuthService,
 	}
 }
 
@@ -106,31 +106,6 @@ func (h *UserHandler) Logout(c echo.Context) error {
 	return response.Success(c, http.StatusOK, map[string]string{"message": "Successfully logged out"}, "Logout successful")
 }
 
-// GoogleLogin handles initiating the Google Sign-In flow.
-func (h *UserHandler) GoogleLogin(c echo.Context) error {
-	// Check if the request wants a redirect or JSON response
-	redirect := c.QueryParam("redirect")
-
-	// Generate a random state parameter for CSRF protection
-	state := uuid.New().String()
-
-	// Use the injected OAuth service to build the authorization URL with state parameter
-	oauthURL := h.googleOAuthService.BuildAuthorizationURL(state)
-
-	if redirect == "true" {
-		// Redirect directly to Google OAuth page
-		return c.Redirect(http.StatusTemporaryRedirect, oauthURL)
-	}
-
-	// Return JSON response with OAuth URL for frontend use
-	return response.Success(c, http.StatusOK, map[string]string{
-		"oauth_url":    oauthURL,
-		"state":        state,
-		"redirect_url": "/oauth/google?redirect=true",
-		"note":         "Use redirect_url for direct redirect, or oauth_url for frontend implementation. Store the state parameter to verify the callback.",
-	}, "Google OAuth URL generated successfully")
-}
-
 // GoogleCallback handles the Google Sign-In callback.
 func (h *UserHandler) GoogleCallback(c echo.Context) error {
 	// Extract input parameters
@@ -193,14 +168,8 @@ func (h *UserHandler) extractGoogleCallbackInput(c echo.Context) (*usecase.Googl
 
 // validateGoogleCallbackState validates the state parameter for CSRF protection
 func (h *UserHandler) validateGoogleCallbackState(state string) error {
-	if state == "" {
-		return nil // State is optional
-	}
-
-	if !h.googleOAuthService.ValidateState(state) {
-		return response.BadRequest(nil, "INVALID_STATE", "Invalid or expired state parameter")
-	}
-
+	// State validation is no longer needed as we're not building OAuth URLs
+	// The client handles the OAuth flow and sends us the ID token directly
 	return nil
 }
 
