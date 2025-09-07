@@ -52,14 +52,28 @@ func (s *OAuthService) VerifyIDToken(ctx context.Context, idToken string) (*serv
 		return nil, fmt.Errorf("email not verified")
 	}
 
+	// Safely extract claims with nil checks
+	email, ok := claims["email"].(string)
+	if !ok {
+		return nil, fmt.Errorf("email claim not found or invalid")
+	}
+
+	name, ok := claims["name"].(string)
+	if !ok {
+		return nil, fmt.Errorf("name claim not found or invalid")
+	}
+
+	picture, _ := claims["picture"].(string) // Optional field
+	locale, _ := claims["locale"].(string)   // Optional field
+
 	oauthUser := &service.OAuthUser{
 		ID:            payload.Subject,
-		Email:         claims["email"].(string),
-		Name:          claims["name"].(string),
+		Email:         email,
+		Name:          name,
 		Provider:      entity.ProviderTypeGoogle,
-		AvatarURL:     claims["picture"].(string),
+		AvatarURL:     picture,
 		EmailVerified: true,
-		Locale:        claims["locale"].(string),
+		Locale:        locale,
 		ExtraData:     claims,
 	}
 
