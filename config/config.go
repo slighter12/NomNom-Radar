@@ -44,6 +44,9 @@ type Config struct {
 	Auth *AuthConfig `json:"auth" yaml:"auth"`
 
 	PasswordStrength *PasswordStrengthConfig `json:"passwordStrength" yaml:"passwordStrength"`
+
+	// TestRoutes configuration for testing endpoints
+	TestRoutes *TestRoutesConfig `json:"testRoutes" yaml:"testRoutes"`
 }
 
 type GoogleOAuthConfig struct {
@@ -73,6 +76,11 @@ type Log struct {
 	Path         string        `json:"path" yaml:"path"`
 	MaxAge       time.Duration `json:"maxAge" yaml:"maxAge"`
 	RotationTime time.Duration `json:"rotationTime" yaml:"rotationTime"`
+}
+
+// TestRoutesConfig defines configuration for testing endpoints
+type TestRoutesConfig struct {
+	Enabled bool `json:"enabled" yaml:"enabled"`
 }
 
 // LoadWithEnv is a loads .yaml files through viper.

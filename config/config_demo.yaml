@@ -57,3 +57,6 @@ passwordStrength:
   requireNumbers: true
   requireSpecial: true
   maxLength: 128
+
+testRoutes:
+  enabled: true

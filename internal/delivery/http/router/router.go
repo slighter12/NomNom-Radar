@@ -2,6 +2,7 @@
 package router
 
 import (
+	"radar/config"
 	"radar/internal/delivery/http/middleware"
 	"radar/internal/delivery/http/router/handler"
 
@@ -13,13 +14,17 @@ type RouterParams struct {
 	fx.In
 
 	UserHandler    *handler.UserHandler
+	TestHandler    *handler.TestHandler
 	AuthMiddleware *middleware.AuthMiddleware
+	Config         *config.Config
 }
 
 // router holds all the handlers that need to be registered.
 type router struct {
 	userHandler    *handler.UserHandler
+	testHandler    *handler.TestHandler
 	authMiddleware *middleware.AuthMiddleware
+	config         *config.Config
 }
 
 // NewRouter is the constructor for the Router.
@@ -27,7 +32,9 @@ type router struct {
 func NewRouter(params RouterParams) *router {
 	return &router{
 		userHandler:    params.UserHandler,
+		testHandler:    params.TestHandler,
 		authMiddleware: params.AuthMiddleware,
+		config:         params.Config,
 	}
 }
 
@@ -66,5 +73,19 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 	{
 		// ... merchant-specific handlers
 		// merchantGroup.GET("/dashboard", r.merchantHandler.GetDashboard)
+	}
+}
+
+func (r *router) RegisterTestRoutes(e *echo.Echo) {
+	// Test routes - only enabled when configured
+	if r.config.TestRoutes != nil && r.config.TestRoutes.Enabled {
+		// Test routes that require authentication
+		testGroup := e.Group("/test")
+		testGroup.GET("/public", r.testHandler.TestPublicEndpoint)
+
+		testGroup.Use(r.authMiddleware.Authenticate) // Apply JWT authentication middleware
+		{
+			testGroup.GET("/auth", r.testHandler.TestAuthMiddleware)
+		}
 	}
 }

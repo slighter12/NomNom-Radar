@@ -58,6 +58,7 @@ func NewServer(params HTTPParams) (delivery.Delivery, error) {
 
 	router := router.NewRouter(params.RouterParams)
 	router.RegisterRoutes(echoServer)
+	router.RegisterTestRoutes(echoServer)
 
 	delivery := &httpServer{
 		cfg:    params.Config,
