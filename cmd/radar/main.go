@@ -93,6 +93,7 @@ func injectHandler() fx.Option {
 	return fx.Options(
 		fx.Provide(
 			handler.NewUserHandler,
+			handler.NewTestHandler,
 		),
 	)
 }
