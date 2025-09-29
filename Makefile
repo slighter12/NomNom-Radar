@@ -95,13 +95,13 @@ db-postgres-down: ## revert all PostgreSQL migrations
 	)
 
 db-postgres-test-replication: ## test replication
-	@echo "Testing replication..."
+	@echo "Testing replication with SCRAM-SHA-256 authentication..."
 	@echo "Creating test table on master..."
-	docker exec radar-postgres-master psql -U user -d auth_db -c "CREATE TABLE IF NOT EXISTS test_replication (id SERIAL PRIMARY KEY, message TEXT, created_at TIMESTAMP DEFAULT NOW());"
+	docker exec -e PGPASSWORD=password radar-postgres-master psql -U user -d auth_db -c "CREATE TABLE IF NOT EXISTS test_replication (id SERIAL PRIMARY KEY, message TEXT, created_at TIMESTAMP DEFAULT NOW());"
 	@echo "Inserting test data on master..."
-	docker exec radar-postgres-master psql -U user -d auth_db -c "INSERT INTO test_replication (message) VALUES ('Test from master at $$(date)');"
+	docker exec -e PGPASSWORD=password radar-postgres-master psql -U user -d auth_db -c "INSERT INTO test_replication (message) VALUES ('Test from master at $$(date)');"
 	@echo "Checking data on replica..."
-	docker exec radar-postgres-replica psql -U user -d auth_db -c "SELECT * FROM test_replication ORDER BY id DESC LIMIT 1;"
+	docker exec -e PGPASSWORD=password radar-postgres-replica psql -U user -d auth_db -c "SELECT * FROM test_replication ORDER BY id DESC LIMIT 1;"
 
 ###########
 #   GCI   #

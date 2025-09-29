@@ -1,9 +1,16 @@
+# Common PostgreSQL 18 + PostGIS 3.6 configuration for both master and replica
 x-postgres-common:
   &postgres-common
-  image: postgres:18-alpine
+  image: postgis/postgis:18-3.6-alpine  # PostgreSQL 18 with PostGIS 3.6 (Alpine)
+  platform: linux/amd64  # Force AMD64 for ARM64 compatibility
   user: postgres
   restart: always
   shm_size: 128mb
+  environment: &postgres-env
+    POSTGRES_USER: user
+    POSTGRES_DB: auth_db
+    POSTGRES_PASSWORD: password
+    POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256 --data-checksums"
   healthcheck:
     test: ['CMD-SHELL', 'pg_isready -U user -d auth_db']
     interval: 10s
@@ -11,16 +18,12 @@ x-postgres-common:
     retries: 5
 
 services:
+  # PostgreSQL Master Database
   postgres-master:
     <<: *postgres-common
     container_name: radar-postgres-master
     ports:
       - "5432:5432"
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_DB: auth_db
-      POSTGRES_PASSWORD: password
-      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
     command: |
       postgres 
       -c wal_level=replica 
@@ -37,39 +40,37 @@ services:
     networks:
       - radar-network
 
+  # PostgreSQL Read-Only Replica
   postgres-replica:
-    image: postgres:18-alpine
+    <<: *postgres-common
     container_name: radar-postgres-replica
     ports:
       - "5433:5432"
     environment:
-      POSTGRES_USER: user
-      POSTGRES_DB: auth_db
-      POSTGRES_PASSWORD: password
-      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+      <<: *postgres-env
       PGPASSWORD: password
       PGDATA: /var/lib/postgresql/data/18/main
     entrypoint: |
       bash -c "
-      echo 'Setting up replica...'
+      echo 'Setting up PostgreSQL 18 replica...'
       
       # Wait for master to be ready
       until pg_isready -h postgres-master -p 5432 -U user; do
-        echo 'Waiting for master...'
+        echo 'Waiting for master to be ready...'
         sleep 2
       done
       
-      # Create directory structure
+      # Create PostgreSQL 18 directory structure
       mkdir -p /var/lib/postgresql/data/18/main
       
-      # Clean data directory
+      # Clean data directory for fresh base backup
       rm -rf /var/lib/postgresql/data/18/main/*
       
-      # Perform base backup
-      echo 'Performing base backup...'
+      # Perform base backup from master with replication slot
+      echo 'Performing base backup from master...'
       pg_basebackup -h postgres-master -p 5432 -U user -D /var/lib/postgresql/data/18/main -R --slot=replica_slot
       
-      # Fix permissions
+      # Set correct permissions for PostgreSQL
       chown -R postgres:postgres /var/lib/postgresql/data
       chmod 0700 /var/lib/postgresql/data/18/main
       
