@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"radar/internal/delivery/http/response"
+	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/service"
 	"radar/internal/usecase"
 
@@ -39,7 +40,7 @@ func (h *UserHandler) RegisterUser(c echo.Context) error {
 
 	output, err := h.uc.RegisterUser(c.Request().Context(), input)
 	if err != nil {
-		return errors.WithStack(err)
+		return h.handleAppError(c, err)
 	}
 
 	// Do not return sensitive data in the response.
@@ -56,10 +57,19 @@ func (h *UserHandler) RegisterMerchant(c echo.Context) error {
 
 	output, err := h.uc.RegisterMerchant(c.Request().Context(), input)
 	if err != nil {
-		return errors.WithStack(err)
+		return h.handleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusCreated, output.User, "Merchant registered successfully")
+}
+
+func (h *UserHandler) handleAppError(c echo.Context, err error) error {
+	var appErr domainerrors.AppError
+	if errors.As(err, &appErr) {
+		return response.Error(c, appErr.HTTPCode(), appErr.ErrorCode(), appErr.Message(), appErr.Details())
+	}
+
+	return errors.WithStack(err)
 }
 
 // Login handles the user login request.

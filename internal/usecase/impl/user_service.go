@@ -59,60 +59,90 @@ func NewUserService(
 func (srv *userService) RegisterUser(ctx context.Context, input *usecase.RegisterUserInput) (*usecase.RegisterOutput, error) {
 	srv.logger.Info("Starting user registration", "email", input.Email)
 
-	// Validate password strength
-	if err := srv.hasher.ValidatePasswordStrength(input.Password); err != nil {
-		srv.logger.Warn("Password validation failed during registration", "email", input.Email, "error", err)
-
-		return nil, errors.Wrap(domainerrors.ErrValidationFailed, "password does not meet security requirements")
-	}
-
-	hashedPassword, err := srv.hasher.Hash(input.Password)
-	if err != nil {
-		srv.logger.Error("Failed to hash password during registration", "error", err)
-
-		return nil, errors.Wrap(err, "failed to hash password during registration")
-	}
-
 	var registeredUser *entity.User
 	// Execute the entire creation process within a single database transaction
 	// to ensure data consistency (atomicity).
-	err = srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
+	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
 		userRepo := repoFactory.NewUserRepository()
 		authRepo := repoFactory.NewAuthRepository()
 
 		// 1. Check if an authentication method with this email already exists.
-		_, err := authRepo.FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email)
-		if err == nil {
-			// If no error, it means an auth record was found.
-			return domainerrors.ErrUserAlreadyExists.WrapMessage("user registration failed")
+		authRecord, err := authRepo.FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email)
+		if errors.Is(err, repository.ErrAuthNotFound) {
+			// No authentication found, proceed with a brand new account and user profile.
+			if err := srv.hasher.ValidatePasswordStrength(input.Password); err != nil {
+				srv.logger.Warn("Password validation failed during registration", "email", input.Email, "error", err)
+
+				return errors.Wrap(domainerrors.ErrValidationFailed, "password does not meet security requirements")
+			}
+
+			hashedPassword, hashErr := srv.hasher.Hash(input.Password)
+			if hashErr != nil {
+				srv.logger.Error("Failed to hash password during registration", "error", hashErr)
+
+				return errors.Wrap(hashErr, "failed to hash password during registration")
+			}
+
+			newUser := &entity.User{
+				Name:        input.Name,
+				Email:       input.Email,
+				UserProfile: &entity.UserProfile{}, // Create an empty profile for the user role.
+			}
+
+			if err := userRepo.Create(ctx, newUser); err != nil {
+				return errors.WithStack(err)
+			}
+
+			newAuth := &entity.Authentication{
+				UserID:         newUser.ID,
+				Provider:       entity.ProviderTypeEmail,
+				ProviderUserID: input.Email,
+				PasswordHash:   hashedPassword,
+			}
+			if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
+				return errors.WithStack(err)
+			}
+			registeredUser = newUser
+
+			return nil
 		}
-		// We expect a 'not found' error. If it's a different error, something went wrong.
-		if !errors.Is(err, repository.ErrAuthNotFound) {
+
+		if err != nil {
 			return errors.Wrap(err, "failed to find authentication")
 		}
 
-		// 2. Create the User entity and its associated UserProfile.
-		newUser := &entity.User{
-			Name:        input.Name,
-			Email:       input.Email,
-			UserProfile: &entity.UserProfile{}, // Create an empty profile for the user role.
+		// Existing account found – ensure the password matches before extending the roles.
+		if !srv.hasher.Check(input.Password, authRecord.PasswordHash) {
+			srv.logger.Warn("Password mismatch when attempting to attach user profile", "email", input.Email)
+
+			return errors.Wrap(domainerrors.ErrInvalidCredentials, "password mismatch during user registration")
 		}
 
-		if err := userRepo.Create(ctx, newUser); err != nil {
+		existingUser, err := userRepo.FindByID(ctx, authRecord.UserID)
+		if err != nil {
+			return errors.Wrap(err, "failed to load existing user for user registration")
+		}
+
+		if existingUser.UserProfile != nil {
+			srv.logger.Warn("User profile already exists for account", "userID", existingUser.ID)
+
+			return domainerrors.ErrUserAlreadyExists.WrapMessage("user profile already registered for this account")
+		}
+
+		if input.Name != "" {
+			existingUser.Name = input.Name
+		}
+
+		existingUser.UserProfile = &entity.UserProfile{
+			UserID: existingUser.ID,
+		}
+
+		if err := userRepo.Update(ctx, existingUser); err != nil {
 			return errors.WithStack(err)
 		}
 
-		// 3. Create the Authentication entity (the email/password credential).
-		newAuth := &entity.Authentication{
-			UserID:         newUser.ID,
-			Provider:       entity.ProviderTypeEmail,
-			ProviderUserID: input.Email,
-			PasswordHash:   hashedPassword,
-		}
-		if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
-			return errors.WithStack(err)
-		}
-		registeredUser = newUser
+		srv.logger.Debug("Attached user profile to existing account", "userID", existingUser.ID)
+		registeredUser = existingUser
 
 		return nil
 	})
@@ -131,59 +161,91 @@ func (srv *userService) RegisterUser(ctx context.Context, input *usecase.Registe
 func (srv *userService) RegisterMerchant(ctx context.Context, input *usecase.RegisterMerchantInput) (*usecase.RegisterOutput, error) {
 	srv.logger.Info("Starting merchant registration", "email", input.Email)
 
-	// Validate password strength
-	if err := srv.hasher.ValidatePasswordStrength(input.Password); err != nil {
-		srv.logger.Warn("Password validation failed during merchant registration", "email", input.Email, "error", err)
-
-		return nil, errors.Wrap(domainerrors.ErrValidationFailed, "password does not meet security requirements")
-	}
-
-	hashedPassword, err := srv.hasher.Hash(input.Password)
-	if err != nil {
-		srv.logger.Error("Failed to hash password during registration", "error", err)
-
-		return nil, errors.Wrap(err, "failed to hash password during registration")
-	}
-
 	var registeredUser *entity.User
-	err = srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
+	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
 		userRepo := repoFactory.NewUserRepository()
 		authRepo := repoFactory.NewAuthRepository()
 
-		// 1. Check if an authentication method with this email already exists.
-		_, err := authRepo.FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email)
-		if err == nil {
-			return errors.Wrap(domainerrors.ErrMerchantAlreadyExists, "merchant registration failed")
+		authRecord, err := authRepo.FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email)
+		if errors.Is(err, repository.ErrAuthNotFound) {
+			if err := srv.hasher.ValidatePasswordStrength(input.Password); err != nil {
+				srv.logger.Warn("Password validation failed during merchant registration", "email", input.Email, "error", err)
+
+				return errors.Wrap(domainerrors.ErrValidationFailed, "password does not meet security requirements")
+			}
+
+			hashedPassword, hashErr := srv.hasher.Hash(input.Password)
+			if hashErr != nil {
+				srv.logger.Error("Failed to hash password during registration", "error", hashErr)
+
+				return errors.Wrap(hashErr, "failed to hash password during registration")
+			}
+
+			newUser := &entity.User{
+				Name:  input.Name,
+				Email: input.Email,
+				MerchantProfile: &entity.MerchantProfile{
+					StoreName:       input.StoreName,
+					BusinessLicense: input.BusinessLicense,
+				},
+			}
+
+			if err := userRepo.Create(ctx, newUser); err != nil {
+				return errors.WithStack(err)
+			}
+
+			newAuth := &entity.Authentication{
+				UserID:         newUser.ID,
+				Provider:       entity.ProviderTypeEmail,
+				ProviderUserID: input.Email,
+				PasswordHash:   hashedPassword,
+			}
+			if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
+				return errors.WithStack(err)
+			}
+			registeredUser = newUser
+
+			return nil
 		}
-		if !errors.Is(err, repository.ErrAuthNotFound) {
+
+		if err != nil {
 			return errors.Wrap(err, "failed to find authentication")
 		}
 
-		// 2. Create the User entity and its associated MerchantProfile.
-		newUser := &entity.User{
-			Name:  input.Name,
-			Email: input.Email,
-			MerchantProfile: &entity.MerchantProfile{
-				StoreName:       input.StoreName,
-				BusinessLicense: input.BusinessLicense,
-			},
+		if !srv.hasher.Check(input.Password, authRecord.PasswordHash) {
+			srv.logger.Warn("Password mismatch when attempting to attach merchant profile", "email", input.Email)
+
+			return errors.Wrap(domainerrors.ErrInvalidCredentials, "password mismatch during merchant registration")
 		}
 
-		if err := userRepo.Create(ctx, newUser); err != nil {
+		existingUser, err := userRepo.FindByID(ctx, authRecord.UserID)
+		if err != nil {
+			return errors.Wrap(err, "failed to load existing user for merchant registration")
+		}
+
+		if existingUser.MerchantProfile != nil {
+			srv.logger.Warn("Merchant profile already exists for account", "userID", existingUser.ID)
+
+			return errors.Wrap(domainerrors.ErrMerchantAlreadyExists, "merchant profile already registered for this account")
+		}
+
+		if input.Name != "" {
+			existingUser.Name = input.Name
+		}
+
+		merchantProfile := &entity.MerchantProfile{
+			UserID:          existingUser.ID,
+			StoreName:       input.StoreName,
+			BusinessLicense: input.BusinessLicense,
+		}
+		existingUser.MerchantProfile = merchantProfile
+
+		if err := userRepo.Update(ctx, existingUser); err != nil {
 			return errors.WithStack(err)
 		}
 
-		// 3. Create the Authentication entity.
-		newAuth := &entity.Authentication{
-			UserID:         newUser.ID,
-			Provider:       entity.ProviderTypeEmail,
-			ProviderUserID: input.Email,
-			PasswordHash:   hashedPassword,
-		}
-		if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
-			return errors.WithStack(err)
-		}
-		registeredUser = newUser
+		srv.logger.Debug("Attached merchant profile to existing account", "userID", existingUser.ID)
+		registeredUser = existingUser
 
 		return nil
 	})
