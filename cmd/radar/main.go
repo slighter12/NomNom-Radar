@@ -14,7 +14,7 @@ import (
 	"radar/internal/infra/auth/google"
 	logs "radar/internal/infra/log"
 	"radar/internal/infra/persistence/postgres"
-	"radar/internal/usecase"
+	"radar/internal/usecase/impl"
 
 	"go.uber.org/fx"
 )
@@ -75,7 +75,9 @@ func injectService() fx.Option {
 func injectUsecase() fx.Option {
 	return fx.Options(
 		fx.Provide(
-			usecase.NewUserService,
+			impl.NewUserService,
+			impl.NewProfileService,
+			impl.NewSessionService,
 		),
 	)
 }

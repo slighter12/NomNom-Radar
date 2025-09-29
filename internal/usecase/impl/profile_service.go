@@ -1,5 +1,5 @@
-// Package usecase contains the application-specific business rules.
-package usecase
+// Package impl contains the application-specific business rules implementations.
+package impl
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
+	"radar/internal/usecase"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -26,7 +27,7 @@ type profileService struct {
 func NewProfileService(
 	txManager repository.TransactionManager,
 	logger *slog.Logger,
-) ProfileUsecase {
+) usecase.ProfileUsecase {
 	return &profileService{
 		txManager: txManager,
 		logger:    logger,
@@ -63,7 +64,7 @@ func (srv *profileService) GetProfile(ctx context.Context, userID uuid.UUID) (*e
 }
 
 // UpdateUserProfile updates the user profile data.
-func (srv *profileService) UpdateUserProfile(ctx context.Context, userID uuid.UUID, input *UpdateUserProfileInput) error {
+func (srv *profileService) UpdateUserProfile(ctx context.Context, userID uuid.UUID, input *usecase.UpdateUserProfileInput) error {
 	srv.logger.Info("Updating user profile", "userID", userID)
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
@@ -105,7 +106,7 @@ func (srv *profileService) UpdateUserProfile(ctx context.Context, userID uuid.UU
 }
 
 // UpdateMerchantProfile updates the merchant profile data.
-func (srv *profileService) UpdateMerchantProfile(ctx context.Context, userID uuid.UUID, input *UpdateMerchantProfileInput) error {
+func (srv *profileService) UpdateMerchantProfile(ctx context.Context, userID uuid.UUID, input *usecase.UpdateMerchantProfileInput) error {
 	srv.logger.Info("Updating merchant profile", "userID", userID)
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
@@ -153,7 +154,7 @@ func (srv *profileService) UpdateMerchantProfile(ctx context.Context, userID uui
 }
 
 // SwitchToMerchant converts a regular user to a merchant by creating a merchant profile.
-func (srv *profileService) SwitchToMerchant(ctx context.Context, userID uuid.UUID, input *SwitchToMerchantInput) error {
+func (srv *profileService) SwitchToMerchant(ctx context.Context, userID uuid.UUID, input *usecase.SwitchToMerchantInput) error {
 	srv.logger.Info("Switching user to merchant", "userID", userID)
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {

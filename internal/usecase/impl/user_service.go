@@ -1,5 +1,5 @@
-// Package usecase contains the implementation of the application's business logic.
-package usecase
+// Package impl contains the implementation of the application's business logic.
+package impl
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
+	"radar/internal/usecase"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -41,7 +42,7 @@ func NewUserService(
 	tokenService service.TokenService,
 	googleAuthService service.OAuthAuthService,
 	logger *slog.Logger,
-) UserUsecase {
+) usecase.UserUsecase {
 	return &userService{
 		txManager:         txManager,
 		userRepo:          userRepo,
@@ -55,7 +56,7 @@ func NewUserService(
 }
 
 // RegisterUser orchestrates the complete user registration process.
-func (srv *userService) RegisterUser(ctx context.Context, input *RegisterUserInput) (*RegisterOutput, error) {
+func (srv *userService) RegisterUser(ctx context.Context, input *usecase.RegisterUserInput) (*usecase.RegisterOutput, error) {
 	srv.logger.Info("Starting user registration", "email", input.Email)
 
 	// Validate password strength
@@ -123,11 +124,11 @@ func (srv *userService) RegisterUser(ctx context.Context, input *RegisterUserInp
 	}
 	srv.logger.Debug("User registered successfully", "userID", registeredUser.ID)
 
-	return &RegisterOutput{User: registeredUser}, nil
+	return &usecase.RegisterOutput{User: registeredUser}, nil
 }
 
 // RegisterMerchant orchestrates the complete merchant registration process.
-func (srv *userService) RegisterMerchant(ctx context.Context, input *RegisterMerchantInput) (*RegisterOutput, error) {
+func (srv *userService) RegisterMerchant(ctx context.Context, input *usecase.RegisterMerchantInput) (*usecase.RegisterOutput, error) {
 	srv.logger.Info("Starting merchant registration", "email", input.Email)
 
 	// Validate password strength
@@ -194,11 +195,11 @@ func (srv *userService) RegisterMerchant(ctx context.Context, input *RegisterMer
 	}
 	srv.logger.Debug("Merchant registered successfully", "userID", registeredUser.ID)
 
-	return &RegisterOutput{User: registeredUser}, nil
+	return &usecase.RegisterOutput{User: registeredUser}, nil
 }
 
 // Login orchestrates the user login process.
-func (srv *userService) Login(ctx context.Context, input *LoginInput) (*LoginOutput, error) {
+func (srv *userService) Login(ctx context.Context, input *usecase.LoginInput) (*usecase.LoginOutput, error) {
 	srv.logger.Debug("Starting user login", "email", input.Email)
 
 	var loggedInUser *entity.User
@@ -267,7 +268,7 @@ func (srv *userService) Login(ctx context.Context, input *LoginInput) (*LoginOut
 	}
 	srv.logger.Debug("User logged in successfully", "userID", loggedInUser.ID)
 
-	return &LoginOutput{
+	return &usecase.LoginOutput{
 		AccessToken:  accessToken,
 		RefreshToken: refreshTokenString,
 		User:         loggedInUser,
@@ -276,7 +277,7 @@ func (srv *userService) Login(ctx context.Context, input *LoginInput) (*LoginOut
 
 // RefreshToken handles the process of issuing a new access token using a refresh token.
 // The refresh token remains unchanged for security reasons.
-func (srv *userService) RefreshToken(ctx context.Context, input *RefreshTokenInput) (*RefreshTokenOutput, error) {
+func (srv *userService) RefreshToken(ctx context.Context, input *usecase.RefreshTokenInput) (*usecase.RefreshTokenOutput, error) {
 	srv.logger.Info("Attempting to refresh access token")
 
 	claims, err := srv.tokenService.ValidateToken(input.RefreshToken)
@@ -329,13 +330,13 @@ func (srv *userService) RefreshToken(ctx context.Context, input *RefreshTokenInp
 		return nil, errors.Wrap(err, "failed to execute refresh token transaction")
 	}
 
-	return &RefreshTokenOutput{
+	return &usecase.RefreshTokenOutput{
 		AccessToken: newAccessToken,
 	}, nil
 }
 
 // Logout handles the process of invalidating a user's session by deleting their refresh token.
-func (srv *userService) Logout(ctx context.Context, input *LogoutInput) error {
+func (srv *userService) Logout(ctx context.Context, input *usecase.LogoutInput) error {
 	srv.logger.Info("Attempting to log out")
 
 	_, err := srv.tokenService.ValidateToken(input.RefreshToken)
@@ -358,7 +359,7 @@ func (srv *userService) Logout(ctx context.Context, input *LogoutInput) error {
 }
 
 // GoogleCallback handles the user login or registration via Google Sign-In.
-func (srv *userService) GoogleCallback(ctx context.Context, input *GoogleCallbackInput) (*LoginOutput, error) {
+func (srv *userService) GoogleCallback(ctx context.Context, input *usecase.GoogleCallbackInput) (*usecase.LoginOutput, error) {
 	srv.logger.Info("Handling Google callback")
 
 	// 1. Verify the ID token with Google.
@@ -373,7 +374,7 @@ func (srv *userService) GoogleCallback(ctx context.Context, input *GoogleCallbac
 		return nil, errors.Wrap(err, "failed to handle Google user authentication")
 	}
 
-	return &LoginOutput{
+	return &usecase.LoginOutput{
 		AccessToken:  accessToken,
 		RefreshToken: refreshTokenString,
 		User:         loggedInUser,

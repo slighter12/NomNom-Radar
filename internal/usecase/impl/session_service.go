@@ -1,5 +1,5 @@
-// Package usecase contains the application-specific business rules.
-package usecase
+// Package impl contains the application-specific business rules implementations.
+package impl
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
+	"radar/internal/usecase"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -27,7 +28,7 @@ type sessionService struct {
 func NewSessionService(
 	txManager repository.TransactionManager,
 	logger *slog.Logger,
-) SessionUsecase {
+) usecase.SessionUsecase {
 	return &sessionService{
 		txManager: txManager,
 		logger:    logger,
