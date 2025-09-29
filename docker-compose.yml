@@ -51,30 +51,38 @@ services:
       PGPASSWORD: password
     command: |
       bash -c "
+      set -euo pipefail  # Better error handling
+      
       echo 'Setting up PostgreSQL 18 PostGIS replica...'
       
       # Wait for master to be ready
-      until pg_isready -h postgres-master -p 5432 -U user; do
-        echo 'Waiting for master to be ready...'
+      echo 'Waiting for master to be ready...'
+      until pg_isready -h postgres-master -p 5432 -U user -d auth_db; do
         sleep 2
       done
+      echo 'Master is ready!'
       
-      # Create proper directory structure for PostGIS
-      mkdir -p /var/lib/postgresql/18
-      
-      # Clean and prepare data directory for base backup
-      rm -rf /var/lib/postgresql/18/replica 2>/dev/null || true
+      # Prepare data directory for base backup
+      REPLICA_DATA_DIR='/var/lib/postgresql/18/replica'
+      rm -rf \"\$$REPLICA_DATA_DIR\" 2>/dev/null || true
+      mkdir -p \"\$$(dirname \"\$$REPLICA_DATA_DIR\")\"
       
       # Perform base backup from master with replication slot
       echo 'Performing base backup from master...'
-      export PGPASSWORD=password
-      pg_basebackup -h postgres-master -p 5432 -U user -D /var/lib/postgresql/18/replica -R --slot=replica_slot --checkpoint=fast
+      pg_basebackup \\
+        -h postgres-master \\
+        -p 5432 \\
+        -U user \\
+        -D \"\$$REPLICA_DATA_DIR\" \\
+        -R \\
+        --slot=replica_slot \\
+        --checkpoint=fast \\
+        --verbose
       
-      # Set correct permissions
-      chmod 0700 /var/lib/postgresql/18/replica
-      
+      # Set correct permissions and start
+      chmod 0700 \"\$$REPLICA_DATA_DIR\"
       echo 'Starting PostgreSQL replica in standby mode...'
-      postgres -D /var/lib/postgresql/18/replica
+      exec postgres -D \"\$$REPLICA_DATA_DIR\"
       "
     volumes:
       - postgres_replica_data:/var/lib/postgresql/data
