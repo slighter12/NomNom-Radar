@@ -16,6 +16,7 @@ The architecture is designed with clear separation of responsibilities:
 ## How It Works
 
 ### 1. Frontend OAuth Flow (React Native)
+
 ```typescript
 // Using @react-native-google-signin/google-signin
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
@@ -30,14 +31,14 @@ GoogleSignin.configure({
 const signIn = async () => {
   try {
     const { idToken } = await GoogleSignin.signIn();
-    
+
     // Send ID token to backend for verification
     const response = await fetch('/api/oauth/google/callback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id_token: idToken })
     });
-    
+
     // Handle response...
   } catch (error) {
     // Handle error...
@@ -46,18 +47,19 @@ const signIn = async () => {
 ```
 
 ### 2. Backend Token Verification
+
 ```go
 // Backend receives ID token and verifies it using Google's official library
 func (h *UserHandler) GoogleCallback(c echo.Context) error {
     // Extract ID token from request
     idToken := c.FormValue("id_token")
-    
+
     // Verify the token using Google's official idtoken.Validate function
     oauthUser, err := h.googleAuthService.VerifyIDToken(ctx, idToken)
     if err != nil {
         return errors.WithStack(err)
     }
-    
+
     // Process the verified user information
     // Create/update user account, generate session tokens, etc.
 }
@@ -66,6 +68,7 @@ func (h *UserHandler) GoogleCallback(c echo.Context) error {
 ## Backend Implementation
 
 ### OAuth Service
+
 ```go
 type OAuthService struct {
     clientID string
@@ -87,7 +90,7 @@ func (s *OAuthService) VerifyIDToken(ctx context.Context, idToken string) (*serv
     // - Audience validation (ensures token is for your app)
 
     claims := payload.Claims
-    
+
     // Check email verification
     if emailVerified, ok := claims["email_verified"].(bool); !ok || !emailVerified {
         return nil, fmt.Errorf("email not verified")
@@ -112,17 +115,20 @@ func (s *OAuthService) VerifyIDToken(ctx context.Context, idToken string) (*serv
 ## Configuration
 
 ### Required Configuration
+
 ```yaml
 googleOAuth:
   clientId: "YOUR_GOOGLE_CLIENT_ID"
 ```
 
 ### What You Need
+
 1. **GoogleService-Info.plist** - Place in your iOS project
-2. **google-services.json** - Place in your Android project  
+2. **google-services.json** - Place in your Android project
 3. **Web Client ID** - Use this in your React Native configuration
 
 ### What You DON'T Need
+
 - OAuth secrets - Not needed for ID token verification
 - Redirect URIs - Not needed for mobile OAuth flows
 - Scopes - Handled by the Google Sign-In SDK
@@ -139,23 +145,27 @@ googleOAuth:
 ## API Endpoints
 
 ### POST /api/oauth/google/callback
+
 - **Purpose**: Verify Google ID token and authenticate user
 - **Input**: `{ "id_token": "google_id_token" }`
 - **Output**: User authentication result with session tokens
 
 ### GET /api/oauth/google (Deprecated)
+
 - **Status**: Returns `NOT_IMPLEMENTED`
 - **Reason**: OAuth URL generation moved to frontend
 
 ## Migration Guide
 
 ### For Frontend Developers
+
 1. Install `@react-native-google-signin/google-signin`
 2. Configure with your `webClientId`
 3. Use `GoogleSignin.signIn()` to get ID token
 4. Send ID token to `/api/oauth/google/callback`
 
 ### For Backend Developers
+
 1. Remove OAuth URL building logic
 2. Focus on ID token verification using `idtoken.Validate`
 3. Update configuration to only include `ClientID`
@@ -164,11 +174,13 @@ googleOAuth:
 ## Dependencies
 
 ### Go Dependencies
+
 ```go
 import "google.golang.org/api/idtoken"
 ```
 
 The `idtoken.Validate` function automatically:
+
 - Fetches and caches Google's public keys
 - Verifies JWT signatures
 - Checks token expiration
@@ -177,11 +189,13 @@ The `idtoken.Validate` function automatically:
 ## Testing
 
 ### Frontend Testing
+
 - Test Google Sign-In SDK integration
 - Verify ID token generation
 - Test error handling for failed sign-ins
 
 ### Backend Testing
+
 - Test ID token verification with valid tokens
 - Test rejection of invalid/expired tokens
 - Test audience validation
@@ -190,11 +204,13 @@ The `idtoken.Validate` function automatically:
 ## Troubleshooting
 
 ### Common Issues
+
 1. **"Invalid audience" error**: Check that `ClientID` matches your Google project
 2. **"Token expired" error**: Ensure tokens are sent promptly after generation
 3. **"Email not verified" error**: User must verify email with Google first
 
 ### Debug Steps
+
 1. Verify `ClientID` in configuration
 2. Check Google Cloud Console project settings
 3. Ensure Google Sign-In API is enabled

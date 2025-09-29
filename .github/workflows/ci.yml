@@ -2,15 +2,15 @@ name: Go CI Workflow
 
 on:
   push:
-    branches: 
-      - main 
+    branches:
+      - main
   pull_request:
-    branches: 
-      - main 
+    branches:
+      - main
   workflow_dispatch:
 
 env:
-  GO_VERSION: stable
+  GO_VERSION: 1.25
   GOLANGCI_LINT_VERSION: v2.1
   REGISTRY: ghcr.io
 
@@ -24,6 +24,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set environment variables
+        id: set-vars
         run: |
           # Get tag with fallback to commit hash
           if git describe --tags --abbrev=0 2>/dev/null; then
@@ -31,12 +32,12 @@ jobs:
           else
             echo "TAG=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
           fi
-          
+
           # Get lowercase repository name for Docker image
           echo "IMAGE_NAME=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
-        id: set-vars
 
       - name: Set up Go version
+        id: setup-go # Added ID to access its output
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -44,24 +45,11 @@ jobs:
           cache-dependency-path: go.mod
           check-latest: true
 
-      - name: Get actual Go version for cache
-        id: actual-go-version
-        run: |
-          # Get actual Go version for cache key
-          ACTUAL_VERSION=$(go version | awk '{print $3}')
-          echo "actual_version=$ACTUAL_VERSION" >> $GITHUB_OUTPUT
-          echo "Using Go version for cache: $ACTUAL_VERSION"
-
-      - name: golangci-lint
+      - name: Run Linter # Consolidated linting step
         uses: golangci/golangci-lint-action@v8
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
-
-      - name: Lint
-        run: |
-          go vet ./...
-          go fmt ./...
-          golangci-lint run
+          args: --timeout=5m --out-format colored-line-number
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -69,7 +57,7 @@ jobs:
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -87,6 +75,6 @@ jobs:
             BUILT=${{ github.event.head_commit.timestamp }}
             GIT_COMMIT=${{ github.sha }}
             IMAGE_NAME=${{ steps.set-vars.outputs.IMAGE_NAME }}
-          cache-from: type=gha,scope=go-${{ steps.actual-go-version.outputs.actual_version }}
-          cache-to: type=gha,mode=max,scope=go-${{ steps.actual-go-version.outputs.actual_version }}
-
+          # Simplified cache key using the setup-go step's output
+          cache-from: type=gha,scope=go-${{ steps.setup-go.outputs.go-version }}
+          cache-to: type=gha,mode=max,scope=go-${{ steps.setup-go.outputs.go-version }}

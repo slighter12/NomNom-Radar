@@ -14,13 +14,13 @@ RUN go mod download
 COPY . .
 
 # Static compilation to reduce dependencies
+# The flags -a and -installsuffix cgo are removed as they are unnecessary with CGO_ENABLED=0
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-w -s" \
-    -a -installsuffix cgo \
     -o main ./cmd/radar
 
 # Runtime stage - Use distroless image
-FROM gcr.io/distroless/static-debian11:nonroot
+FROM gcr.io/distroless/static-debian11:nonroot AS deployment
 
 # Copy necessary files
 COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
