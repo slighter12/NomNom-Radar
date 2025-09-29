@@ -1,8 +1,9 @@
 x-postgres-common:
   &postgres-common
-  image: postgres:17-alpine
+  image: postgres:18-alpine
   user: postgres
   restart: always
+  shm_size: 128mb
   healthcheck:
     test: ['CMD-SHELL', 'pg_isready -U user -d auth_db']
     interval: 10s
@@ -37,33 +38,43 @@ services:
       - radar-network
 
   postgres-replica:
-    <<: *postgres-common
+    image: postgres:18-alpine
     container_name: radar-postgres-replica
     ports:
       - "5433:5432"
     environment:
-      PGUSER: readonly_user
+      POSTGRES_USER: user
+      POSTGRES_DB: auth_db
+      POSTGRES_PASSWORD: password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
       PGPASSWORD: password
-    command: |
+      PGDATA: /var/lib/postgresql/data/18/main
+    entrypoint: |
       bash -c "
-      echo 'Starting replica setup...'
+      echo 'Setting up replica...'
       
-      # Clean up existing data directory if it exists and is not empty
-      if [ -d /var/lib/postgresql/data ] && [ \"\$(ls -A /var/lib/postgresql/data)\" ]; then
-        echo 'Cleaning up existing data directory...'
-        rm -rf /var/lib/postgresql/data/*
-      fi
-      
-      echo 'Waiting for master to be ready...'
-      until pg_basebackup --pgdata=/var/lib/postgresql/data -R --slot=replica_slot --host=postgres-master --port=5432 --username=user
-      do
-        echo 'Waiting for master to connect...'
-        sleep 2s
+      # Wait for master to be ready
+      until pg_isready -h postgres-master -p 5432 -U user; do
+        echo 'Waiting for master...'
+        sleep 2
       done
       
-      echo 'Backup done, starting replica...'
-      chmod 0700 /var/lib/postgresql/data
-      postgres
+      # Create directory structure
+      mkdir -p /var/lib/postgresql/data/18/main
+      
+      # Clean data directory
+      rm -rf /var/lib/postgresql/data/18/main/*
+      
+      # Perform base backup
+      echo 'Performing base backup...'
+      pg_basebackup -h postgres-master -p 5432 -U user -D /var/lib/postgresql/data/18/main -R --slot=replica_slot
+      
+      # Fix permissions
+      chown -R postgres:postgres /var/lib/postgresql/data
+      chmod 0700 /var/lib/postgresql/data/18/main
+      
+      echo 'Starting PostgreSQL replica...'
+      exec docker-entrypoint.sh postgres
       "
     volumes:
       - postgres_replica_data:/var/lib/postgresql/data
