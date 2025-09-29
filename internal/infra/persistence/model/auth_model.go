@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// AuthenticationModel is the GORM-specific struct for the 'user_authentications' table.
+// AuthenticationModel mirrors the 'user_authentications' table. UUID columns track provider credentials.
 type AuthenticationModel struct {
 	ID             uuid.UUID `gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
 	UserID         uuid.UUID `gorm:"type:uuid;not null"`
@@ -21,7 +21,7 @@ func (AuthenticationModel) TableName() string {
 	return "user_authentications"
 }
 
-// RefreshTokenModel is the GORM-specific struct for the 'refresh_tokens' table.
+// RefreshTokenModel mirrors the 'refresh_tokens' table. UUID columns align with PostgreSQL schema.
 type RefreshTokenModel struct {
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
 	UserID    uuid.UUID `gorm:"type:uuid;not null"`

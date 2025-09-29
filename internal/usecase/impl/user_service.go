@@ -32,6 +32,17 @@ type userService struct {
 	logger            *slog.Logger
 }
 
+type registrationConfig struct {
+	Name               string
+	Email              string
+	Password           string
+	Role               string
+	BuildNewUser       func() *entity.User
+	AttachProfile      func(*entity.User)
+	HasProfile         func(*entity.User) bool
+	ProfileExistsError func() error
+}
+
 // NewUserService is the constructor for userService. It receives all dependencies as interfaces.
 func NewUserService(
 	txManager repository.TransactionManager,
@@ -57,207 +68,195 @@ func NewUserService(
 
 // RegisterUser orchestrates the complete user registration process.
 func (srv *userService) RegisterUser(ctx context.Context, input *usecase.RegisterUserInput) (*usecase.RegisterOutput, error) {
-	srv.logger.Info("Starting user registration", "email", input.Email)
+	config := &registrationConfig{
+		Name:          input.Name,
+		Email:         input.Email,
+		Password:      input.Password,
+		Role:          "user",
+		BuildNewUser:  func() *entity.User { return buildNewUserEntity(input.Name, input.Email) },
+		AttachProfile: attachUserProfile,
+		HasProfile:    userHasUserProfile,
+		ProfileExistsError: func() error {
+			return domainerrors.ErrUserAlreadyExists.WrapMessage("user profile already registered for this account")
+		},
+	}
+
+	return srv.executeRegistration(ctx, config)
+}
+
+func (srv *userService) executeRegistration(ctx context.Context, cfg *registrationConfig) (*usecase.RegisterOutput, error) {
+	srv.logger.Info("Starting registration", "role", cfg.Role, "email", cfg.Email)
 
 	var registeredUser *entity.User
-	// Execute the entire creation process within a single database transaction
-	// to ensure data consistency (atomicity).
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
 		userRepo := repoFactory.NewUserRepository()
 		authRepo := repoFactory.NewAuthRepository()
 
-		// 1. Check if an authentication method with this email already exists.
-		authRecord, err := authRepo.FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email)
+		authRecord, err := authRepo.FindAuthentication(ctx, entity.ProviderTypeEmail, cfg.Email)
 		if errors.Is(err, repository.ErrAuthNotFound) {
-			// No authentication found, proceed with a brand new account and user profile.
-			if err := srv.hasher.ValidatePasswordStrength(input.Password); err != nil {
-				srv.logger.Warn("Password validation failed during registration", "email", input.Email, "error", err)
-
-				return errors.Wrap(domainerrors.ErrValidationFailed, "password does not meet security requirements")
-			}
-
-			hashedPassword, hashErr := srv.hasher.Hash(input.Password)
-			if hashErr != nil {
-				srv.logger.Error("Failed to hash password during registration", "error", hashErr)
-
-				return errors.Wrap(hashErr, "failed to hash password during registration")
-			}
-
-			newUser := &entity.User{
-				Name:        input.Name,
-				Email:       input.Email,
-				UserProfile: &entity.UserProfile{}, // Create an empty profile for the user role.
-			}
-
-			if err := userRepo.Create(ctx, newUser); err != nil {
-				return errors.WithStack(err)
-			}
-
-			newAuth := &entity.Authentication{
-				UserID:         newUser.ID,
-				Provider:       entity.ProviderTypeEmail,
-				ProviderUserID: input.Email,
-				PasswordHash:   hashedPassword,
-			}
-			if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
-				return errors.WithStack(err)
-			}
-			registeredUser = newUser
-
-			return nil
+			return srv.handleNewRegistration(ctx, cfg, userRepo, authRepo, &registeredUser)
 		}
-
 		if err != nil {
 			return errors.Wrap(err, "failed to find authentication")
 		}
 
-		// Existing account found – ensure the password matches before extending the roles.
-		if !srv.hasher.Check(input.Password, authRecord.PasswordHash) {
-			srv.logger.Warn("Password mismatch when attempting to attach user profile", "email", input.Email)
-
-			return errors.Wrap(domainerrors.ErrInvalidCredentials, "password mismatch during user registration")
-		}
-
-		existingUser, err := userRepo.FindByID(ctx, authRecord.UserID)
-		if err != nil {
-			return errors.Wrap(err, "failed to load existing user for user registration")
-		}
-
-		if existingUser.UserProfile != nil {
-			srv.logger.Warn("User profile already exists for account", "userID", existingUser.ID)
-
-			return domainerrors.ErrUserAlreadyExists.WrapMessage("user profile already registered for this account")
-		}
-
-		if input.Name != "" {
-			existingUser.Name = input.Name
-		}
-
-		existingUser.UserProfile = &entity.UserProfile{
-			UserID: existingUser.ID,
-		}
-
-		if err := userRepo.Update(ctx, existingUser); err != nil {
-			return errors.WithStack(err)
-		}
-
-		srv.logger.Debug("Attached user profile to existing account", "userID", existingUser.ID)
-		registeredUser = existingUser
-
-		return nil
+		return srv.handleExistingAccountRegistration(ctx, cfg, userRepo, authRecord, &registeredUser)
 	})
 
 	if err != nil {
-		srv.logger.Error("Failed to execute user registration transaction", "error", err, "email", input.Email)
+		srv.logger.Error("Failed to execute registration transaction", "role", cfg.Role, "email", cfg.Email, "error", err)
 
 		return nil, errors.Wrap(err, "failed to execute user registration transaction")
 	}
-	srv.logger.Debug("User registered successfully", "userID", registeredUser.ID)
+
+	srv.logger.Debug("Registration completed", "role", cfg.Role, "userID", registeredUser.ID)
 
 	return &usecase.RegisterOutput{User: registeredUser}, nil
 }
 
-// RegisterMerchant orchestrates the complete merchant registration process.
-func (srv *userService) RegisterMerchant(ctx context.Context, input *usecase.RegisterMerchantInput) (*usecase.RegisterOutput, error) {
-	srv.logger.Info("Starting merchant registration", "email", input.Email)
+func (srv *userService) handleNewRegistration(
+	ctx context.Context,
+	cfg *registrationConfig,
+	userRepo repository.UserRepository,
+	authRepo repository.AuthRepository,
+	registeredUser **entity.User,
+) error {
+	if err := srv.hasher.ValidatePasswordStrength(cfg.Password); err != nil {
+		srv.logger.Warn("Password validation failed during registration", "role", cfg.Role, "email", cfg.Email, "error", err)
 
-	var registeredUser *entity.User
-	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		userRepo := repoFactory.NewUserRepository()
-		authRepo := repoFactory.NewAuthRepository()
+		return errors.Wrap(domainerrors.ErrValidationFailed, "password does not meet security requirements")
+	}
 
-		authRecord, err := authRepo.FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email)
-		if errors.Is(err, repository.ErrAuthNotFound) {
-			if err := srv.hasher.ValidatePasswordStrength(input.Password); err != nil {
-				srv.logger.Warn("Password validation failed during merchant registration", "email", input.Email, "error", err)
+	hashedPassword, err := srv.hasher.Hash(cfg.Password)
+	if err != nil {
+		srv.logger.Error("Failed to hash password during registration", "role", cfg.Role, "error", err)
 
-				return errors.Wrap(domainerrors.ErrValidationFailed, "password does not meet security requirements")
-			}
+		return errors.Wrap(err, "failed to hash password during registration")
+	}
 
-			hashedPassword, hashErr := srv.hasher.Hash(input.Password)
-			if hashErr != nil {
-				srv.logger.Error("Failed to hash password during registration", "error", hashErr)
+	newUser := cfg.BuildNewUser()
+	if newUser.Name == "" {
+		newUser.Name = cfg.Name
+	}
+	newUser.Email = cfg.Email
 
-				return errors.Wrap(hashErr, "failed to hash password during registration")
-			}
+	if err := userRepo.Create(ctx, newUser); err != nil {
+		return errors.WithStack(err)
+	}
 
-			newUser := &entity.User{
-				Name:  input.Name,
-				Email: input.Email,
-				MerchantProfile: &entity.MerchantProfile{
-					StoreName:       input.StoreName,
-					BusinessLicense: input.BusinessLicense,
-				},
-			}
+	newAuth := &entity.Authentication{
+		UserID:         newUser.ID,
+		Provider:       entity.ProviderTypeEmail,
+		ProviderUserID: cfg.Email,
+		PasswordHash:   hashedPassword,
+	}
 
-			if err := userRepo.Create(ctx, newUser); err != nil {
-				return errors.WithStack(err)
-			}
+	if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
+		return errors.WithStack(err)
+	}
 
-			newAuth := &entity.Authentication{
-				UserID:         newUser.ID,
-				Provider:       entity.ProviderTypeEmail,
-				ProviderUserID: input.Email,
-				PasswordHash:   hashedPassword,
-			}
-			if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
-				return errors.WithStack(err)
-			}
-			registeredUser = newUser
+	*registeredUser = newUser
 
-			return nil
-		}
+	return nil
+}
 
-		if err != nil {
-			return errors.Wrap(err, "failed to find authentication")
-		}
+func (srv *userService) handleExistingAccountRegistration(
+	ctx context.Context,
+	cfg *registrationConfig,
+	userRepo repository.UserRepository,
+	authRecord *entity.Authentication,
+	registeredUser **entity.User,
+) error {
+	if !srv.hasher.Check(cfg.Password, authRecord.PasswordHash) {
+		srv.logger.Warn("Password mismatch when attaching profile", "role", cfg.Role, "email", cfg.Email)
 
-		if !srv.hasher.Check(input.Password, authRecord.PasswordHash) {
-			srv.logger.Warn("Password mismatch when attempting to attach merchant profile", "email", input.Email)
+		return errors.Wrap(domainerrors.ErrInvalidCredentials, "password mismatch during registration")
+	}
 
-			return errors.Wrap(domainerrors.ErrInvalidCredentials, "password mismatch during merchant registration")
-		}
+	existingUser, err := userRepo.FindByID(ctx, authRecord.UserID)
+	if err != nil {
+		return errors.Wrap(err, "failed to load existing user for registration")
+	}
 
-		existingUser, err := userRepo.FindByID(ctx, authRecord.UserID)
-		if err != nil {
-			return errors.Wrap(err, "failed to load existing user for merchant registration")
-		}
+	if cfg.HasProfile(existingUser) {
+		srv.logger.Warn("Profile already exists for account", "role", cfg.Role, "userID", existingUser.ID)
 
-		if existingUser.MerchantProfile != nil {
-			srv.logger.Warn("Merchant profile already exists for account", "userID", existingUser.ID)
+		return cfg.ProfileExistsError()
+	}
 
-			return errors.Wrap(domainerrors.ErrMerchantAlreadyExists, "merchant profile already registered for this account")
-		}
+	if cfg.Name != "" {
+		existingUser.Name = cfg.Name
+	}
 
-		if input.Name != "" {
-			existingUser.Name = input.Name
-		}
+	cfg.AttachProfile(existingUser)
 
-		merchantProfile := &entity.MerchantProfile{
-			UserID:          existingUser.ID,
+	if err := userRepo.Update(ctx, existingUser); err != nil {
+		return errors.WithStack(err)
+	}
+
+	srv.logger.Debug("Attached profile to existing account", "role", cfg.Role, "userID", existingUser.ID)
+	*registeredUser = existingUser
+
+	return nil
+}
+
+func buildNewUserEntity(name, email string) *entity.User {
+	return &entity.User{
+		Name:        name,
+		Email:       email,
+		UserProfile: &entity.UserProfile{},
+	}
+}
+
+func buildNewMerchantEntity(input *usecase.RegisterMerchantInput) *entity.User {
+	return &entity.User{
+		Name:  input.Name,
+		Email: input.Email,
+		MerchantProfile: &entity.MerchantProfile{
+			StoreName:       input.StoreName,
+			BusinessLicense: input.BusinessLicense,
+		},
+	}
+}
+
+func attachUserProfile(user *entity.User) {
+	user.UserProfile = &entity.UserProfile{UserID: user.ID}
+}
+
+func attachMerchantProfile(input *usecase.RegisterMerchantInput) func(*entity.User) {
+	return func(user *entity.User) {
+		user.MerchantProfile = &entity.MerchantProfile{
+			UserID:          user.ID,
 			StoreName:       input.StoreName,
 			BusinessLicense: input.BusinessLicense,
 		}
-		existingUser.MerchantProfile = merchantProfile
-
-		if err := userRepo.Update(ctx, existingUser); err != nil {
-			return errors.WithStack(err)
-		}
-
-		srv.logger.Debug("Attached merchant profile to existing account", "userID", existingUser.ID)
-		registeredUser = existingUser
-
-		return nil
-	})
-
-	if err != nil {
-		srv.logger.Error("Failed to execute merchant registration transaction", "error", err, "email", input.Email)
-
-		return nil, errors.Wrap(err, "failed to execute merchant registration transaction")
 	}
-	srv.logger.Debug("Merchant registered successfully", "userID", registeredUser.ID)
+}
 
-	return &usecase.RegisterOutput{User: registeredUser}, nil
+func userHasUserProfile(user *entity.User) bool {
+	return user.UserProfile != nil
+}
+
+func userHasMerchantProfile(user *entity.User) bool {
+	return user.MerchantProfile != nil
+}
+
+// RegisterMerchant orchestrates the complete merchant registration process.
+func (srv *userService) RegisterMerchant(ctx context.Context, input *usecase.RegisterMerchantInput) (*usecase.RegisterOutput, error) {
+	config := &registrationConfig{
+		Name:          input.Name,
+		Email:         input.Email,
+		Password:      input.Password,
+		Role:          "merchant",
+		BuildNewUser:  func() *entity.User { return buildNewMerchantEntity(input) },
+		AttachProfile: attachMerchantProfile(input),
+		HasProfile:    userHasMerchantProfile,
+		ProfileExistsError: func() error {
+			return errors.Wrap(domainerrors.ErrMerchantAlreadyExists, "merchant profile already registered for this account")
+		},
+	}
+
+	return srv.executeRegistration(ctx, config)
 }
 
 // Login orchestrates the user login process.

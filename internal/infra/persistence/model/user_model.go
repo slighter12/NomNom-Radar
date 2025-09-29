@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// UserModel is the GORM-specific struct for the 'users' table.
+// UserModel mirrors the 'users' table. PostgreSQL generates UUIDs via uuid_generate_v4().
 // It is an exported type so it can be used by the GORM Gen tool from other packages.
 type UserModel struct {
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
@@ -26,7 +26,7 @@ func (UserModel) TableName() string {
 	return "users"
 }
 
-// UserProfileModel is the GORM-specific struct for the 'user_profiles' table.
+// UserProfileModel mirrors the 'user_profiles' table. UserID references users.id (UUID).
 type UserProfileModel struct {
 	UserID        uuid.UUID       `gorm:"primaryKey"`
 	Addresses     []*AddressModel `gorm:"polymorphic:Owner;"`
@@ -39,7 +39,7 @@ func (UserProfileModel) TableName() string {
 	return "user_profiles"
 }
 
-// MerchantProfileModel is the GORM-specific struct for the 'merchant_profiles' table.
+// MerchantProfileModel mirrors the 'merchant_profiles' table. UserID references users.id (UUID).
 type MerchantProfileModel struct {
 	UserID           uuid.UUID       `gorm:"primaryKey"`
 	Addresses        []*AddressModel `gorm:"polymorphic:Owner;"`
