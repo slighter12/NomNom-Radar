@@ -41,7 +41,7 @@ func (srv *profileService) GetProfile(ctx context.Context, userID uuid.UUID) (*e
 	var user *entity.User
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		userRepo := repoFactory.NewUserRepository()
+		userRepo := repoFactory.UserRepo()
 
 		foundUser, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
@@ -68,7 +68,7 @@ func (srv *profileService) UpdateUserProfile(ctx context.Context, userID uuid.UU
 	srv.logger.Info("Updating user profile", "userID", userID)
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		userRepo := repoFactory.NewUserRepository()
+		userRepo := repoFactory.UserRepo()
 
 		// 1. Find the user
 		user, err := userRepo.FindByID(ctx, userID)
@@ -110,7 +110,7 @@ func (srv *profileService) UpdateMerchantProfile(ctx context.Context, userID uui
 	srv.logger.Info("Updating merchant profile", "userID", userID)
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		userRepo := repoFactory.NewUserRepository()
+		userRepo := repoFactory.UserRepo()
 
 		// 1. Find the user
 		user, err := userRepo.FindByID(ctx, userID)
@@ -158,7 +158,7 @@ func (srv *profileService) SwitchToMerchant(ctx context.Context, userID uuid.UUI
 	srv.logger.Info("Switching user to merchant", "userID", userID)
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		userRepo := repoFactory.NewUserRepository()
+		userRepo := repoFactory.UserRepo()
 
 		// 1. Find the user
 		user, err := userRepo.FindByID(ctx, userID)
@@ -206,7 +206,7 @@ func (srv *profileService) GetUserRole(ctx context.Context, userID uuid.UUID) ([
 	var roles []string
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		userRepo := repoFactory.NewUserRepository()
+		userRepo := repoFactory.UserRepo()
 
 		user, err := userRepo.FindByID(ctx, userID)
 		if err != nil {

@@ -14,15 +14,12 @@ type TransactionManager interface {
 // RepositoryFactory provides a way to get repository instances that are bound to a specific transaction.
 // This ensures all repository operations within a transaction use the same database connection.
 type RepositoryFactory interface {
-	// NewUserRepository returns a UserRepository instance bound to the current transaction.
-	NewUserRepository() UserRepository
-
-	// NewAuthRepository returns an AuthRepository instance bound to the current transaction.
-	NewAuthRepository() AuthRepository
-
-	// NewAddressRepository returns an AddressRepository instance bound to the current transaction.
-	NewAddressRepository() AddressRepository
-
-	// NewRefreshTokenRepository returns a RefreshTokenRepository instance bound to the current transaction.
-	NewRefreshTokenRepository() RefreshTokenRepository
+	// UserRepo returns a UserRepo instance bound to the current transaction.
+	UserRepo() UserRepository
+	// AuthRepo returns an AuthRepo instance bound to the current transaction.
+	AuthRepo() AuthRepository
+	// AddressRepo returns an AddressRepo instance bound to the current transaction.
+	AddressRepo() AddressRepository
+	// RefreshTokenRepo returns a RefreshTokenRepo instance bound to the current transaction.
+	RefreshTokenRepo() RefreshTokenRepository
 }

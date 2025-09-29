@@ -89,8 +89,8 @@ func (srv *userService) executeRegistration(ctx context.Context, cfg *registrati
 
 	var registeredUser *entity.User
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		userRepo := repoFactory.NewUserRepository()
-		authRepo := repoFactory.NewAuthRepository()
+		userRepo := repoFactory.UserRepo()
+		authRepo := repoFactory.AuthRepo()
 
 		authRecord, err := authRepo.FindAuthentication(ctx, entity.ProviderTypeEmail, cfg.Email)
 		if errors.Is(err, repository.ErrAuthNotFound) {
@@ -270,9 +270,9 @@ func (srv *userService) Login(ctx context.Context, input *usecase.LoginInput) (*
 	// Login involves multiple steps, so we use a transaction to ensure atomicity,
 	// especially for creating the new refresh token.
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		authRepo := repoFactory.NewAuthRepository()
-		userRepo := repoFactory.NewUserRepository()
-		refreshRepo := repoFactory.NewRefreshTokenRepository()
+		authRepo := repoFactory.AuthRepo()
+		userRepo := repoFactory.UserRepo()
+		refreshRepo := repoFactory.RefreshTokenRepo()
 
 		// 1. Find the authentication method.
 		authRecord, err := authRepo.FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email)
@@ -349,8 +349,8 @@ func (srv *userService) RefreshToken(ctx context.Context, input *usecase.Refresh
 	var newAccessToken string
 
 	err = srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		userRepo := repoFactory.NewUserRepository()
-		refreshRepo := repoFactory.NewRefreshTokenRepository()
+		userRepo := repoFactory.UserRepo()
+		refreshRepo := repoFactory.RefreshTokenRepo()
 
 		// 1. Verify the refresh token exists in the database.
 		tokenHash := srv.tokenService.HashToken(input.RefreshToken)
@@ -474,8 +474,8 @@ func (srv *userService) handleGoogleUserAuth(ctx context.Context, oauthUser *ser
 
 // findOrCreateGoogleUser finds existing user or creates new one for Google authentication
 func (srv *userService) findOrCreateGoogleUser(ctx context.Context, repoFactory repository.RepositoryFactory, oauthUser *service.OAuthUser) (*entity.User, error) {
-	authRepo := repoFactory.NewAuthRepository()
-	userRepo := repoFactory.NewUserRepository()
+	authRepo := repoFactory.AuthRepo()
+	userRepo := repoFactory.UserRepo()
 
 	// Try to find existing authentication record
 	authRecord, err := authRepo.FindAuthentication(ctx, entity.ProviderTypeGoogle, oauthUser.ID)
@@ -559,7 +559,7 @@ func (srv *userService) extractUserRoles(user *entity.User) []string {
 
 // storeRefreshToken stores the refresh token in the database
 func (srv *userService) storeRefreshToken(ctx context.Context, repoFactory repository.RepositoryFactory, userID uuid.UUID, refreshTokenString string) error {
-	refreshRepo := repoFactory.NewRefreshTokenRepository()
+	refreshRepo := repoFactory.RefreshTokenRepo()
 
 	// Hash the refresh token
 	refreshTokenHash := srv.tokenService.HashToken(refreshTokenString)
@@ -612,7 +612,7 @@ func (srv *userService) RevokeSession(ctx context.Context, userID, tokenID uuid.
 	srv.logger.Info("Attempting to revoke session", "userID", userID, "tokenID", tokenID)
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		refreshRepo := repoFactory.NewRefreshTokenRepository()
+		refreshRepo := repoFactory.RefreshTokenRepo()
 
 		// Verify the token belongs to the user before deleting
 		token, err := refreshRepo.FindRefreshTokenByID(ctx, tokenID)
@@ -667,8 +667,8 @@ func (srv *userService) LinkGoogleAccount(ctx context.Context, userID uuid.UUID,
 
 // performGoogleAccountLinking handles the core logic for linking a Google account
 func (srv *userService) performGoogleAccountLinking(ctx context.Context, repoFactory repository.RepositoryFactory, userID uuid.UUID, oauthUser *service.OAuthUser) error {
-	authRepo := repoFactory.NewAuthRepository()
-	userRepo := repoFactory.NewUserRepository()
+	authRepo := repoFactory.AuthRepo()
+	userRepo := repoFactory.UserRepo()
 
 	// 1. Verify the user exists
 	user, err := userRepo.FindByID(ctx, userID)
@@ -750,7 +750,7 @@ func (srv *userService) UnlinkGoogleAccount(ctx context.Context, userID uuid.UUI
 	srv.logger.Info("Unlinking Google account from user", "userID", userID)
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		authRepo := repoFactory.NewAuthRepository()
+		authRepo := repoFactory.AuthRepo()
 
 		// 1. Find the user's Google authentication
 		googleAuth, err := authRepo.FindAuthenticationByUserIDAndProvider(ctx, userID, entity.ProviderTypeGoogle)

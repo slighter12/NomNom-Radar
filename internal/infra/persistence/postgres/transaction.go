@@ -24,23 +24,23 @@ type gormRepositoryFactory struct {
 	tx *gorm.DB // In GORM, a transaction object *gorm.Tx is also a *gorm.DB
 }
 
-// NewUserRepository creates a new user repository instance bound to the transaction.
-func (f *gormRepositoryFactory) NewUserRepository() repository.UserRepository {
+// UserRepo creates a new user repository instance bound to the transaction.
+func (f *gormRepositoryFactory) UserRepo() repository.UserRepository {
 	return NewUserRepository(f.tx)
 }
 
-// NewAuthRepository creates a new auth repository instance bound to the transaction.
-func (f *gormRepositoryFactory) NewAuthRepository() repository.AuthRepository {
+// AuthRepo creates a new auth repository instance bound to the transaction.
+func (f *gormRepositoryFactory) AuthRepo() repository.AuthRepository {
 	return NewAuthRepository(f.tx)
 }
 
-// NewAddressRepository creates a new address repository instance bound to the transaction.
-func (f *gormRepositoryFactory) NewAddressRepository() repository.AddressRepository {
+// AddressRepo creates a new address repository instance bound to the transaction.
+func (f *gormRepositoryFactory) AddressRepo() repository.AddressRepository {
 	return NewAddressRepository(f.tx)
 }
 
-// NewRefreshTokenRepository creates a new refresh token repository instance bound to the transaction.
-func (f *gormRepositoryFactory) NewRefreshTokenRepository() repository.RefreshTokenRepository {
+// RefreshTokenRepo creates a new refresh token repository instance bound to the transaction.
+func (f *gormRepositoryFactory) RefreshTokenRepo() repository.RefreshTokenRepository {
 	return NewRefreshTokenRepository(f.tx)
 }
 

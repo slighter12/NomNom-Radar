@@ -42,8 +42,8 @@ func (srv *sessionService) GetActiveSessions(ctx context.Context, userID uuid.UU
 	var sessions []*entity.SessionInfo
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		userRepo := repoFactory.NewUserRepository()
-		refreshRepo := repoFactory.NewRefreshTokenRepository()
+		userRepo := repoFactory.UserRepo()
+		refreshRepo := repoFactory.RefreshTokenRepo()
 
 		// 1. Verify user exists
 		_, err := userRepo.FindByID(ctx, userID)
@@ -92,8 +92,8 @@ func (srv *sessionService) RevokeSession(ctx context.Context, userID, sessionID 
 	srv.logger.Info("Revoking session", "userID", userID, "sessionID", sessionID)
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		userRepo := repoFactory.NewUserRepository()
-		refreshRepo := repoFactory.NewRefreshTokenRepository()
+		userRepo := repoFactory.UserRepo()
+		refreshRepo := repoFactory.RefreshTokenRepo()
 
 		// 1. Verify user exists
 		_, err := userRepo.FindByID(ctx, userID)
@@ -143,8 +143,8 @@ func (srv *sessionService) RevokeAllSessions(ctx context.Context, userID uuid.UU
 	srv.logger.Info("Revoking all sessions", "userID", userID)
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		userRepo := repoFactory.NewUserRepository()
-		refreshRepo := repoFactory.NewRefreshTokenRepository()
+		userRepo := repoFactory.UserRepo()
+		refreshRepo := repoFactory.RefreshTokenRepo()
 
 		// 1. Verify user exists
 		_, err := userRepo.FindByID(ctx, userID)
@@ -179,8 +179,8 @@ func (srv *sessionService) RevokeAllOtherSessions(ctx context.Context, userID uu
 	srv.logger.Info("Revoking all other sessions", "userID", userID, "currentSessionID", currentSessionID)
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		userRepo := repoFactory.NewUserRepository()
-		refreshRepo := repoFactory.NewRefreshTokenRepository()
+		userRepo := repoFactory.UserRepo()
+		refreshRepo := repoFactory.RefreshTokenRepo()
 
 		// 1. Verify user exists
 		_, err := userRepo.FindByID(ctx, userID)
@@ -228,8 +228,8 @@ func (srv *sessionService) GetSessionInfo(ctx context.Context, userID, sessionID
 	var sessionInfo *entity.SessionInfo
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		userRepo := repoFactory.NewUserRepository()
-		refreshRepo := repoFactory.NewRefreshTokenRepository()
+		userRepo := repoFactory.UserRepo()
+		refreshRepo := repoFactory.RefreshTokenRepo()
 
 		// 1. Verify user exists
 		_, err := userRepo.FindByID(ctx, userID)
@@ -287,7 +287,7 @@ func (srv *sessionService) CleanupExpiredSessions(ctx context.Context) (int, err
 	var deletedCount int
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		refreshRepo := repoFactory.NewRefreshTokenRepository()
+		refreshRepo := repoFactory.RefreshTokenRepo()
 
 		// Delete expired sessions
 		if err := refreshRepo.DeleteExpiredRefreshTokens(ctx); err != nil {
@@ -318,8 +318,8 @@ func (srv *sessionService) DetectAnomalousActivity(ctx context.Context, userID u
 	var anomalies []*entity.AnomalousActivity
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		userRepo := repoFactory.NewUserRepository()
-		refreshRepo := repoFactory.NewRefreshTokenRepository()
+		userRepo := repoFactory.UserRepo()
+		refreshRepo := repoFactory.RefreshTokenRepo()
 
 		// 1. Verify user exists
 		_, err := userRepo.FindByID(ctx, userID)
@@ -447,8 +447,8 @@ func (srv *sessionService) GetSessionStatistics(ctx context.Context, userID uuid
 	var stats *entity.SessionStatistics
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		userRepo := repoFactory.NewUserRepository()
-		refreshRepo := repoFactory.NewRefreshTokenRepository()
+		userRepo := repoFactory.UserRepo()
+		refreshRepo := repoFactory.RefreshTokenRepo()
 
 		// 1. Verify user exists
 		_, err := userRepo.FindByID(ctx, userID)
