@@ -1,7 +1,7 @@
 .PHONY: help test-race lint \
-	sec-scan trivy-scan vuln-scan \
-	db-postgres-init db-postgres-seeders-init \
-	db-postgres-create db-postgres-up db-postgres-down \
+    sec-scan trivy-scan vuln-scan \
+    db-postgres-init db-postgres-seeders-init \
+    db-postgres-create db-postgres-up db-postgres-down db-postgres-down-all \
 	gci-format build docker-image-build \
 	docker-up docker-down docker-logs docker-clean
 
@@ -92,6 +92,14 @@ db-postgres-down: ## revert all PostgreSQL migrations
 		PG_PORT=$${PG_PORT:-5432} && \
 		PG_URI="postgres://${POSTGRES_DB_USER}:${POSTGRES_DB_PASSWORD}@localhost:${PG_PORT}/${POSTGRES_DB_NAME}?sslmode=disable" && \
 		goose postgres "$${PG_URI}" -dir ${POSTGRES_SQL_PATH} down \
+	)
+
+db-postgres-down-all: ## revert PostgreSQL migrations down to version 0 (drops all applied migrations)
+	@( \
+		printf "Enter port(5432...): "; read -r PG_PORT && \
+		PG_PORT=$${PG_PORT:-5432} && \
+		PG_URI="postgres://${POSTGRES_DB_USER}:${POSTGRES_DB_PASSWORD}@localhost:${PG_PORT}/${POSTGRES_DB_NAME}?sslmode=disable" && \
+		goose postgres "$${PG_URI}" -dir ${POSTGRES_SQL_PATH} down-to 0 \
 	)
 
 db-postgres-test-replication: ## test replication
