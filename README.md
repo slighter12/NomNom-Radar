@@ -30,7 +30,7 @@ Follow these instructions to get a local copy up and running for development and
 
 ### Prerequisites
 
-* [Go](https://go.dev/doc/install) (e.g., v1.21 or later)
+* [Go](https://go.dev/doc/install) (e.g., v1.25 or later)
 * [Docker](https://www.docker.com/) and [Docker Compose](https://docs.docker.com/compose/)
 * A [Firebase](https://firebase.google.com/) project for push notifications.
 
@@ -41,6 +41,39 @@ Follow these instructions to get a local copy up and running for development and
 ```bash
 git clone https://github.com/slighter12/NomNom-Radar.git
 cd NomNom-Radar
+```
+
+2. **Install dependencies:**
+
+```bash
+go mod download
+```
+
+3. **Set up the database:**
+
+Make sure you have PostgreSQL with PostGIS extension installed and running.
+
+4. **Configure environment variables:**
+
+Copy the example config and update with your settings:
+
+```bash
+cp config.example.yaml config.yaml
+# Edit config.yaml with your database credentials and Firebase settings
+```
+
+5. **Run the application:**
+
+```bash
+go run cmd/server/main.go
+```
+
+## 🧪 Testing
+
+This project uses [mockery](https://github.com/vektra/mockery) to generate mocks. To regenerate mocks after interface changes:
+
+```bash
+mockery
 ```
 
 ## 🤔 How It Works
