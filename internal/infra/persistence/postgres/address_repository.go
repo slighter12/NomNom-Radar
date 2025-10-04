@@ -204,6 +204,7 @@ func toAddressDomain(data *model.AddressModel) *entity.Address {
 		Latitude:    data.Latitude,
 		Longitude:   data.Longitude,
 		IsPrimary:   data.IsPrimary,
+		IsActive:    data.IsActive,
 		CreatedAt:   data.CreatedAt,
 		UpdatedAt:   data.UpdatedAt,
 	}
@@ -222,6 +223,7 @@ func fromAddressDomain(data *entity.Address) *model.AddressModel {
 		Latitude:    data.Latitude,
 		Longitude:   data.Longitude,
 		IsPrimary:   data.IsPrimary,
+		IsActive:    data.IsActive,
 		CreatedAt:   data.CreatedAt,
 		UpdatedAt:   data.UpdatedAt,
 	}

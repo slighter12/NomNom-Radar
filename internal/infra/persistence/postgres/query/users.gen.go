@@ -32,7 +32,7 @@ func newUserModel(db *gorm.DB, opts ...gen.DOOption) userModel {
 	_userModel.Name = field.NewString(tableName, "name")
 	_userModel.CreatedAt = field.NewTime(tableName, "created_at")
 	_userModel.UpdatedAt = field.NewTime(tableName, "updated_at")
-	_userModel.DeletedAt = field.NewTime(tableName, "deleted_at")
+	_userModel.DeletedAt = field.NewField(tableName, "deleted_at")
 	_userModel.UserProfile = userModelHasOneUserProfile{
 		db: db.Session(&gorm.Session{}),
 
@@ -81,7 +81,7 @@ type userModel struct {
 	Name        field.String
 	CreatedAt   field.Time
 	UpdatedAt   field.Time
-	DeletedAt   field.Time
+	DeletedAt   field.Field
 	UserProfile userModelHasOneUserProfile
 
 	MerchantProfile userModelHasOneMerchantProfile
@@ -110,7 +110,7 @@ func (u *userModel) updateTableName(table string) *userModel {
 	u.Name = field.NewString(table, "name")
 	u.CreatedAt = field.NewTime(table, "created_at")
 	u.UpdatedAt = field.NewTime(table, "updated_at")
-	u.DeletedAt = field.NewTime(table, "deleted_at")
+	u.DeletedAt = field.NewField(table, "deleted_at")
 
 	u.fillFieldMap()
 

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // UserModel mirrors the 'users' table. PostgreSQL generates UUIDs via uuid_generate_v7().
@@ -14,7 +15,7 @@ type UserModel struct {
 	Name      string    `gorm:"type:varchar(100)"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
-	DeletedAt *time.Time `gorm:"index"`
+	DeletedAt gorm.DeletedAt `gorm:"index"`
 
 	UserProfile     *UserProfileModel     `gorm:"foreignKey:UserID"`
 	MerchantProfile *MerchantProfileModel `gorm:"foreignKey:UserID"`

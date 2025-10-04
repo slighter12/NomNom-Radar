@@ -38,7 +38,7 @@ func newAddressModel(db *gorm.DB, opts ...gen.DOOption) addressModel {
 	_addressModel.IsActive = field.NewBool(tableName, "is_active")
 	_addressModel.CreatedAt = field.NewTime(tableName, "created_at")
 	_addressModel.UpdatedAt = field.NewTime(tableName, "updated_at")
-	_addressModel.DeletedAt = field.NewTime(tableName, "deleted_at")
+	_addressModel.DeletedAt = field.NewField(tableName, "deleted_at")
 
 	_addressModel.fillFieldMap()
 
@@ -60,7 +60,7 @@ type addressModel struct {
 	IsActive          field.Bool
 	CreatedAt         field.Time
 	UpdatedAt         field.Time
-	DeletedAt         field.Time
+	DeletedAt         field.Field
 
 	fieldMap map[string]field.Expr
 }
@@ -88,7 +88,7 @@ func (a *addressModel) updateTableName(table string) *addressModel {
 	a.IsActive = field.NewBool(table, "is_active")
 	a.CreatedAt = field.NewTime(table, "created_at")
 	a.UpdatedAt = field.NewTime(table, "updated_at")
-	a.DeletedAt = field.NewTime(table, "deleted_at")
+	a.DeletedAt = field.NewField(table, "deleted_at")
 
 	a.fillFieldMap()
 

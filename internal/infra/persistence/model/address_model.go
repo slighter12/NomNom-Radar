@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // AddressModel is the GORM-specific struct for the 'addresses' table.
@@ -87,7 +88,7 @@ type AddressModel struct {
 	IsActive  bool `gorm:"not null;default:true"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
-	DeletedAt *time.Time `gorm:"index"`
+	DeletedAt gorm.DeletedAt `gorm:"index"`
 }
 
 // IsUserAddress returns true if this address belongs to a user profile
