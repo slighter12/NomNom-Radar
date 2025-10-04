@@ -53,6 +53,12 @@ type Config struct {
 
 	// LocationNotification configuration for location notification system
 	LocationNotification *LocationNotificationConfig `json:"locationNotification" yaml:"locationNotification"`
+
+	// Firebase configuration for push notifications
+	Firebase *FirebaseConfig `json:"firebase" yaml:"firebase"`
+
+	// QRCode configuration for subscription QR codes
+	QRCode *QRCodeConfig `json:"qrcode" yaml:"qrcode"`
 }
 
 type GoogleOAuthConfig struct {
@@ -95,6 +101,19 @@ type LocationNotificationConfig struct {
 	MerchantMaxLocations int     `json:"merchantMaxLocations" yaml:"merchantMaxLocations"`
 	DefaultRadius        float64 `json:"defaultRadius" yaml:"defaultRadius"`
 	MaxRadius            float64 `json:"maxRadius" yaml:"maxRadius"`
+}
+
+// FirebaseConfig defines Firebase configuration for push notifications
+type FirebaseConfig struct {
+	ProjectID       string `json:"projectId" yaml:"projectId"`
+	CredentialsPath string `json:"credentialsPath" yaml:"credentialsPath"`
+}
+
+// QRCodeConfig defines QR code generation configuration
+type QRCodeConfig struct {
+	Size                 int    `json:"size" yaml:"size"`
+	ErrorCorrectionLevel string `json:"errorCorrectionLevel" yaml:"errorCorrectionLevel"`
+	BaseURL              string `json:"baseUrl" yaml:"baseUrl"`
 }
 
 // LoadWithEnv loads .yaml files through koanf.

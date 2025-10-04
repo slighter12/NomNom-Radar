@@ -3,6 +3,7 @@ package impl
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"radar/internal/domain/entity"
@@ -35,7 +36,7 @@ func (s *deviceService) RegisterDevice(ctx context.Context, userID uuid.UUID, de
 	// Check if device already exists for this user
 	devices, err := s.deviceRepo.FindDevicesByUser(ctx, userID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to find devices by user: %w", err)
 	}
 
 	// Look for existing device with same device_id
@@ -43,10 +44,15 @@ func (s *deviceService) RegisterDevice(ctx context.Context, userID uuid.UUID, de
 		if device.DeviceID == deviceInfo.DeviceID {
 			// Update FCM token for existing device
 			if err := s.deviceRepo.UpdateFCMToken(ctx, device.ID, deviceInfo.FCMToken); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to update FCM token: %w", err)
 			}
 			// Fetch and return updated device
-			return s.deviceRepo.FindDeviceByID(ctx, device.ID)
+			updatedDevice, err := s.deviceRepo.FindDeviceByID(ctx, device.ID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to find device by ID: %w", err)
+			}
+
+			return updatedDevice, nil
 		}
 	}
 
@@ -63,7 +69,7 @@ func (s *deviceService) RegisterDevice(ctx context.Context, userID uuid.UUID, de
 	}
 
 	if err := s.deviceRepo.CreateDevice(ctx, device); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create device: %w", err)
 	}
 
 	return device, nil
@@ -77,7 +83,8 @@ func (s *deviceService) UpdateFCMToken(ctx context.Context, userID uuid.UUID, de
 		if errors.Is(err, repository.ErrDeviceNotFound) {
 			return ErrDeviceNotFound
 		}
-		return err
+
+		return fmt.Errorf("failed to find device by ID: %w", err)
 	}
 
 	// Verify ownership
@@ -85,12 +92,21 @@ func (s *deviceService) UpdateFCMToken(ctx context.Context, userID uuid.UUID, de
 		return ErrDeviceUnauthorized
 	}
 
-	return s.deviceRepo.UpdateFCMToken(ctx, deviceID, fcmToken)
+	if err := s.deviceRepo.UpdateFCMToken(ctx, deviceID, fcmToken); err != nil {
+		return fmt.Errorf("failed to update FCM token: %w", err)
+	}
+
+	return nil
 }
 
 // GetUserDevices retrieves all active devices for a user
 func (s *deviceService) GetUserDevices(ctx context.Context, userID uuid.UUID) ([]*entity.UserDevice, error) {
-	return s.deviceRepo.FindActiveDevicesByUser(ctx, userID)
+	devices, err := s.deviceRepo.FindActiveDevicesByUser(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find active devices by user: %w", err)
+	}
+
+	return devices, nil
 }
 
 // DeactivateDevice deactivates a device (soft delete)
@@ -101,7 +117,8 @@ func (s *deviceService) DeactivateDevice(ctx context.Context, userID, deviceID u
 		if errors.Is(err, repository.ErrDeviceNotFound) {
 			return ErrDeviceNotFound
 		}
-		return err
+
+		return fmt.Errorf("failed to find device by ID: %w", err)
 	}
 
 	// Verify ownership
@@ -109,5 +126,9 @@ func (s *deviceService) DeactivateDevice(ctx context.Context, userID, deviceID u
 		return ErrDeviceUnauthorized
 	}
 
-	return s.deviceRepo.DeleteDevice(ctx, deviceID)
+	if err := s.deviceRepo.DeleteDevice(ctx, deviceID); err != nil {
+		return fmt.Errorf("failed to delete device: %w", err)
+	}
+
+	return nil
 }

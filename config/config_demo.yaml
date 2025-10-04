@@ -60,3 +60,18 @@ passwordStrength:
 
 testRoutes:
   enabled: true
+
+locationNotification:
+  userMaxLocations: 5
+  merchantMaxLocations: 10
+  defaultRadius: 1000.0
+  maxRadius: 5000.0
+
+firebase:
+  projectId: "demo-project-id"
+  credentialsPath: "/path/to/demo-firebase-service-account.json"
+
+qrcode:
+  size: 256
+  errorCorrectionLevel: "M"
+  baseUrl: "https://demo-app.com/subscribe"
