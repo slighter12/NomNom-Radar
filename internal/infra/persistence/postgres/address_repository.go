@@ -74,7 +74,7 @@ func (repo *addressRepository) FindAddressByID(ctx context.Context, id uuid.UUID
 	return toAddressDomain(addressM), nil
 }
 
-// FindAddressesByOwner retrieves all addresses for a specific owner.
+// FindAddressesByOwner retrieves all addresses for a specific owner (excluding soft-deleted).
 func (repo *addressRepository) FindAddressesByOwner(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType) ([]*entity.Address, error) {
 	query := repo.q.AddressModel.WithContext(ctx)
 
@@ -87,6 +87,9 @@ func (repo *addressRepository) FindAddressesByOwner(ctx context.Context, ownerID
 	default:
 		return nil, errors.Errorf("unsupported owner type: %s", ownerType)
 	}
+
+	// Filter out soft-deleted addresses
+	query = query.Where(repo.q.AddressModel.DeletedAt.IsNull())
 
 	addressModels, err := query.
 		Order(repo.q.AddressModel.IsPrimary.Desc(), repo.q.AddressModel.CreatedAt.Asc()).
@@ -157,7 +160,7 @@ func (repo *addressRepository) UpdateAddress(ctx context.Context, address *entit
 	return nil
 }
 
-// DeleteAddress removes an address by its ID.
+// DeleteAddress removes an address by its ID (soft delete).
 func (repo *addressRepository) DeleteAddress(ctx context.Context, id uuid.UUID) error {
 	result, err := repo.q.AddressModel.WithContext(ctx).
 		Where(repo.q.AddressModel.ID.Eq(id)).
@@ -173,6 +176,67 @@ func (repo *addressRepository) DeleteAddress(ctx context.Context, id uuid.UUID) 
 	}
 
 	return nil
+}
+
+// CountAddressesByOwner returns the total count of addresses for a specific owner (excluding soft-deleted).
+func (repo *addressRepository) CountAddressesByOwner(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType) (int64, error) {
+	query := repo.q.AddressModel.WithContext(ctx)
+
+	// Apply owner filter based on owner type
+	switch ownerType {
+	case entity.OwnerTypeUserProfile:
+		query = query.Where(repo.q.AddressModel.UserProfileID.Eq(ownerID))
+	case entity.OwnerTypeMerchantProfile:
+		query = query.Where(repo.q.AddressModel.MerchantProfileID.Eq(ownerID))
+	default:
+		return 0, errors.Errorf("unsupported owner type: %s", ownerType)
+	}
+
+	// Filter out soft-deleted addresses
+	query = query.Where(repo.q.AddressModel.DeletedAt.IsNull())
+
+	count, err := query.Count()
+	if err != nil {
+		return 0, errors.Wrap(err, "failed to count addresses by owner")
+	}
+
+	return count, nil
+}
+
+// FindActiveAddressesByOwner retrieves all active addresses (IsActive=true and not soft-deleted) for a specific owner.
+func (repo *addressRepository) FindActiveAddressesByOwner(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType) ([]*entity.Address, error) {
+	query := repo.q.AddressModel.WithContext(ctx)
+
+	// Apply owner filter based on owner type
+	switch ownerType {
+	case entity.OwnerTypeUserProfile:
+		query = query.Where(repo.q.AddressModel.UserProfileID.Eq(ownerID))
+	case entity.OwnerTypeMerchantProfile:
+		query = query.Where(repo.q.AddressModel.MerchantProfileID.Eq(ownerID))
+	default:
+		return nil, errors.Errorf("unsupported owner type: %s", ownerType)
+	}
+
+	// Filter for active addresses and exclude soft-deleted
+	query = query.Where(
+		repo.q.AddressModel.IsActive.Is(true),
+		repo.q.AddressModel.DeletedAt.IsNull(),
+	)
+
+	addressModels, err := query.
+		Order(repo.q.AddressModel.IsPrimary.Desc(), repo.q.AddressModel.CreatedAt.Asc()).
+		Find()
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to find active addresses by owner")
+	}
+
+	addresses := make([]*entity.Address, 0, len(addressModels))
+	for _, addressM := range addressModels {
+		addresses = append(addresses, toAddressDomain(addressM))
+	}
+
+	return addresses, nil
 }
 
 // --- Mapper Functions ---

@@ -7,9 +7,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/env/v2"
+	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/v2"
 	"github.com/pkg/errors"
 	"github.com/slighter12/go-lib/database/postgres"
-	"github.com/spf13/viper"
 )
 
 const defaultPath = "."
@@ -83,13 +86,13 @@ type TestRoutesConfig struct {
 	Enabled bool `json:"enabled" yaml:"enabled"`
 }
 
-// LoadWithEnv is a loads .yaml files through viper.
+// LoadWithEnv loads .yaml files through koanf.
 func LoadWithEnv[T any](currEnv string, configPath ...string) (*T, error) {
 	cfg := new(T)
-	configCtl := viper.New()
-	configCtl.SetConfigName(currEnv)
-	configCtl.SetConfigType("yaml")
-	configCtl.AddConfigPath(defaultPath) // For Ops to deploy, but recommend consistent with the local environment later.
+	koanfInstance := koanf.New(".")
+
+	// Build list of paths to search for config file
+	searchPaths := []string{defaultPath}
 	if len(configPath) != 0 {
 		pwd, err := os.Getwd()
 		if err != nil {
@@ -97,17 +100,46 @@ func LoadWithEnv[T any](currEnv string, configPath ...string) (*T, error) {
 		}
 		for _, path := range configPath {
 			abs := filepath.Join(pwd, path)
-			configCtl.AddConfigPath(abs)
+			searchPaths = append(searchPaths, abs)
 		}
 	}
-	configCtl.AutomaticEnv()
-	configCtl.SetEnvKeyReplacer(strings.NewReplacer(",", "_"))
 
-	if err := configCtl.ReadInConfig(); err != nil {
+	// Try to find and load the config file
+	var configFile string
+	var found bool
+	for _, path := range searchPaths {
+		candidate := filepath.Join(path, currEnv+".yaml")
+		if _, err := os.Stat(candidate); err == nil {
+			configFile = candidate
+			found = true
+
+			break
+		}
+	}
+
+	if !found {
+		return nil, fmt.Errorf("config file %s.yaml not found in any search path", currEnv)
+	}
+
+	// Load YAML config file
+	if err := koanfInstance.Load(file.Provider(configFile), yaml.Parser()); err != nil {
 		return nil, fmt.Errorf("read %s config failed: %w", currEnv, err)
 	}
 
-	if err := configCtl.Unmarshal(cfg); err != nil {
+	// Load environment variables
+	if err := koanfInstance.Load(env.Provider(".", env.Opt{
+		TransformFunc: func(k, v string) (string, any) {
+			// Convert ENV_VAR_NAME to env.var.name
+			key := strings.ReplaceAll(strings.ToLower(k), "_", ".")
+
+			return key, v
+		},
+	}), nil); err != nil {
+		return nil, fmt.Errorf("load env variables failed: %w", err)
+	}
+
+	// Unmarshal into the config struct
+	if err := koanfInstance.Unmarshal("", cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal %s config failed: %w", currEnv, err)
 	}
 

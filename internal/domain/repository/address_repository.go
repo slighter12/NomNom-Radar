@@ -40,4 +40,11 @@ type AddressRepository interface {
 
 	// DeleteAddress removes an address by its ID.
 	DeleteAddress(ctx context.Context, id uuid.UUID) error
+
+	// CountAddressesByOwner returns the total count of addresses for a specific owner.
+	// Used for checking location limits.
+	CountAddressesByOwner(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType) (int64, error)
+
+	// FindActiveAddressesByOwner retrieves all active addresses (IsActive=true and not soft-deleted) for a specific owner.
+	FindActiveAddressesByOwner(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType) ([]*entity.Address, error)
 }
