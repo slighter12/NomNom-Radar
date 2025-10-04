@@ -75,12 +75,20 @@ func (repo *addressRepository) FindAddressByID(ctx context.Context, id uuid.UUID
 }
 
 // FindAddressesByOwner retrieves all addresses for a specific owner.
-func (repo *addressRepository) FindAddressesByOwner(ctx context.Context, ownerID uuid.UUID, ownerType string) ([]*entity.Address, error) {
-	addressModels, err := repo.q.AddressModel.WithContext(ctx).
-		Where(
-			repo.q.AddressModel.OwnerID.Eq(ownerID),
-			repo.q.AddressModel.OwnerType.Eq(ownerType),
-		).
+func (repo *addressRepository) FindAddressesByOwner(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType) ([]*entity.Address, error) {
+	query := repo.q.AddressModel.WithContext(ctx)
+
+	// Apply owner filter based on owner type
+	switch ownerType {
+	case entity.OwnerTypeUserProfile:
+		query = query.Where(repo.q.AddressModel.UserProfileID.Eq(ownerID))
+	case entity.OwnerTypeMerchantProfile:
+		query = query.Where(repo.q.AddressModel.MerchantProfileID.Eq(ownerID))
+	default:
+		return nil, errors.Errorf("unsupported owner type: %s", ownerType)
+	}
+
+	addressModels, err := query.
 		Order(repo.q.AddressModel.IsPrimary.Desc(), repo.q.AddressModel.CreatedAt.Asc()).
 		Find()
 
@@ -97,14 +105,21 @@ func (repo *addressRepository) FindAddressesByOwner(ctx context.Context, ownerID
 }
 
 // FindPrimaryAddressByOwner retrieves the primary address for a specific owner.
-func (repo *addressRepository) FindPrimaryAddressByOwner(ctx context.Context, ownerID uuid.UUID, ownerType string) (*entity.Address, error) {
-	addressM, err := repo.q.AddressModel.WithContext(ctx).
-		Where(
-			repo.q.AddressModel.OwnerID.Eq(ownerID),
-			repo.q.AddressModel.OwnerType.Eq(ownerType),
-			repo.q.AddressModel.IsPrimary.Is(true),
-		).
-		First()
+func (repo *addressRepository) FindPrimaryAddressByOwner(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType) (*entity.Address, error) {
+	query := repo.q.AddressModel.WithContext(ctx).
+		Where(repo.q.AddressModel.IsPrimary.Is(true))
+
+	// Apply owner filter based on owner type
+	switch ownerType {
+	case entity.OwnerTypeUserProfile:
+		query = query.Where(repo.q.AddressModel.UserProfileID.Eq(ownerID))
+	case entity.OwnerTypeMerchantProfile:
+		query = query.Where(repo.q.AddressModel.MerchantProfileID.Eq(ownerID))
+	default:
+		return nil, errors.Errorf("unsupported owner type: %s", ownerType)
+	}
+
+	addressM, err := query.First()
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -168,10 +183,22 @@ func toAddressDomain(data *model.AddressModel) *entity.Address {
 		return nil
 	}
 
+	// Determine owner ID and type from nullable FK fields
+	var ownerID uuid.UUID
+	var ownerType entity.OwnerType
+
+	if data.UserProfileID != nil {
+		ownerID = *data.UserProfileID
+		ownerType = entity.OwnerTypeUserProfile
+	} else if data.MerchantProfileID != nil {
+		ownerID = *data.MerchantProfileID
+		ownerType = entity.OwnerTypeMerchantProfile
+	}
+
 	return &entity.Address{
 		ID:          data.ID,
-		OwnerID:     data.OwnerID,
-		OwnerType:   data.OwnerType,
+		OwnerID:     ownerID,
+		OwnerType:   ownerType,
 		Label:       data.Label,
 		FullAddress: data.FullAddress,
 		Latitude:    data.Latitude,
@@ -188,10 +215,8 @@ func fromAddressDomain(data *entity.Address) *model.AddressModel {
 		return nil
 	}
 
-	return &model.AddressModel{
+	addressModel := &model.AddressModel{
 		ID:          data.ID,
-		OwnerID:     data.OwnerID,
-		OwnerType:   data.OwnerType,
 		Label:       data.Label,
 		FullAddress: data.FullAddress,
 		Latitude:    data.Latitude,
@@ -200,4 +225,14 @@ func fromAddressDomain(data *entity.Address) *model.AddressModel {
 		CreatedAt:   data.CreatedAt,
 		UpdatedAt:   data.UpdatedAt,
 	}
+
+	// Set the appropriate FK field based on owner type
+	switch data.OwnerType {
+	case entity.OwnerTypeUserProfile:
+		addressModel.UserProfileID = &data.OwnerID
+	case entity.OwnerTypeMerchantProfile:
+		addressModel.MerchantProfileID = &data.OwnerID
+	}
+
+	return addressModel
 }

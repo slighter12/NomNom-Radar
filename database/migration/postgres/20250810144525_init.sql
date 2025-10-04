@@ -13,14 +13,22 @@ $$ LANGUAGE 'plpgsql';
 -- +goose StatementEnd
 
 -- +goose StatementBegin
--- add uuid_generate_v4 function
+-- PostgreSQL 18+ native UUIDv7 function
+-- UUIDv7 provides time-ordered UUIDs for better index and query performance
+CREATE OR REPLACE FUNCTION uuid_generate_v7()
+RETURNS UUID AS $$
+BEGIN
+    RETURN uuidv7();
+END;
+$$ LANGUAGE 'plpgsql';
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+-- Backward compatibility alias (for any code that might reference v4)
 CREATE OR REPLACE FUNCTION uuid_generate_v4()
 RETURNS UUID AS $$
-DECLARE
-    result UUID;
 BEGIN
-    SELECT gen_random_uuid() INTO result;
-    RETURN result;
+    RETURN gen_random_uuid();
 END;
 $$ LANGUAGE 'plpgsql';
 -- +goose StatementEnd
@@ -28,17 +36,22 @@ $$ LANGUAGE 'plpgsql';
 -- Step 2: Create all tables and their indexes
 -- Table: users
 CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     email VARCHAR(255) NOT NULL UNIQUE,
     name VARCHAR(100),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ
 );
+CREATE INDEX idx_users_deleted_at ON users(deleted_at);
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+COMMENT ON COLUMN users.deleted_at IS 
+'Soft delete timestamp for user account. When set, all related data (addresses, devices, subscriptions) should be treated as deleted in queries.';
 
 -- Table: user_authentications
 CREATE TABLE user_authentications (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     provider VARCHAR(50) NOT NULL,
     provider_user_id VARCHAR(255) NOT NULL,
@@ -50,7 +63,7 @@ CREATE INDEX idx_auth_user_id ON user_authentications(user_id);
 
 -- Table: refresh_tokens
 CREATE TABLE refresh_tokens (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     token_hash VARCHAR(255) NOT NULL UNIQUE,
     expires_at TIMESTAMPTZ NOT NULL,
@@ -64,6 +77,7 @@ CREATE TABLE user_profiles (
     user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     default_shipping_address TEXT,
     loyalty_points INT DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE TRIGGER update_user_profiles_updated_at BEFORE UPDATE ON user_profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -75,6 +89,7 @@ CREATE TABLE merchant_profiles (
     store_description TEXT,
     business_license VARCHAR(255) NOT NULL UNIQUE,
     store_address TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE TRIGGER update_merchant_profiles_updated_at BEFORE UPDATE ON merchant_profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -99,4 +114,5 @@ DROP TABLE IF EXISTS users;
 
 -- Drop the trigger function
 DROP FUNCTION IF EXISTS update_updated_at_column();
+DROP FUNCTION IF EXISTS uuid_generate_v7();
 DROP FUNCTION IF EXISTS uuid_generate_v4();

@@ -28,15 +28,17 @@ func newAddressModel(db *gorm.DB, opts ...gen.DOOption) addressModel {
 	tableName := _addressModel.addressModelDo.TableName()
 	_addressModel.ALL = field.NewAsterisk(tableName)
 	_addressModel.ID = field.NewField(tableName, "id")
-	_addressModel.OwnerID = field.NewField(tableName, "owner_id")
-	_addressModel.OwnerType = field.NewString(tableName, "owner_type")
+	_addressModel.UserProfileID = field.NewField(tableName, "user_profile_id")
+	_addressModel.MerchantProfileID = field.NewField(tableName, "merchant_profile_id")
 	_addressModel.Label = field.NewString(tableName, "label")
 	_addressModel.FullAddress = field.NewString(tableName, "full_address")
 	_addressModel.Latitude = field.NewFloat64(tableName, "latitude")
 	_addressModel.Longitude = field.NewFloat64(tableName, "longitude")
 	_addressModel.IsPrimary = field.NewBool(tableName, "is_primary")
+	_addressModel.IsActive = field.NewBool(tableName, "is_active")
 	_addressModel.CreatedAt = field.NewTime(tableName, "created_at")
 	_addressModel.UpdatedAt = field.NewTime(tableName, "updated_at")
+	_addressModel.DeletedAt = field.NewTime(tableName, "deleted_at")
 
 	_addressModel.fillFieldMap()
 
@@ -46,17 +48,19 @@ func newAddressModel(db *gorm.DB, opts ...gen.DOOption) addressModel {
 type addressModel struct {
 	addressModelDo addressModelDo
 
-	ALL         field.Asterisk
-	ID          field.Field
-	OwnerID     field.Field
-	OwnerType   field.String
-	Label       field.String
-	FullAddress field.String
-	Latitude    field.Float64
-	Longitude   field.Float64
-	IsPrimary   field.Bool
-	CreatedAt   field.Time
-	UpdatedAt   field.Time
+	ALL               field.Asterisk
+	ID                field.Field
+	UserProfileID     field.Field
+	MerchantProfileID field.Field
+	Label             field.String
+	FullAddress       field.String
+	Latitude          field.Float64
+	Longitude         field.Float64
+	IsPrimary         field.Bool
+	IsActive          field.Bool
+	CreatedAt         field.Time
+	UpdatedAt         field.Time
+	DeletedAt         field.Time
 
 	fieldMap map[string]field.Expr
 }
@@ -74,15 +78,17 @@ func (a addressModel) As(alias string) *addressModel {
 func (a *addressModel) updateTableName(table string) *addressModel {
 	a.ALL = field.NewAsterisk(table)
 	a.ID = field.NewField(table, "id")
-	a.OwnerID = field.NewField(table, "owner_id")
-	a.OwnerType = field.NewString(table, "owner_type")
+	a.UserProfileID = field.NewField(table, "user_profile_id")
+	a.MerchantProfileID = field.NewField(table, "merchant_profile_id")
 	a.Label = field.NewString(table, "label")
 	a.FullAddress = field.NewString(table, "full_address")
 	a.Latitude = field.NewFloat64(table, "latitude")
 	a.Longitude = field.NewFloat64(table, "longitude")
 	a.IsPrimary = field.NewBool(table, "is_primary")
+	a.IsActive = field.NewBool(table, "is_active")
 	a.CreatedAt = field.NewTime(table, "created_at")
 	a.UpdatedAt = field.NewTime(table, "updated_at")
+	a.DeletedAt = field.NewTime(table, "deleted_at")
 
 	a.fillFieldMap()
 
@@ -111,17 +117,19 @@ func (a *addressModel) GetFieldByName(fieldName string) (field.OrderExpr, bool) 
 }
 
 func (a *addressModel) fillFieldMap() {
-	a.fieldMap = make(map[string]field.Expr, 10)
+	a.fieldMap = make(map[string]field.Expr, 12)
 	a.fieldMap["id"] = a.ID
-	a.fieldMap["owner_id"] = a.OwnerID
-	a.fieldMap["owner_type"] = a.OwnerType
+	a.fieldMap["user_profile_id"] = a.UserProfileID
+	a.fieldMap["merchant_profile_id"] = a.MerchantProfileID
 	a.fieldMap["label"] = a.Label
 	a.fieldMap["full_address"] = a.FullAddress
 	a.fieldMap["latitude"] = a.Latitude
 	a.fieldMap["longitude"] = a.Longitude
 	a.fieldMap["is_primary"] = a.IsPrimary
+	a.fieldMap["is_active"] = a.IsActive
 	a.fieldMap["created_at"] = a.CreatedAt
 	a.fieldMap["updated_at"] = a.UpdatedAt
+	a.fieldMap["deleted_at"] = a.DeletedAt
 }
 
 func (a addressModel) clone(db *gorm.DB) addressModel {

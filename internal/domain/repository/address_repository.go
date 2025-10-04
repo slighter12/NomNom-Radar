@@ -29,11 +29,11 @@ type AddressRepository interface {
 	FindAddressByID(ctx context.Context, id uuid.UUID) (*entity.Address, error)
 
 	// FindAddressesByOwner retrieves all addresses for a specific owner (user_profile, merchant_profile, etc.).
-	FindAddressesByOwner(ctx context.Context, ownerID uuid.UUID, ownerType string) ([]*entity.Address, error)
+	FindAddressesByOwner(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType) ([]*entity.Address, error)
 
 	// FindPrimaryAddressByOwner retrieves the primary address for a specific owner.
 	// Returns ErrAddressNotFound if no primary address exists.
-	FindPrimaryAddressByOwner(ctx context.Context, ownerID uuid.UUID, ownerType string) (*entity.Address, error)
+	FindPrimaryAddressByOwner(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType) (*entity.Address, error)
 
 	// UpdateAddress updates an existing address record.
 	UpdateAddress(ctx context.Context, address *entity.Address) error

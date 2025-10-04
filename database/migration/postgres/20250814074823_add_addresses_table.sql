@@ -6,16 +6,14 @@ ALTER TABLE user_profiles DROP COLUMN IF EXISTS default_shipping_address;
 ALTER TABLE merchant_profiles DROP COLUMN IF EXISTS store_address;
 
 -- Step 2: Create a new, unified table for all addresses.
--- This table uses a polymorphic design to associate with different owner types (users, merchants).
+-- This table uses nullable foreign keys to associate with different owner types (user_profiles, merchant_profiles).
 CREATE TABLE addresses (
     -- The unique ID for this address record.
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
 
-    -- The ID of the owner (can be a user's ID or a merchant's ID).
-    owner_id UUID NOT NULL,
-    -- The type of the owner, e.g., 'user_profile' or 'merchant_profile'.
-    -- This, combined with owner_id, forms the polymorphic relationship.
-    owner_type VARCHAR(255) NOT NULL,
+    -- Nullable foreign keys - exactly one must be set
+    user_profile_id UUID REFERENCES user_profiles(user_id) ON DELETE CASCADE,
+    merchant_profile_id UUID REFERENCES merchant_profiles(user_id) ON DELETE CASCADE,
 
     -- A user-defined label for the address, e.g., "Home", "Office", "Main Store".
     label VARCHAR(100) NOT NULL,
@@ -30,15 +28,28 @@ CREATE TABLE addresses (
     is_primary BOOLEAN NOT NULL DEFAULT false,
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    -- Ensure exactly one owner is set
+    CHECK (
+        (user_profile_id IS NOT NULL)::int + 
+        (merchant_profile_id IS NOT NULL)::int = 1
+    )
 );
 
 -- Step 3: Create indexes for performance.
--- Index for fast lookups of all addresses belonging to a specific owner.
-CREATE INDEX idx_addresses_on_owner ON addresses(owner_id, owner_type);
--- A partial unique index to enforce the business rule that an owner can have AT MOST ONE primary address.
--- This is a powerful PostgreSQL feature that guarantees data integrity at the database level.
-CREATE UNIQUE INDEX idx_addresses_one_primary_per_owner ON addresses(owner_id, owner_type) WHERE is_primary = TRUE;
+-- Indexes for fast lookups of addresses by owner
+CREATE INDEX idx_addresses_user_profile ON addresses(user_profile_id) WHERE user_profile_id IS NOT NULL;
+CREATE INDEX idx_addresses_merchant_profile ON addresses(merchant_profile_id) WHERE merchant_profile_id IS NOT NULL;
+
+-- Partial unique indexes to enforce that each owner can have AT MOST ONE primary address.
+CREATE UNIQUE INDEX idx_addresses_user_primary 
+    ON addresses(user_profile_id) 
+    WHERE is_primary = TRUE AND user_profile_id IS NOT NULL;
+
+CREATE UNIQUE INDEX idx_addresses_merchant_primary 
+    ON addresses(merchant_profile_id) 
+    WHERE is_primary = TRUE AND merchant_profile_id IS NOT NULL;
 
 -- Step 4: Bind the updated_at trigger to the new table.
 CREATE TRIGGER update_addresses_updated_at

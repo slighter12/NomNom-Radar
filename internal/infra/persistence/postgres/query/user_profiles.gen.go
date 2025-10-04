@@ -29,6 +29,7 @@ func newUserProfileModel(db *gorm.DB, opts ...gen.DOOption) userProfileModel {
 	_userProfileModel.ALL = field.NewAsterisk(tableName)
 	_userProfileModel.UserID = field.NewField(tableName, "user_id")
 	_userProfileModel.LoyaltyPoints = field.NewInt(tableName, "loyalty_points")
+	_userProfileModel.CreatedAt = field.NewTime(tableName, "created_at")
 	_userProfileModel.UpdatedAt = field.NewTime(tableName, "updated_at")
 	_userProfileModel.Addresses = userProfileModelHasManyAddresses{
 		db: db.Session(&gorm.Session{}),
@@ -47,6 +48,7 @@ type userProfileModel struct {
 	ALL           field.Asterisk
 	UserID        field.Field
 	LoyaltyPoints field.Int
+	CreatedAt     field.Time
 	UpdatedAt     field.Time
 	Addresses     userProfileModelHasManyAddresses
 
@@ -67,6 +69,7 @@ func (u *userProfileModel) updateTableName(table string) *userProfileModel {
 	u.ALL = field.NewAsterisk(table)
 	u.UserID = field.NewField(table, "user_id")
 	u.LoyaltyPoints = field.NewInt(table, "loyalty_points")
+	u.CreatedAt = field.NewTime(table, "created_at")
 	u.UpdatedAt = field.NewTime(table, "updated_at")
 
 	u.fillFieldMap()
@@ -96,9 +99,10 @@ func (u *userProfileModel) GetFieldByName(fieldName string) (field.OrderExpr, bo
 }
 
 func (u *userProfileModel) fillFieldMap() {
-	u.fieldMap = make(map[string]field.Expr, 4)
+	u.fieldMap = make(map[string]field.Expr, 5)
 	u.fieldMap["user_id"] = u.UserID
 	u.fieldMap["loyalty_points"] = u.LoyaltyPoints
+	u.fieldMap["created_at"] = u.CreatedAt
 	u.fieldMap["updated_at"] = u.UpdatedAt
 
 }

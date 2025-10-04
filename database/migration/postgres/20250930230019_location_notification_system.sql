@@ -18,6 +18,21 @@ SET location = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326);
 CREATE INDEX idx_addresses_location ON addresses USING GIST(location);
 CREATE INDEX idx_addresses_deleted_at ON addresses(deleted_at);
 
+COMMENT ON COLUMN addresses.deleted_at IS 
+'Soft delete timestamp for this address. Independent from user deletion - users can delete/restore addresses separately. Always check owner user deleted_at as well to ensure the owner account is active.';
+
+-- Update unique indexes to respect soft deletes
+DROP INDEX IF EXISTS idx_addresses_user_primary;
+DROP INDEX IF EXISTS idx_addresses_merchant_primary;
+
+CREATE UNIQUE INDEX idx_addresses_user_primary 
+    ON addresses(user_profile_id) 
+    WHERE is_primary = TRUE AND user_profile_id IS NOT NULL AND deleted_at IS NULL;
+
+CREATE UNIQUE INDEX idx_addresses_merchant_primary 
+    ON addresses(merchant_profile_id) 
+    WHERE is_primary = TRUE AND merchant_profile_id IS NOT NULL AND deleted_at IS NULL;
+
 -- Step 3: Create shared trigger function to automatically update location column from lat/lng
 -- +goose StatementBegin
 CREATE OR REPLACE FUNCTION update_location_from_lat_lng()
@@ -36,7 +51,7 @@ CREATE TRIGGER trigger_update_address_location
 
 -- Step 4: Create user devices table for FCM token management
 CREATE TABLE user_devices (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     fcm_token VARCHAR(255) NOT NULL,
     device_id VARCHAR(255) NOT NULL,
@@ -67,9 +82,12 @@ CREATE TRIGGER update_user_devices_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+COMMENT ON COLUMN user_devices.deleted_at IS 
+'Soft delete timestamp for this device. Independent from user deletion - users can remove/re-add devices. Always check users.deleted_at as well to ensure the user account is active.';
+
 -- Step 5: Create user merchant subscriptions table
 CREATE TABLE user_merchant_subscriptions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     merchant_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     is_active BOOLEAN NOT NULL DEFAULT true,
@@ -95,16 +113,33 @@ CREATE TRIGGER update_user_merchant_subscriptions_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+COMMENT ON COLUMN user_merchant_subscriptions.deleted_at IS 
+'Soft delete timestamp for this subscription. Independent from user deletion - users can unsubscribe/resubscribe. Always check both user_id and merchant_id users.deleted_at to ensure both accounts are active.';
+
+COMMENT ON COLUMN user_merchant_subscriptions.notification_radius IS 
+'Notification radius in meters. Defines the distance within which the user wants to receive notifications from the merchant.';
+
 -- Step 6: Create merchant location notifications table
+-- This table stores location-based notifications sent by merchants.
+-- Merchants can either select from saved addresses or input a temporary location.
 CREATE TABLE merchant_location_notifications (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     merchant_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    
+    -- Optional reference to a saved address in the addresses table.
+    -- NULL if merchant used a temporary/custom location instead of quick selection.
+    -- ON DELETE SET NULL preserves notification history even if the address is deleted.
     address_id UUID REFERENCES addresses(id) ON DELETE SET NULL,
+    
+    -- Snapshot of location data at the time of notification.
+    -- These fields are always required regardless of whether address_id is set.
+    -- This ensures historical accuracy even if the referenced address is modified or deleted.
     location_name VARCHAR(255) NOT NULL,
     full_address TEXT NOT NULL,
     latitude DECIMAL(10, 8) NOT NULL,
     longitude DECIMAL(11, 8) NOT NULL,
     location GEOMETRY(POINT, 4326),
+    
     hint_message TEXT,
     total_sent INTEGER NOT NULL DEFAULT 0,
     total_failed INTEGER NOT NULL DEFAULT 0,
@@ -131,7 +166,7 @@ CREATE TRIGGER update_merchant_location_notifications_updated_at
 
 -- Step 7: Create notification logs table
 CREATE TABLE notification_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     notification_id UUID NOT NULL REFERENCES merchant_location_notifications(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     device_id UUID NOT NULL REFERENCES user_devices(id) ON DELETE CASCADE,

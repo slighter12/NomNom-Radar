@@ -32,6 +32,7 @@ func newUserModel(db *gorm.DB, opts ...gen.DOOption) userModel {
 	_userModel.Name = field.NewString(tableName, "name")
 	_userModel.CreatedAt = field.NewTime(tableName, "created_at")
 	_userModel.UpdatedAt = field.NewTime(tableName, "updated_at")
+	_userModel.DeletedAt = field.NewTime(tableName, "deleted_at")
 	_userModel.UserProfile = userModelHasOneUserProfile{
 		db: db.Session(&gorm.Session{}),
 
@@ -80,6 +81,7 @@ type userModel struct {
 	Name        field.String
 	CreatedAt   field.Time
 	UpdatedAt   field.Time
+	DeletedAt   field.Time
 	UserProfile userModelHasOneUserProfile
 
 	MerchantProfile userModelHasOneMerchantProfile
@@ -108,6 +110,7 @@ func (u *userModel) updateTableName(table string) *userModel {
 	u.Name = field.NewString(table, "name")
 	u.CreatedAt = field.NewTime(table, "created_at")
 	u.UpdatedAt = field.NewTime(table, "updated_at")
+	u.DeletedAt = field.NewTime(table, "deleted_at")
 
 	u.fillFieldMap()
 
@@ -134,12 +137,13 @@ func (u *userModel) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (u *userModel) fillFieldMap() {
-	u.fieldMap = make(map[string]field.Expr, 9)
+	u.fieldMap = make(map[string]field.Expr, 10)
 	u.fieldMap["id"] = u.ID
 	u.fieldMap["email"] = u.Email
 	u.fieldMap["name"] = u.Name
 	u.fieldMap["created_at"] = u.CreatedAt
 	u.fieldMap["updated_at"] = u.UpdatedAt
+	u.fieldMap["deleted_at"] = u.DeletedAt
 
 }
 

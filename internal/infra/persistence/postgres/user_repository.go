@@ -191,10 +191,22 @@ func toUserProfileDomain(data *model.UserProfileModel) *entity.UserProfile {
 
 	addresses := make([]*entity.Address, 0, len(data.Addresses))
 	for _, addr := range data.Addresses {
+		// Determine owner ID and type from nullable FK fields
+		var ownerID uuid.UUID
+		var ownerType entity.OwnerType
+
+		if addr.UserProfileID != nil {
+			ownerID = *addr.UserProfileID
+			ownerType = entity.OwnerTypeUserProfile
+		} else if addr.MerchantProfileID != nil {
+			ownerID = *addr.MerchantProfileID
+			ownerType = entity.OwnerTypeMerchantProfile
+		}
+
 		addresses = append(addresses, &entity.Address{
 			ID:          addr.ID,
-			OwnerID:     addr.OwnerID,
-			OwnerType:   addr.OwnerType,
+			OwnerID:     ownerID,
+			OwnerType:   ownerType,
 			Label:       addr.Label,
 			FullAddress: addr.FullAddress,
 			Latitude:    addr.Latitude,
@@ -223,8 +235,6 @@ func fromUserProfileDomain(data *entity.UserProfile) *model.UserProfileModel {
 	for _, addr := range data.Addresses {
 		addressModel := &model.AddressModel{
 			ID:          addr.ID,
-			OwnerID:     addr.OwnerID,
-			OwnerType:   addr.OwnerType,
 			Label:       addr.Label,
 			FullAddress: addr.FullAddress,
 			Latitude:    addr.Latitude,
@@ -234,12 +244,16 @@ func fromUserProfileDomain(data *entity.UserProfile) *model.UserProfileModel {
 			UpdatedAt:   addr.UpdatedAt,
 		}
 
-		// Ensure polymorphic association is set correctly
-		if addressModel.OwnerType == "" {
-			addressModel.OwnerType = "user_profiles"
-		}
-		if addressModel.OwnerID == uuid.Nil {
-			addressModel.OwnerID = data.UserID
+		// Set the appropriate FK field based on owner type
+		switch addr.OwnerType {
+		case entity.OwnerTypeUserProfile:
+			addressModel.UserProfileID = &addr.OwnerID
+		case entity.OwnerTypeMerchantProfile:
+			addressModel.MerchantProfileID = &addr.OwnerID
+		default:
+			// Default to user profile if not specified
+			userID := data.UserID
+			addressModel.UserProfileID = &userID
 		}
 
 		addresses = append(addresses, addressModel)
@@ -261,10 +275,22 @@ func toMerchantProfileDomain(data *model.MerchantProfileModel) *entity.MerchantP
 
 	addresses := make([]*entity.Address, 0, len(data.Addresses))
 	for _, addr := range data.Addresses {
+		// Determine owner ID and type from nullable FK fields
+		var ownerID uuid.UUID
+		var ownerType entity.OwnerType
+
+		if addr.UserProfileID != nil {
+			ownerID = *addr.UserProfileID
+			ownerType = entity.OwnerTypeUserProfile
+		} else if addr.MerchantProfileID != nil {
+			ownerID = *addr.MerchantProfileID
+			ownerType = entity.OwnerTypeMerchantProfile
+		}
+
 		addresses = append(addresses, &entity.Address{
 			ID:          addr.ID,
-			OwnerID:     addr.OwnerID,
-			OwnerType:   addr.OwnerType,
+			OwnerID:     ownerID,
+			OwnerType:   ownerType,
 			Label:       addr.Label,
 			FullAddress: addr.FullAddress,
 			Latitude:    addr.Latitude,
@@ -295,8 +321,6 @@ func fromMerchantProfileDomain(data *entity.MerchantProfile) *model.MerchantProf
 	for _, addr := range data.Addresses {
 		addressModel := &model.AddressModel{
 			ID:          addr.ID,
-			OwnerID:     addr.OwnerID,
-			OwnerType:   addr.OwnerType,
 			Label:       addr.Label,
 			FullAddress: addr.FullAddress,
 			Latitude:    addr.Latitude,
@@ -306,12 +330,16 @@ func fromMerchantProfileDomain(data *entity.MerchantProfile) *model.MerchantProf
 			UpdatedAt:   addr.UpdatedAt,
 		}
 
-		// Ensure polymorphic association is set correctly
-		if addressModel.OwnerType == "" {
-			addressModel.OwnerType = "merchant_profiles"
-		}
-		if addressModel.OwnerID == uuid.Nil {
-			addressModel.OwnerID = data.UserID
+		// Set the appropriate FK field based on owner type
+		switch addr.OwnerType {
+		case entity.OwnerTypeUserProfile:
+			addressModel.UserProfileID = &addr.OwnerID
+		case entity.OwnerTypeMerchantProfile:
+			addressModel.MerchantProfileID = &addr.OwnerID
+		default:
+			// Default to merchant profile if not specified
+			userID := data.UserID
+			addressModel.MerchantProfileID = &userID
 		}
 
 		addresses = append(addresses, addressModel)

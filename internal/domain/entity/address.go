@@ -12,7 +12,7 @@ import (
 type Address struct {
 	ID          uuid.UUID // The Global Unique Identifier (GUID) for the address.
 	OwnerID     uuid.UUID // The ID of the entity that owns this address.
-	OwnerType   string    // The type of the owner (e.g., "user_profile", "merchant_profile").
+	OwnerType   OwnerType // The type of the owner (e.g., OwnerTypeUserProfile, OwnerTypeMerchantProfile).
 	Label       string    // A user-defined label, e.g., "Home", "Office".
 	FullAddress string    // The full, human-readable street address.
 	Latitude    float64   // The geographic latitude.
