@@ -50,6 +50,9 @@ type Config struct {
 
 	// TestRoutes configuration for testing endpoints
 	TestRoutes *TestRoutesConfig `json:"testRoutes" yaml:"testRoutes"`
+
+	// LocationNotification configuration for location notification system
+	LocationNotification *LocationNotificationConfig `json:"locationNotification" yaml:"locationNotification"`
 }
 
 type GoogleOAuthConfig struct {
@@ -84,6 +87,14 @@ type Log struct {
 // TestRoutesConfig defines configuration for testing endpoints
 type TestRoutesConfig struct {
 	Enabled bool `json:"enabled" yaml:"enabled"`
+}
+
+// LocationNotificationConfig defines configuration for location notification system
+type LocationNotificationConfig struct {
+	UserMaxLocations     int     `json:"userMaxLocations" yaml:"userMaxLocations"`
+	MerchantMaxLocations int     `json:"merchantMaxLocations" yaml:"merchantMaxLocations"`
+	DefaultRadius        float64 `json:"defaultRadius" yaml:"defaultRadius"`
+	MaxRadius            float64 `json:"maxRadius" yaml:"maxRadius"`
 }
 
 // LoadWithEnv loads .yaml files through koanf.
