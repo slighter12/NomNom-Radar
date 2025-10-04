@@ -1,0 +1,15 @@
+with-expecter: true
+packages:
+  radar/internal/domain/repository:
+    config:
+      dir: "internal/mocks/repository"
+    interfaces:
+      AddressRepository:
+      DeviceRepository:
+      SubscriptionRepository:
+  radar/internal/domain/service:
+    config:
+      dir: "internal/mocks/service"
+    interfaces:
+      QRCodeService:
+      NotificationService:
