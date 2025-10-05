@@ -86,17 +86,20 @@ func newFirebaseService(ctx context.Context, cfg *config.Config, logger *slog.Lo
 	// Firebase is optional - skip if not configured
 	if cfg.Firebase == nil {
 		logger.Info("Firebase not configured, notification service will be disabled")
+
 		return nil, nil
 	}
 
 	// Validate Firebase configuration
 	if cfg.Firebase.ProjectID == "" || cfg.Firebase.ProjectID == "your-project-id" {
 		logger.Warn("Firebase project ID not configured, notification service will be disabled")
+
 		return nil, nil
 	}
 
 	if cfg.Firebase.CredentialsPath == "" || cfg.Firebase.CredentialsPath == "/path/to/firebase-service-account.json" {
 		logger.Warn("Firebase credentials path not configured, notification service will be disabled")
+
 		return nil, nil
 	}
 
@@ -106,6 +109,7 @@ func newFirebaseService(ctx context.Context, cfg *config.Config, logger *slog.Lo
 	}
 
 	logger.Info("Firebase notification service initialized successfully")
+
 	return svc, nil
 }
 
