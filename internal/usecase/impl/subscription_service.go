@@ -148,31 +148,6 @@ func (s *subscriptionService) GetMerchantSubscribers(ctx context.Context, mercha
 	return subscriptions, nil
 }
 
-// UpdateNotificationRadius updates the notification radius for a subscription
-func (s *subscriptionService) UpdateNotificationRadius(ctx context.Context, userID, merchantID uuid.UUID, radius float64) error {
-	// Validate radius
-	maxRadius := s.config.LocationNotification.MaxRadius
-	if radius <= 0 || radius > maxRadius {
-		return ErrInvalidRadius
-	}
-
-	// Find subscription
-	subscription, err := s.subscriptionRepo.FindSubscriptionByUserAndMerchant(ctx, userID, merchantID)
-	if err != nil {
-		if errors.Is(err, repository.ErrSubscriptionNotFound) {
-			return ErrSubscriptionNotFound
-		}
-
-		return fmt.Errorf("failed to find subscription by user and merchant: %w", err)
-	}
-
-	if err := s.subscriptionRepo.UpdateNotificationRadius(ctx, subscription.ID, radius); err != nil {
-		return fmt.Errorf("failed to update notification radius: %w", err)
-	}
-
-	return nil
-}
-
 // GenerateSubscriptionQR generates a QR code for merchant subscription
 func (s *subscriptionService) GenerateSubscriptionQR(ctx context.Context, merchantID uuid.UUID) ([]byte, error) {
 	qrCode, err := s.qrcodeService.GenerateSubscriptionQR(merchantID)

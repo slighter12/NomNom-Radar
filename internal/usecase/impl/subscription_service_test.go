@@ -223,67 +223,6 @@ func TestSubscriptionService_GetMerchantSubscribers(t *testing.T) {
 	assert.Equal(t, expectedSubs, subs)
 }
 
-func TestSubscriptionService_UpdateNotificationRadius_Success(t *testing.T) {
-	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	mockQRService := mockSvc.NewMockQRCodeService(t)
-	cfg := &config.Config{
-		LocationNotification: &config.LocationNotificationConfig{
-			MaxRadius: 5000.0,
-		},
-	}
-	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
-
-	ctx := context.Background()
-	userID := uuid.New()
-	merchantID := uuid.New()
-	subID := uuid.New()
-	newRadius := 2000.0
-
-	existingSub := &entity.UserMerchantSubscription{
-		ID:         subID,
-		UserID:     userID,
-		MerchantID: merchantID,
-	}
-
-	mockSubRepo.EXPECT().
-		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
-		Return(existingSub, nil)
-
-	mockSubRepo.EXPECT().
-		UpdateNotificationRadius(ctx, subID, newRadius).
-		Return(nil)
-
-	err := service.UpdateNotificationRadius(ctx, userID, merchantID, newRadius)
-	require.NoError(t, err)
-}
-
-func TestSubscriptionService_UpdateNotificationRadius_InvalidRadius(t *testing.T) {
-	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	mockQRService := mockSvc.NewMockQRCodeService(t)
-	cfg := &config.Config{
-		LocationNotification: &config.LocationNotificationConfig{
-			MaxRadius: 5000.0,
-		},
-	}
-	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
-
-	ctx := context.Background()
-	userID := uuid.New()
-	merchantID := uuid.New()
-
-	// Test negative radius
-	err := service.UpdateNotificationRadius(ctx, userID, merchantID, -100.0)
-	assert.Error(t, err)
-	assert.Equal(t, ErrInvalidRadius, err)
-
-	// Test radius exceeding max
-	err = service.UpdateNotificationRadius(ctx, userID, merchantID, 10000.0)
-	assert.Error(t, err)
-	assert.Equal(t, ErrInvalidRadius, err)
-}
-
 func TestSubscriptionService_GenerateSubscriptionQR(t *testing.T) {
 	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
 	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)

@@ -33,11 +33,6 @@ type SubscribeRequest struct {
 	DeviceInfo *usecase.DeviceInfo `json:"device_info,omitempty"`
 }
 
-// UpdateRadiusRequest represents the request body for updating notification radius
-type UpdateRadiusRequest struct {
-	Radius float64 `json:"radius" validate:"required,min=0"`
-}
-
 // ProcessQRRequest represents the request body for processing QR subscription
 type ProcessQRRequest struct {
 	QRData     string              `json:"qr_data" validate:"required"`
@@ -100,34 +95,6 @@ func (h *SubscriptionHandler) GetUserSubscriptions(c echo.Context) error {
 	}
 
 	return response.Success(c, http.StatusOK, subscriptions, "User subscriptions retrieved successfully")
-}
-
-// UpdateNotificationRadius handles updating notification radius for a subscription
-func (h *SubscriptionHandler) UpdateNotificationRadius(c echo.Context) error {
-	userID, err := h.getUserID(c)
-	if err != nil {
-		return err
-	}
-
-	merchantID, err := uuid.Parse(c.Param("merchantId"))
-	if err != nil {
-		return response.BadRequest(c, "INVALID_ID", "Invalid merchant ID")
-	}
-
-	var req UpdateRadiusRequest
-	if err := c.Bind(&req); err != nil {
-		return response.BindingError(c, "INVALID_INPUT", "Invalid radius input")
-	}
-
-	if err := c.Validate(&req); err != nil {
-		return response.BadRequest(c, "VALIDATION_ERROR", err.Error())
-	}
-
-	if err := h.uc.UpdateNotificationRadius(c.Request().Context(), userID, merchantID, req.Radius); err != nil {
-		return h.handleAppError(c, err)
-	}
-
-	return response.Success(c, http.StatusOK, map[string]string{"message": "Notification radius updated successfully"}, "Notification radius updated successfully")
 }
 
 // GenerateSubscriptionQR handles generating QR code for merchant subscription

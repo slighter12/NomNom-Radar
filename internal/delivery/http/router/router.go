@@ -126,7 +126,6 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 		subscriptionsGroup.POST("", r.subscriptionHandler.SubscribeToMerchant)
 		subscriptionsGroup.DELETE("/:merchantId", r.subscriptionHandler.UnsubscribeFromMerchant)
 		subscriptionsGroup.GET("", r.subscriptionHandler.GetUserSubscriptions)
-		subscriptionsGroup.PUT("/:merchantId/radius", r.subscriptionHandler.UpdateNotificationRadius)
 		subscriptionsGroup.POST("/qr", r.subscriptionHandler.ProcessQRSubscription)
 	}
 

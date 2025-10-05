@@ -22,9 +22,6 @@ type SubscriptionUsecase interface {
 	// GetMerchantSubscribers retrieves all subscribers for a merchant
 	GetMerchantSubscribers(ctx context.Context, merchantID uuid.UUID) ([]*entity.UserMerchantSubscription, error)
 
-	// UpdateNotificationRadius updates the notification radius for a subscription
-	UpdateNotificationRadius(ctx context.Context, userID, merchantID uuid.UUID, radius float64) error
-
 	// GenerateSubscriptionQR generates a QR code for merchant subscription
 	GenerateSubscriptionQR(ctx context.Context, merchantID uuid.UUID) ([]byte, error)
 

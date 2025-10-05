@@ -16,9 +16,12 @@ type firebaseService struct {
 }
 
 // NewFirebaseService creates a new Firebase notification service instance
-func NewFirebaseService(ctx context.Context, credentialsPath string) (service.NotificationService, error) {
+func NewFirebaseService(ctx context.Context, projectID, credentialsPath string) (service.NotificationService, error) {
+	config := &firebase.Config{
+		ProjectID: projectID,
+	}
 	opt := option.WithCredentialsFile(credentialsPath)
-	app, err := firebase.NewApp(ctx, nil, opt)
+	app, err := firebase.NewApp(ctx, config, opt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Firebase app: %w", err)
 	}
