@@ -1,10 +1,9 @@
 # Common PostgreSQL 18 + PostGIS 3.6 configuration for both master and replica
-x-postgres-common:
-  &postgres-common
-  image: postgis/postgis:18-3.6-alpine  # PostgreSQL 18 with PostGIS 3.6 (Alpine)
-  platform: linux/amd64  # Force AMD64 for ARM64 compatibility
+x-postgres-common: &postgres-common
+  image: postgis/postgis:18-3.6-alpine # PostgreSQL 18 with PostGIS 3.6 (Alpine)
+  platform: linux/amd64 # Force AMD64 for ARM64 compatibility
   user: postgres
-  restart: always
+  restart: unless-stopped
   shm_size: 128mb
   environment: &postgres-env
     POSTGRES_USER: user
@@ -12,7 +11,7 @@ x-postgres-common:
     POSTGRES_PASSWORD: password
     POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256 --data-checksums"
   healthcheck:
-    test: ['CMD-SHELL', 'pg_isready -U user -d auth_db']
+    test: ["CMD-SHELL", "pg_isready -U user -d auth_db"]
     interval: 10s
     timeout: 5s
     retries: 5
@@ -25,11 +24,11 @@ services:
     ports:
       - "5432:5432"
     command: |
-      postgres 
-      -c wal_level=replica 
-      -c hot_standby=on 
-      -c max_wal_senders=10 
-      -c max_replication_slots=10 
+      postgres
+      -c wal_level=replica
+      -c hot_standby=on
+      -c max_wal_senders=10
+      -c max_replication_slots=10
       -c hot_standby_feedback=on
       -c archive_mode=on
       -c archive_command='test ! -f /var/lib/postgresql/backup_in_progress || exit 1; test ! -f /var/lib/postgresql/archive/%f || cp %p /var/lib/postgresql/archive/%f; rm %p'
@@ -52,21 +51,21 @@ services:
     command: |
       bash -c "
       set -euo pipefail  # Better error handling
-      
+
       echo 'Setting up PostgreSQL 18 PostGIS replica...'
-      
+
       # Wait for master to be ready
       echo 'Waiting for master to be ready...'
       until pg_isready -h postgres-master -p 5432 -U user -d auth_db; do
         sleep 2
       done
       echo 'Master is ready!'
-      
+
       # Prepare data directory for base backup
       REPLICA_DATA_DIR='/var/lib/postgresql/18/replica'
       rm -rf \"\$$REPLICA_DATA_DIR\" 2>/dev/null || true
       mkdir -p \"\$$(dirname \"\$$REPLICA_DATA_DIR\")\"
-      
+
       # Perform base backup from master with replication slot
       echo 'Performing base backup from master...'
       pg_basebackup \\
@@ -78,7 +77,7 @@ services:
         --slot=replica_slot \\
         --checkpoint=fast \\
         --verbose
-      
+
       # Set correct permissions and start
       chmod 0700 \"\$$REPLICA_DATA_DIR\"
       echo 'Starting PostgreSQL replica in standby mode...'
