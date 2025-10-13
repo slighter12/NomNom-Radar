@@ -34,7 +34,7 @@ type httpServer struct {
 	server *echo.Echo
 }
 
-func NewServer(params *HTTPParams) (delivery.Delivery, error) {
+func NewServer(params HTTPParams) (delivery.Delivery, error) {
 	echoServer := echo.New()
 	echoServer.HideBanner = true
 
