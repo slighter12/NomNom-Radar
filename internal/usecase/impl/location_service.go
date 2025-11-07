@@ -30,6 +30,16 @@ type locationService struct {
 
 // NewLocationService creates a new location service instance
 func NewLocationService(addressRepo repository.AddressRepository, cfg *config.Config) usecase.LocationUsecase {
+	// If LocationNotification is not configured, provide a default configuration
+	if cfg.LocationNotification == nil {
+		cfg.LocationNotification = &config.LocationNotificationConfig{
+			UserMaxLocations:     5,    // Default to 5 locations
+			MerchantMaxLocations: 10,   // Default to 10 locations
+			DefaultRadius:        1000, // Default to 1km
+			MaxRadius:            5000, // Default to 5km
+		}
+	}
+
 	return &locationService{
 		addressRepo: addressRepo,
 		config:      cfg,
