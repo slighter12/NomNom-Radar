@@ -15,29 +15,14 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  build:
-    name: Build and Deploy
+  checks:
+    name: Run Checks
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout the repository
         uses: actions/checkout@v4
 
-      - name: Set environment variables
-        id: set-vars
-        run: |
-          # Get tag with fallback to commit hash
-          if git describe --tags --abbrev=0 2>/dev/null; then
-            echo "TAG=$(git describe --tags --abbrev=0)" >> $GITHUB_OUTPUT
-          else
-            echo "TAG=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-          fi
-
-          # Get lowercase repository name for Docker image
-          echo "IMAGE_NAME=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
-
       - name: Set up Go version
-        id: setup-go # Added ID to access its output
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -45,10 +30,41 @@ jobs:
           cache-dependency-path: go.mod
           check-latest: true
 
-      - name: Run Linter # Consolidated linting step
+      - name: Run Linter
         uses: golangci/golangci-lint-action@v8
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
+
+      - name: Run Tests
+        run: go test ./...
+
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: checks
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+
+      - name: Set environment variables
+        id: set-vars
+        run: |
+          if git describe --tags --abbrev=0 2>/dev/null; then
+            echo "TAG=$(git describe --tags --abbrev=0)" >> $GITHUB_OUTPUT
+          else
+            echo "TAG=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          fi
+          echo "IMAGE_NAME=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Set up Go version
+        id: setup-go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: go.mod
+          check-latest: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -74,6 +90,5 @@ jobs:
             BUILT=${{ github.event.head_commit.timestamp }}
             GIT_COMMIT=${{ github.sha }}
             IMAGE_NAME=${{ steps.set-vars.outputs.IMAGE_NAME }}
-          # Simplified cache key using the setup-go step's output
           cache-from: type=gha,scope=go-${{ steps.setup-go.outputs.go-version }}
           cache-to: type=gha,mode=max,scope=go-${{ steps.setup-go.outputs.go-version }}
