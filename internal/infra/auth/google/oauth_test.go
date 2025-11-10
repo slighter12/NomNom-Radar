@@ -28,7 +28,7 @@ func TestAuthService_VerifyIDToken(t *testing.T) {
 	oauthUser, err := authService.VerifyIDToken(ctx, mockJWT)
 	assert.Error(t, err) // Should fail validation
 	assert.Nil(t, oauthUser)
-	assert.Contains(t, err.Error(), "token verification failed")
+	assert.Contains(t, err.Error(), "google token validation failed: idtoken: unable to decode JWT signature")
 }
 
 func TestAuthService_GetProvider(t *testing.T) {
