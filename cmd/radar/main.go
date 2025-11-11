@@ -97,7 +97,7 @@ func newFirebaseService(ctx context.Context, cfg *config.Config, logger *slog.Lo
 		return nil, nil
 	}
 
-	if cfg.Firebase.CredentialsPath == "" || cfg.Firebase.CredentialsPath == "/path/to/firebase-service-account.json" {
+if cfg.Firebase.CredentialsPath == "" || cfg.Firebase.CredentialsPath == "/path/to/demo-firebase-service-account.json" {
 		logger.Warn("Firebase credentials path not configured, notification service will be disabled")
 
 		return nil, nil
