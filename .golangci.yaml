@@ -83,6 +83,7 @@ linters:
         - q *query.Query
         - tx *gorm.DB
         - e *echo.Echo
+        - lc fx.Lifecycle
     wrapcheck:
       extra-ignore-sigs:
         - .JSON(
@@ -116,7 +117,7 @@ linters:
         path: internal/delivery/http/validator/.*\.go
       - linters:
           - lll
-        source: '^//go:generate '
+        source: "^//go:generate "
       - linters:
           - gosec
         excludes:
