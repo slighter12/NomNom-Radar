@@ -19,22 +19,13 @@ import (
 	"go.uber.org/fx"
 )
 
-type HTTPParams struct {
-	fx.In
-	fx.Lifecycle
-
-	Config       *config.Config
-	Logger       *slog.Logger
-	RouterParams router.RouterParams
-}
-
 type httpServer struct {
 	cfg    *config.Config
 	logger *slog.Logger
 	server *echo.Echo
 }
 
-func NewServer(params HTTPParams) (delivery.Delivery, error) {
+func NewServer(lc fx.Lifecycle, cfg *config.Config, logger *slog.Logger, routerParams router.RouterParams) (delivery.Delivery, error) {
 	echoServer := echo.New()
 	echoServer.HideBanner = true
 
@@ -43,30 +34,30 @@ func NewServer(params HTTPParams) (delivery.Delivery, error) {
 	echoServer.Use(echomiddleware.Recover())
 
 	// 2. Logger middleware
-	loggerMiddleware := middleware.NewLoggerMiddleware(params.Logger, params.Config)
+	loggerMiddleware := middleware.NewLoggerMiddleware(logger, cfg)
 	echoServer.Use(loggerMiddleware.Handle)
 
 	// 3. CORS middleware
 	echoServer.Use(echomiddleware.CORS())
 
 	// Set up centralized error handler
-	errorMiddleware := middleware.NewErrorMiddleware(params.Logger)
+	errorMiddleware := middleware.NewErrorMiddleware(logger)
 	echoServer.HTTPErrorHandler = errorMiddleware.HandleHTTPError
 
 	// Set up validator
 	echoServer.Validator = validator.New()
 
-	router := router.NewRouter(params.RouterParams)
+	router := router.NewRouter(routerParams)
 	router.RegisterRoutes(echoServer)
 	router.RegisterTestRoutes(echoServer)
 
 	delivery := &httpServer{
-		cfg:    params.Config,
-		logger: params.Logger,
+		cfg:    cfg,
+		logger: logger,
 		server: echoServer,
 	}
 
-	params.Append(fx.Hook{
+	lc.Append(fx.Hook{
 		OnStop: delivery.stop,
 	})
 
