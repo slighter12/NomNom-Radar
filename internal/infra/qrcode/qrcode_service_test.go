@@ -9,6 +9,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+import (
+	"radar/config"
+)
+
+func newTestConfig(size int, level string) *config.Config {
+	return &config.Config{
+		QRCode: &config.QRCodeConfig{
+			Size:                 size,
+			ErrorCorrectionLevel: level,
+		},
+	}
+}
 func TestNewQRCodeService(t *testing.T) {
 	tests := []struct {
 		name                 string
@@ -24,14 +36,16 @@ func TestNewQRCodeService(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			service := NewQRCodeService(tt.size, tt.errorCorrectionLevel)
+			cfg := newTestConfig(tt.size, tt.errorCorrectionLevel)
+			service := NewQRCodeService(cfg)
 			assert.NotNil(t, service)
 		})
 	}
 }
 
 func TestQRCodeService_GenerateSubscriptionQR(t *testing.T) {
-	service := NewQRCodeService(256, "M")
+	cfg := newTestConfig(256, "M")
+	service := NewQRCodeService(cfg)
 	merchantID := uuid.New()
 
 	qrBytes, err := service.GenerateSubscriptionQR(merchantID)
@@ -57,7 +71,8 @@ func TestQRCodeService_GenerateSubscriptionQR_DifferentSizes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			service := NewQRCodeService(tt.size, "M")
+			cfg := newTestConfig(tt.size, "M")
+			service := NewQRCodeService(cfg)
 			merchantID := uuid.New()
 
 			qrBytes, err := service.GenerateSubscriptionQR(merchantID)
@@ -68,7 +83,8 @@ func TestQRCodeService_GenerateSubscriptionQR_DifferentSizes(t *testing.T) {
 }
 
 func TestQRCodeService_ParseSubscriptionQR(t *testing.T) {
-	service := NewQRCodeService(256, "M")
+	cfg := newTestConfig(256, "M")
+	service := NewQRCodeService(cfg)
 	merchantID := uuid.New()
 
 	// Create valid QR data
@@ -86,7 +102,8 @@ func TestQRCodeService_ParseSubscriptionQR(t *testing.T) {
 }
 
 func TestQRCodeService_ParseSubscriptionQR_InvalidJSON(t *testing.T) {
-	service := NewQRCodeService(256, "M")
+	cfg := newTestConfig(256, "M")
+	service := NewQRCodeService(cfg)
 
 	_, err := service.ParseSubscriptionQR("invalid json")
 	assert.Error(t, err)
@@ -94,7 +111,8 @@ func TestQRCodeService_ParseSubscriptionQR_InvalidJSON(t *testing.T) {
 }
 
 func TestQRCodeService_ParseSubscriptionQR_InvalidType(t *testing.T) {
-	service := NewQRCodeService(256, "M")
+	cfg := newTestConfig(256, "M")
+	service := NewQRCodeService(cfg)
 
 	// Create QR data with invalid type
 	data := QRCodeData{
@@ -110,7 +128,8 @@ func TestQRCodeService_ParseSubscriptionQR_InvalidType(t *testing.T) {
 }
 
 func TestQRCodeService_ParseSubscriptionQR_InvalidUUID(t *testing.T) {
-	service := NewQRCodeService(256, "M")
+	cfg := newTestConfig(256, "M")
+	service := NewQRCodeService(cfg)
 
 	// Create QR data with invalid UUID
 	data := QRCodeData{
@@ -126,7 +145,8 @@ func TestQRCodeService_ParseSubscriptionQR_InvalidUUID(t *testing.T) {
 }
 
 func TestQRCodeService_RoundTrip(t *testing.T) {
-	service := NewQRCodeService(256, "M")
+	cfg := newTestConfig(256, "M")
+	service := NewQRCodeService(cfg)
 	originalMerchantID := uuid.New()
 
 	// Generate QR code

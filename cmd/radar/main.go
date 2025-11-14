@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 
@@ -11,7 +10,6 @@ import (
 	"radar/internal/delivery/http"
 	"radar/internal/delivery/http/middleware"
 	"radar/internal/delivery/http/router/handler"
-	"radar/internal/domain/service"
 	"radar/internal/infra/auth"
 	"radar/internal/infra/auth/google"
 	logs "radar/internal/infra/log"
@@ -75,52 +73,10 @@ func injectService() fx.Option {
 			auth.NewBcryptHasher,
 			auth.NewJWTService,
 			google.NewOAuthService,
-			newFirebaseService,
-			newQRCodeService,
+			notification.NewFirebaseService,
+			qrcode.NewQRCodeService,
 		),
 	)
-}
-
-// newFirebaseService creates a Firebase service with dependency injection
-func newFirebaseService(ctx context.Context, cfg *config.Config, logger *slog.Logger) (service.NotificationService, error) {
-	// Firebase is optional - skip if not configured
-	if cfg.Firebase == nil {
-		logger.Info("Firebase not configured, notification service will be disabled")
-
-		return nil, nil
-	}
-
-	// Validate Firebase configuration
-	if cfg.Firebase.ProjectID == "" || cfg.Firebase.ProjectID == "your-project-id" {
-		logger.Warn("Firebase project ID not configured, notification service will be disabled")
-
-		return nil, nil
-	}
-
-	if cfg.Firebase.CredentialsPath == "" || cfg.Firebase.CredentialsPath == "/path/to/firebase-service-account.json" {
-		logger.Warn("Firebase credentials path not configured, notification service will be disabled")
-
-		return nil, nil
-	}
-
-	svc, err := notification.NewFirebaseService(ctx, cfg.Firebase.ProjectID, cfg.Firebase.CredentialsPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Firebase service: %w", err)
-	}
-
-	logger.Info("Firebase notification service initialized successfully")
-
-	return svc, nil
-}
-
-// newQRCodeService creates a QR code service with dependency injection
-func newQRCodeService(cfg *config.Config) service.QRCodeService {
-	if cfg.QRCode == nil {
-		// Use default values if not configured
-		return qrcode.NewQRCodeService(256, "M")
-	}
-
-	return qrcode.NewQRCodeService(cfg.QRCode.Size, cfg.QRCode.ErrorCorrectionLevel)
 }
 
 func injectUsecase() fx.Option {
