@@ -26,17 +26,20 @@ func NewFirebaseService(params FirebaseDependencies) (service.NotificationServic
 	// Firebase is optional - skip if not configured
 	if params.Config.Firebase == nil {
 		params.Logger.Info("Firebase not configured, notification service will be disabled")
+
 		return &noopNotificationService{}, nil
 	}
 
 	// Validate Firebase configuration
 	if params.Config.Firebase.ProjectID == "" || params.Config.Firebase.ProjectID == "your-project-id" {
 		params.Logger.Warn("Firebase project ID not configured, notification service will be disabled")
+
 		return &noopNotificationService{}, nil
 	}
 
 	if params.Config.Firebase.CredentialsPath == "" || params.Config.Firebase.CredentialsPath == "/path/to/firebase-service-account.json" {
 		params.Logger.Warn("Firebase credentials path not configured, notification service will be disabled")
+
 		return &noopNotificationService{}, nil
 	}
 

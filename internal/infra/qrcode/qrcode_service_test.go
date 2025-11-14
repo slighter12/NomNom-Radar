@@ -4,13 +4,11 @@ import (
 	"encoding/json"
 	"testing"
 
+	"radar/config"
+
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-)
-
-import (
-	"radar/config"
 )
 
 func newTestConfig(size int, level string) *config.Config {
