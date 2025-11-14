@@ -49,12 +49,16 @@ func NewFirebaseService(params FirebaseDependencies) (service.NotificationServic
 	opt := option.WithCredentialsFile(params.Config.Firebase.CredentialsPath)
 	app, err := firebase.NewApp(params.LC, config, opt)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize Firebase app: %w", err)
+		params.Logger.Error("Failed to initialize Firebase app, notifications will be disabled", slog.Any("error", err))
+
+		return &noopNotificationService{}, nil
 	}
 
 	client, err := app.Messaging(params.LC)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get messaging client: %w", err)
+		params.Logger.Error("Failed to get messaging client, notifications will be disabled", slog.Any("error", err))
+
+		return &noopNotificationService{}, nil
 	}
 
 	params.Logger.Info("Firebase notification service initialized successfully")
