@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"radar/config"
 	"radar/internal/domain/service"
 
 	"github.com/google/uuid"
@@ -22,10 +23,18 @@ type QRCodeData struct {
 }
 
 // NewQRCodeService creates a new QR code service instance
-func NewQRCodeService(size int, errorCorrectionLevel string) service.QRCodeService {
+func NewQRCodeService(cfg *config.Config) service.QRCodeService {
+	if cfg.QRCode == nil {
+		// Use default values if not configured
+		return &qrcodeService{
+			size:                 256,
+			errorCorrectionLevel: qrcode.Medium,
+		}
+	}
+
 	// Set error correction level
 	var level qrcode.RecoveryLevel
-	switch errorCorrectionLevel {
+	switch cfg.QRCode.ErrorCorrectionLevel {
 	case "L":
 		level = qrcode.Low
 	case "M":
@@ -39,7 +48,7 @@ func NewQRCodeService(size int, errorCorrectionLevel string) service.QRCodeServi
 	}
 
 	return &qrcodeService{
-		size:                 size,
+		size:                 cfg.QRCode.Size,
 		errorCorrectionLevel: level,
 	}
 }
