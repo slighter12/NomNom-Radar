@@ -30,6 +30,10 @@ logs/
 # config
 config.yaml
 
+# routing data (managed via deployment, not git)
+data/routing/
+*.osm.pbf
+
 # ide config folder
 .kiro/
 .vscode/
