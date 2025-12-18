@@ -70,12 +70,11 @@ func (repo *deviceRepository) FindDeviceByID(ctx context.Context, id uuid.UUID) 
 	return toDeviceDomain(&deviceM), nil
 }
 
-// FindDevicesByUser retrieves all devices for a specific user (including inactive and soft-deleted).
+// FindDevicesByUser retrieves all devices for a specific user (including inactive, excluding soft-deleted).
 func (repo *deviceRepository) FindDevicesByUser(ctx context.Context, userID uuid.UUID) ([]*entity.UserDevice, error) {
 	var deviceModels []*model.UserDeviceModel
 
 	if err := repo.db.WithContext(ctx).
-		Unscoped(). // Include soft-deleted records
 		Where("user_id = ?", userID).
 		Order("created_at DESC").
 		Find(&deviceModels).Error; err != nil {

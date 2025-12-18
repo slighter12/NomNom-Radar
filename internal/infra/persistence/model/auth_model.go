@@ -10,9 +10,9 @@ import (
 type AuthenticationModel struct {
 	ID             uuid.UUID `gorm:"type:uuid;primary_key;default:uuid_generate_v7()"`
 	UserID         uuid.UUID `gorm:"type:uuid;not null"`
-	Provider       string    `gorm:"type:varchar(50);not null;uniqueIndex:idx_auth_provider_provider_user_id"`
-	ProviderUserID string    `gorm:"type:varchar(255);not null;uniqueIndex:idx_auth_provider_provider_user_id"`
-	PasswordHash   string    `gorm:"type:varchar(255)"`
+	Provider       string    `gorm:"type:text;not null;uniqueIndex:idx_auth_provider_provider_user_id"`
+	ProviderUserID string    `gorm:"type:text;not null;uniqueIndex:idx_auth_provider_provider_user_id"`
+	PasswordHash   string    `gorm:"type:text"`
 	CreatedAt      time.Time
 }
 
@@ -25,7 +25,7 @@ func (AuthenticationModel) TableName() string {
 type RefreshTokenModel struct {
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;default:uuid_generate_v7()"`
 	UserID    uuid.UUID `gorm:"type:uuid;not null"`
-	TokenHash string    `gorm:"type:varchar(255);unique;not null"`
+	TokenHash string    `gorm:"type:text;unique;not null"`
 	ExpiresAt time.Time `gorm:"not null"`
 	CreatedAt time.Time
 }

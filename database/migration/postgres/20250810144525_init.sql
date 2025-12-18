@@ -1,6 +1,9 @@
 -- +goose Up
 -- SQL in this section is executed when the migration is applied.
 
+-- Ensure citext is available for case-insensitive email uniqueness
+CREATE EXTENSION IF NOT EXISTS citext;
+
 -- Step 1: Create the reusable trigger function for updated_at
 -- +goose StatementBegin
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -37,8 +40,8 @@ $$ LANGUAGE 'plpgsql';
 -- Table: users
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-    email VARCHAR(255) NOT NULL UNIQUE,
-    name VARCHAR(100),
+    email CITEXT NOT NULL UNIQUE CHECK (length(email) <= 320),
+    name TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMPTZ
@@ -53,9 +56,9 @@ COMMENT ON COLUMN users.deleted_at IS
 CREATE TABLE user_authentications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    provider VARCHAR(50) NOT NULL,
-    provider_user_id VARCHAR(255) NOT NULL,
-    password_hash VARCHAR(255),
+    provider TEXT NOT NULL,
+    provider_user_id TEXT NOT NULL,
+    password_hash TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE UNIQUE INDEX idx_auth_provider_provider_user_id ON user_authentications(provider, provider_user_id);
@@ -65,7 +68,7 @@ CREATE INDEX idx_auth_user_id ON user_authentications(user_id);
 CREATE TABLE refresh_tokens (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token_hash VARCHAR(255) NOT NULL UNIQUE,
+    token_hash TEXT NOT NULL UNIQUE,
     expires_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -85,9 +88,9 @@ CREATE TRIGGER update_user_profiles_updated_at BEFORE UPDATE ON user_profiles FO
 -- Table: merchant_profiles
 CREATE TABLE merchant_profiles (
     user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    store_name VARCHAR(100) NOT NULL,
+    store_name TEXT NOT NULL,
     store_description TEXT,
-    business_license VARCHAR(255) NOT NULL UNIQUE,
+    business_license TEXT NOT NULL UNIQUE,
     store_address TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

@@ -84,6 +84,8 @@ jobs:
           platforms: linux/amd64
           push: true
           pull: true
+          provenance: false
+          sbom: false
           tags: ${{ env.REGISTRY }}/${{ steps.set-vars.outputs.IMAGE_NAME }}:${{ steps.set-vars.outputs.TAG }}
           build-args: |
             VERSION=${{ steps.set-vars.outputs.TAG }}

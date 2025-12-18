@@ -12,7 +12,7 @@ type MerchantLocationNotificationModel struct {
 	ID           uuid.UUID  `gorm:"type:uuid;primary_key;default:uuid_generate_v7()"`
 	MerchantID   uuid.UUID  `gorm:"type:uuid;not null;index"`
 	AddressID    *uuid.UUID `gorm:"type:uuid"`
-	LocationName string     `gorm:"type:varchar(255);not null"`
+	LocationName string     `gorm:"type:text;not null"`
 	FullAddress  string     `gorm:"type:text;not null"`
 	Latitude     float64    `gorm:"type:decimal(10,8);not null"`
 	Longitude    float64    `gorm:"type:decimal(11,8);not null"`
@@ -39,8 +39,8 @@ type NotificationLogModel struct {
 	NotificationID uuid.UUID `gorm:"type:uuid;not null;index"`
 	UserID         uuid.UUID `gorm:"type:uuid;not null;index"`
 	DeviceID       uuid.UUID `gorm:"type:uuid;not null;index"`
-	Status         string    `gorm:"type:varchar(50);not null;default:'sent'"`
-	FCMMessageID   string    `gorm:"type:varchar(255)"`
+	Status         string    `gorm:"type:text;not null;default:'sent'"`
+	FCMMessageID   string    `gorm:"type:text"`
 	ErrorMessage   string    `gorm:"type:text"`
 	SentAt         time.Time
 }

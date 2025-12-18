@@ -11,8 +11,8 @@ import (
 // It is an exported type so it can be used by the GORM Gen tool from other packages.
 type UserModel struct {
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;default:uuid_generate_v7()"`
-	Email     string    `gorm:"type:varchar(255);unique;not null"`
-	Name      string    `gorm:"type:varchar(100)"`
+	Email     string    `gorm:"type:citext;unique;not null"`
+	Name      string    `gorm:"type:text"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt gorm.DeletedAt `gorm:"index"`
@@ -46,9 +46,9 @@ func (UserProfileModel) TableName() string {
 type MerchantProfileModel struct {
 	UserID           uuid.UUID       `gorm:"primaryKey"`
 	Addresses        []*AddressModel `gorm:"foreignKey:MerchantProfileID"`
-	StoreName        string          `gorm:"type:varchar(100);not null"`
+	StoreName        string          `gorm:"type:text;not null"`
 	StoreDescription string          `gorm:"type:text"`
-	BusinessLicense  string          `gorm:"type:varchar(255);not null;unique"`
+	BusinessLicense  string          `gorm:"type:text;not null;unique"`
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }

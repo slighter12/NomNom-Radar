@@ -53,9 +53,9 @@ CREATE TRIGGER trigger_update_address_location
 CREATE TABLE user_devices (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    fcm_token VARCHAR(255) NOT NULL,
-    device_id VARCHAR(255) NOT NULL,
-    platform VARCHAR(50) NOT NULL,
+    fcm_token TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    platform TEXT NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -91,7 +91,7 @@ CREATE TABLE user_merchant_subscriptions (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     merchant_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     is_active BOOLEAN NOT NULL DEFAULT true,
-    notification_radius DECIMAL(10, 2) NOT NULL DEFAULT 1000.0,
+    notification_radius DECIMAL(10, 2) NOT NULL DEFAULT 1000.0 CHECK (notification_radius >= 0 AND notification_radius <= 10000),
     subscribed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMPTZ
@@ -134,7 +134,7 @@ CREATE TABLE merchant_location_notifications (
     -- Snapshot of location data at the time of notification.
     -- These fields are always required regardless of whether address_id is set.
     -- This ensures historical accuracy even if the referenced address is modified or deleted.
-    location_name VARCHAR(255) NOT NULL,
+    location_name TEXT NOT NULL,
     full_address TEXT NOT NULL,
     latitude DECIMAL(10, 8) NOT NULL,
     longitude DECIMAL(11, 8) NOT NULL,
@@ -145,7 +145,9 @@ CREATE TABLE merchant_location_notifications (
     total_failed INTEGER NOT NULL DEFAULT 0,
     published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (latitude BETWEEN -90 AND 90),
+    CHECK (longitude BETWEEN -180 AND 180)
 );
 
 CREATE INDEX idx_merchant_notifications_merchant_id ON merchant_location_notifications(merchant_id);
@@ -170,8 +172,8 @@ CREATE TABLE notification_logs (
     notification_id UUID NOT NULL REFERENCES merchant_location_notifications(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     device_id UUID NOT NULL REFERENCES user_devices(id) ON DELETE CASCADE,
-    status VARCHAR(50) NOT NULL DEFAULT 'sent',
-    fcm_message_id VARCHAR(255),
+    status TEXT NOT NULL DEFAULT 'sent',
+    fcm_message_id TEXT,
     error_message TEXT,
     sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

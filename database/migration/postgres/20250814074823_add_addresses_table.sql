@@ -16,7 +16,7 @@ CREATE TABLE addresses (
     merchant_profile_id UUID REFERENCES merchant_profiles(user_id) ON DELETE CASCADE,
 
     -- A user-defined label for the address, e.g., "Home", "Office", "Main Store".
-    label VARCHAR(100) NOT NULL,
+    label TEXT NOT NULL,
     -- The full, human-readable street address.
     full_address TEXT NOT NULL,
     
@@ -30,11 +30,13 @@ CREATE TABLE addresses (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     
-    -- Ensure exactly one owner is set
+    -- Ensure valid owner and coordinate constraints
     CHECK (
         (user_profile_id IS NOT NULL)::int + 
         (merchant_profile_id IS NOT NULL)::int = 1
-    )
+    ),
+    CHECK (latitude BETWEEN -90 AND 90),
+    CHECK (longitude BETWEEN -180 AND 180)
 );
 
 -- Step 3: Create indexes for performance.

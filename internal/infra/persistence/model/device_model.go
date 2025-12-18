@@ -12,9 +12,9 @@ import (
 type UserDeviceModel struct {
 	ID        uuid.UUID `gorm:"type:uuid;primary_key;default:uuid_generate_v7()"`
 	UserID    uuid.UUID `gorm:"type:uuid;not null;index"`
-	FCMToken  string    `gorm:"type:varchar(255);not null"`
-	DeviceID  string    `gorm:"type:varchar(255);not null"`
-	Platform  string    `gorm:"type:varchar(50);not null"`
+	FCMToken  string    `gorm:"type:text;not null"`
+	DeviceID  string    `gorm:"type:text;not null"`
+	Platform  string    `gorm:"type:text;not null"`
 	IsActive  bool      `gorm:"not null;default:true"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
