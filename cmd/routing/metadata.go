@@ -218,7 +218,7 @@ func estimateLineCount(filePath string) int {
 			}
 		}
 
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 	}
