@@ -268,17 +268,25 @@ func formatBytes(bytes int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
-// formatDuration formats duration into human readable format
+// formatDuration formats duration into human readable format (e.g., "1h30m", "5m10s", "45s")
 func formatDuration(duration time.Duration) string {
+	duration = duration.Round(time.Second)
+
 	if duration < time.Minute {
-		return fmt.Sprintf("%.0fs", duration.Seconds())
+		return fmt.Sprintf("%ds", int(duration.Seconds()))
 	}
 
 	if duration < time.Hour {
-		return fmt.Sprintf("%.0fm%.0fs", duration.Minutes(), duration.Seconds()-duration.Minutes()*60)
+		m := int(duration.Minutes())
+		s := int(duration.Seconds()) % 60
+
+		return fmt.Sprintf("%dm%ds", m, s)
 	}
 
-	return fmt.Sprintf("%.0fh%.0fm", duration.Hours(), duration.Minutes()-duration.Hours()*60)
+	h := int(duration.Hours())
+	m := int(duration.Minutes()) % 60
+
+	return fmt.Sprintf("%dh%dm", h, m)
 }
 
 // parseContentLength parses Content-Length header
