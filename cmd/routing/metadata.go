@@ -212,7 +212,7 @@ func estimateLineCount(filePath string) int {
 			break
 		}
 
-		for i := 0; i < n; i++ {
+		for i := range n {
 			if buf[i] == '\n' {
 				count++
 			}
