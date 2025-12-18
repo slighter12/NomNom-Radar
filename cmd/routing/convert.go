@@ -1,15 +1,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
-func runConvert(input, output string, contract bool) {
+func runConvert(ctx context.Context, input, output string, contract bool) {
 	fmt.Printf("Converting OSM data from %s to %s\n", input, output)
 	fmt.Printf("Contraction enabled: %v\n", contract)
 	fmt.Println()
@@ -27,7 +30,7 @@ func runConvert(input, output string, contract bool) {
 	}
 
 	// Run osm2ch conversion
-	if err := runOSM2CHConversion(input, output, contract); err != nil {
+	if err := runOSM2CHConversion(ctx, input, output, contract); err != nil {
 		fmt.Printf("Error: Conversion failed: %v\n", err)
 		os.Exit(1)
 	}
@@ -42,12 +45,12 @@ func runConvert(input, output string, contract bool) {
 }
 
 // runOSM2CHConversion executes the osm2ch command
-func runOSM2CHConversion(input, output string, contract bool) error {
+func runOSM2CHConversion(ctx context.Context, input, output string, contract bool) error {
 	fmt.Println("Running osm2ch conversion...")
 
 	// Check if osm2ch is available
 	if _, err := exec.LookPath("osm2ch"); err != nil {
-		return fmt.Errorf("osm2ch command not found in PATH. Please install osm2ch first: go install github.com/LdDl/osm2ch/cmd/osm2ch@latest")
+		return errors.New("osm2ch command not found in PATH. Please install osm2ch first: go install github.com/LdDl/osm2ch/cmd/osm2ch@latest")
 	}
 
 	// Build osm2ch command arguments
@@ -65,7 +68,7 @@ func runOSM2CHConversion(input, output string, contract bool) error {
 	fmt.Printf("Executing: osm2ch %v\n", args)
 
 	// Execute osm2ch command
-	cmd := exec.Command("osm2ch", args...)
+	cmd := exec.CommandContext(ctx, "osm2ch", args...)
 
 	// Set working directory if needed
 	cmd.Dir = "."
@@ -79,10 +82,11 @@ func runOSM2CHConversion(input, output string, contract bool) error {
 	duration := time.Since(startTime)
 
 	if err != nil {
-		return fmt.Errorf("osm2ch execution failed after %v: %w", duration, err)
+		return errors.Wrapf(err, "osm2ch execution failed after %v", duration)
 	}
 
 	fmt.Printf("Conversion completed in %v\n", duration)
+
 	return nil
 }
 
@@ -101,15 +105,16 @@ func generateMetadata(input, output string, contract bool) error {
 	// Generate metadata using the new structure
 	metadata, err := GenerateMetadata(input, output, region, contract)
 	if err != nil {
-		return fmt.Errorf("failed to generate metadata: %w", err)
+		return errors.Wrap(err, "failed to generate metadata")
 	}
 
 	// Write metadata file
 	metadataPath := filepath.Join(output, "metadata.json")
 	if err := WriteMetadataToFile(metadata, metadataPath); err != nil {
-		return fmt.Errorf("failed to write metadata file: %w", err)
+		return errors.Wrap(err, "failed to write metadata file")
 	}
 
 	fmt.Printf("Metadata written to: %s\n", metadataPath)
+
 	return nil
 }

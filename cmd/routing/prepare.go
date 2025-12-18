@@ -1,13 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 )
 
-func runPrepare(region, output string) {
+func runPrepare(ctx context.Context, region, output string) {
 	fmt.Printf("Preparing routing data for region: %s\n", region)
 	fmt.Printf("Output directory: %s\n", output)
 	fmt.Println()
@@ -33,7 +34,7 @@ func runPrepare(region, output string) {
 	downloadConfig.URL = regionConfig.URL
 	downloadConfig.Filename = regionConfig.Filename
 
-	if err := downloadFile(downloadConfig); err != nil {
+	if err := downloadFile(ctx, downloadConfig); err != nil {
 		fmt.Printf("Error: Download failed: %v\n", err)
 		os.Exit(1)
 	}
@@ -42,7 +43,7 @@ func runPrepare(region, output string) {
 
 	// Step 2: Convert OSM data
 	fmt.Println("\n=== Step 2: Converting OSM data ===")
-	if err := runOSM2CHConversion(inputFile, output, true); err != nil {
+	if err := runOSM2CHConversion(ctx, inputFile, output, true); err != nil {
 		fmt.Printf("Error: Conversion failed: %v\n", err)
 		os.Exit(1)
 	}

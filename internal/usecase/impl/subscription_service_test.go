@@ -2,7 +2,6 @@ package impl
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"radar/config"
@@ -13,6 +12,7 @@ import (
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"

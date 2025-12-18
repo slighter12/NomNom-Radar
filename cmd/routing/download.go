@@ -1,7 +1,8 @@
 package main
 
 import (
-	"crypto/md5"
+	"context"
+	"crypto/md5" // #nosec G501
 	"crypto/sha256"
 	"fmt"
 	"io"
@@ -10,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 // DownloadConfig holds download configuration
@@ -22,7 +25,7 @@ type DownloadConfig struct {
 	Verify    bool
 }
 
-func runDownload(region, outputDir string) {
+func runDownload(ctx context.Context, region, outputDir string) {
 	// Get region configuration
 	regionConfig, exists := GetRegionConfig(region)
 	if !exists {
@@ -48,7 +51,7 @@ func runDownload(region, outputDir string) {
 	fmt.Println()
 
 	// Download the file
-	if err := downloadFile(config); err != nil {
+	if err := downloadFile(ctx, config); err != nil {
 		fmt.Printf("Error: Failed to download file: %v\n", err)
 		os.Exit(1)
 	}
@@ -57,100 +60,148 @@ func runDownload(region, outputDir string) {
 }
 
 // downloadFile handles the actual download with progress tracking and resume support
-func downloadFile(config DownloadConfig) error {
+func downloadFile(ctx context.Context, config DownloadConfig) error {
 	// Ensure output directory exists
 	if err := os.MkdirAll(config.OutputDir, 0755); err != nil {
-		return fmt.Errorf("failed to create output directory: %w", err)
+		return errors.Wrap(err, "failed to create output directory")
 	}
 
 	outputPath := filepath.Join(config.OutputDir, config.Filename)
+	existingSize := getExistingSize(config.Resume, outputPath)
 
-	// Check if file already exists and get its size for resume
-	var existingSize int64
-	if config.Resume {
-		if info, err := os.Stat(outputPath); err == nil {
-			existingSize = info.Size()
-			fmt.Printf("Resuming download from %d bytes\n", existingSize)
-		}
-	}
-
-	// Create HTTP request
-	req, err := http.NewRequest("GET", config.URL, nil)
+	// Create HTTP request with context
+	req, err := http.NewRequestWithContext(ctx, "GET", config.URL, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return errors.Wrap(err, "failed to create request")
 	}
 
-	// Set Range header for resume
 	if existingSize > 0 {
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", existingSize))
 	}
 
 	// Make request
-	client := &http.Client{Timeout: 30 * time.Minute}
-	resp, err := client.Do(req)
+	resp, err := (&http.Client{Timeout: 30 * time.Minute}).Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to make request: %w", err)
+		return errors.Wrap(err, "failed to make request")
 	}
 	defer resp.Body.Close()
 
-	// Check response status
-	if resp.StatusCode == 416 {
-		// 416 Range Not Satisfiable - file is already complete
+	if err := checkResponseStatus(resp, config); err != nil {
+		return err
+	}
+
+	return performDownload(ctx, resp, outputPath, existingSize, config)
+}
+
+func getExistingSize(resume bool, path string) int64 {
+	if resume {
+		if info, err := os.Stat(path); err == nil {
+			size := info.Size()
+			fmt.Printf("Resuming download from %d bytes\n", size)
+
+			return size
+		}
+	}
+
+	return 0
+}
+
+func checkResponseStatus(resp *http.Response, config DownloadConfig) error {
+	switch resp.StatusCode {
+	case http.StatusRequestedRangeNotSatisfiable:
 		fmt.Println("File is already complete")
+
 		return verifyFileIntegrity(config)
+	case http.StatusOK, http.StatusPartialContent:
+		return nil
+	default:
+		return errors.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
+}
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	// Open output file
-	var file *os.File
-	if existingSize > 0 && resp.StatusCode == http.StatusPartialContent {
-		file, err = os.OpenFile(outputPath, os.O_APPEND|os.O_WRONLY, 0644)
-	} else {
-		file, err = os.Create(outputPath)
-		existingSize = 0 // Reset if not resuming
-	}
+func performDownload(ctx context.Context, resp *http.Response, path string, existingSize int64, config DownloadConfig) error {
+	file, err := openOutputFile(path, existingSize, resp.StatusCode)
 	if err != nil {
-		return fmt.Errorf("failed to open output file: %w", err)
+		return err
 	}
 	defer file.Close()
 
-	// Get total size
-	totalSize := existingSize
-	if resp.StatusCode == http.StatusOK {
-		if contentLength := resp.Header.Get("Content-Length"); contentLength != "" {
-			if size, err := parseContentLength(contentLength); err == nil {
-				totalSize = size
-			}
-		}
-	} else if resp.StatusCode == http.StatusPartialContent {
-		// For partial content, we don't know the total size
-		totalSize = -1
-	}
-
-	// Create progress reader
+	totalSize := calculateTotalSize(resp)
 	progress := &DownloadProgress{
 		Total:      totalSize,
 		Downloaded: existingSize,
 		StartTime:  time.Now(),
 	}
 
-	// Copy with progress tracking
-	_, err = io.Copy(io.MultiWriter(file, progress), resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to download file: %w", err)
+	// Use a context-aware reader to support cancellation during download
+	reader := &contextReader{
+		ctx: ctx,
+		r:   resp.Body,
 	}
 
-	fmt.Println() // New line after progress bar
+	if _, err := io.Copy(io.MultiWriter(file, progress), reader); err != nil {
+		return errors.Wrap(err, "failed to download file")
+	}
 
-	// Verify file integrity if requested
+	fmt.Println()
+
 	if config.Verify {
 		return verifyFileIntegrity(config)
 	}
 
 	return nil
+}
+
+type contextReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (cr *contextReader) Read(p []byte) (int, error) {
+	if err := cr.ctx.Err(); err != nil {
+		return 0, errors.Wrap(err, "context canceled during read")
+	}
+
+	bytesRead, err := cr.r.Read(p)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return bytesRead, io.EOF
+		}
+
+		return bytesRead, errors.Wrap(err, "read failed")
+	}
+
+	return bytesRead, nil
+}
+
+func openOutputFile(path string, existingSize int64, statusCode int) (*os.File, error) {
+	if existingSize > 0 && statusCode == http.StatusPartialContent {
+		file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to open file for appending")
+		}
+
+		return file, nil
+	}
+
+	file, err := os.Create(path)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create file")
+	}
+
+	return file, nil
+}
+
+func calculateTotalSize(resp *http.Response) int64 {
+	if resp.StatusCode == http.StatusOK {
+		if contentLength := resp.Header.Get("Content-Length"); contentLength != "" {
+			if size, err := parseContentLength(contentLength); err == nil {
+				return size
+			}
+		}
+	}
+
+	return -1 // Unknown or partial
 }
 
 // DownloadProgress tracks download progress and displays a progress bar
@@ -165,6 +216,7 @@ func (dp *DownloadProgress) Write(p []byte) (int, error) {
 	dp.Downloaded += int64(n)
 
 	dp.displayProgress()
+
 	return n, nil
 }
 
@@ -175,6 +227,7 @@ func (dp *DownloadProgress) displayProgress() {
 	if dp.Total <= 0 {
 		// Unknown total size
 		fmt.Printf("\rDownloaded: %s | ???%% complete", formatBytes(dp.Downloaded))
+
 		return
 	}
 
@@ -211,25 +264,31 @@ func formatBytes(bytes int64) string {
 		div *= unit
 		exp++
 	}
+
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
 // formatDuration formats duration into human readable format
-func formatDuration(d time.Duration) string {
-	if d < time.Minute {
-		return fmt.Sprintf("%.0fs", d.Seconds())
+func formatDuration(duration time.Duration) string {
+	if duration < time.Minute {
+		return fmt.Sprintf("%.0fs", duration.Seconds())
 	}
-	if d < time.Hour {
-		return fmt.Sprintf("%.0fm%.0fs", d.Minutes(), d.Seconds()-d.Minutes()*60)
+
+	if duration < time.Hour {
+		return fmt.Sprintf("%.0fm%.0fs", duration.Minutes(), duration.Seconds()-duration.Minutes()*60)
 	}
-	return fmt.Sprintf("%.0fh%.0fm", d.Hours(), d.Minutes()-d.Hours()*60)
+
+	return fmt.Sprintf("%.0fh%.0fm", duration.Hours(), duration.Minutes()-duration.Hours()*60)
 }
 
 // parseContentLength parses Content-Length header
 func parseContentLength(length string) (int64, error) {
 	var size int64
-	_, err := fmt.Sscanf(length, "%d", &size)
-	return size, err
+	if _, err := fmt.Sscanf(length, "%d", &size); err != nil {
+		return 0, errors.Wrap(err, "failed to parse content length")
+	}
+
+	return size, nil
 }
 
 // verifyFileIntegrity verifies the downloaded file integrity
@@ -240,16 +299,17 @@ func verifyFileIntegrity(config DownloadConfig) error {
 
 	file, err := os.Open(outputPath)
 	if err != nil {
-		return fmt.Errorf("failed to open file for verification: %w", err)
+		return errors.Wrap(err, "failed to open file for verification")
 	}
 	defer file.Close()
 
 	// Calculate MD5 and SHA256
+	// #nosec G401
 	md5Hash := md5.New()
 	sha256Hash := sha256.New()
 
 	if _, err := io.Copy(io.MultiWriter(md5Hash, sha256Hash), file); err != nil {
-		return fmt.Errorf("failed to calculate checksums: %w", err)
+		return errors.Wrap(err, "failed to calculate checksums")
 	}
 
 	md5Sum := fmt.Sprintf("%x", md5Hash.Sum(nil))

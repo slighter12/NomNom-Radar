@@ -1,7 +1,7 @@
 package main
 
 import (
-	"crypto/md5"
+	"crypto/md5" // #nosec G501
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 // RoutingMetadata represents the metadata for routing data
@@ -61,7 +63,7 @@ func GenerateMetadata(inputFile, outputDir string, region string, contract bool)
 	// Get source information
 	source, err := getSourceMetadata(inputFile, region)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get source metadata: %w", err)
+		return nil, errors.Wrap(err, "failed to get source metadata")
 	}
 
 	// Get processing information
@@ -76,7 +78,7 @@ func GenerateMetadata(inputFile, outputDir string, region string, contract bool)
 	// Get output information
 	output, err := getOutputMetadata(outputDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get output metadata: %w", err)
+		return nil, errors.Wrap(err, "failed to get output metadata")
 	}
 
 	metadata := &RoutingMetadata{
@@ -93,13 +95,13 @@ func GenerateMetadata(inputFile, outputDir string, region string, contract bool)
 func getSourceMetadata(inputFile, region string) (*SourceMetadata, error) {
 	info, err := os.Stat(inputFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to stat input file: %w", err)
+		return nil, errors.Wrap(err, "failed to stat input file")
 	}
 
 	// Calculate checksums
 	md5Hash, sha256Hash, err := calculateFileChecksums(inputFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to calculate checksums: %w", err)
+		return nil, errors.Wrap(err, "failed to calculate checksums")
 	}
 
 	// Get region config for URL
@@ -136,9 +138,11 @@ func getOutputMetadata(outputDir string) (*OutputMetadata, error) {
 		if err != nil {
 			if os.IsNotExist(err) {
 				fmt.Printf("Warning: Expected output file not found: %s\n", filePath)
+
 				continue
 			}
-			return nil, fmt.Errorf("failed to stat file %s: %w", filePath, err)
+
+			return nil, errors.Wrapf(err, "failed to stat file %s", filePath)
 		}
 
 		// Calculate checksums
@@ -173,15 +177,16 @@ func getOutputMetadata(outputDir string) (*OutputMetadata, error) {
 func calculateFileChecksums(filePath string) (string, string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to open file: %w", err)
+		return "", "", errors.Wrap(err, "failed to open file")
 	}
 	defer file.Close()
 
+	// #nosec G401
 	md5Hash := md5.New()
 	sha256Hash := sha256.New()
 
 	if _, err := io.Copy(io.MultiWriter(md5Hash, sha256Hash), file); err != nil {
-		return "", "", fmt.Errorf("failed to calculate checksums: %w", err)
+		return "", "", errors.Wrap(err, "failed to calculate checksums")
 	}
 
 	md5Sum := fmt.Sprintf("%x", md5Hash.Sum(nil))
@@ -225,7 +230,7 @@ func estimateLineCount(filePath string) int {
 func WriteMetadataToFile(metadata *RoutingMetadata, filePath string) error {
 	file, err := os.Create(filePath)
 	if err != nil {
-		return fmt.Errorf("failed to create metadata file: %w", err)
+		return errors.Wrap(err, "failed to create metadata file")
 	}
 	defer file.Close()
 
@@ -233,7 +238,7 @@ func WriteMetadataToFile(metadata *RoutingMetadata, filePath string) error {
 	encoder.SetIndent("", "  ")
 
 	if err := encoder.Encode(metadata); err != nil {
-		return fmt.Errorf("failed to encode metadata: %w", err)
+		return errors.Wrap(err, "failed to encode metadata")
 	}
 
 	return nil
@@ -243,7 +248,7 @@ func WriteMetadataToFile(metadata *RoutingMetadata, filePath string) error {
 func LoadMetadataFromFile(filePath string) (*RoutingMetadata, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open metadata file: %w", err)
+		return nil, errors.Wrap(err, "failed to open metadata file")
 	}
 	defer file.Close()
 
@@ -251,7 +256,7 @@ func LoadMetadataFromFile(filePath string) (*RoutingMetadata, error) {
 	decoder := json.NewDecoder(file)
 
 	if err := decoder.Decode(&metadata); err != nil {
-		return nil, fmt.Errorf("failed to decode metadata: %w", err)
+		return nil, errors.Wrap(err, "failed to decode metadata")
 	}
 
 	return &metadata, nil

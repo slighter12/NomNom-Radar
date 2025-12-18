@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -40,18 +41,41 @@ func main() {
 		os.Exit(1)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	runSubcommand(ctx, downloadCmd, convertCmd, prepareCmd, validateCmd, downloadRegion, downloadOutput, convertInput, convertOutput, convertContract, prepareRegion, prepareOutput, validateDir)
+}
+
+func runSubcommand(ctx context.Context, downloadCmd, convertCmd, prepareCmd, validateCmd *flag.FlagSet, downloadRegion, downloadOutput, convertInput, convertOutput *string, convertContract *bool, prepareRegion, prepareOutput, validateDir *string) {
 	switch os.Args[1] {
 	case "download":
-		downloadCmd.Parse(os.Args[2:])
-		runDownload(*downloadRegion, *downloadOutput)
+		if err := downloadCmd.Parse(os.Args[2:]); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		runDownload(ctx, *downloadRegion, *downloadOutput)
 	case "convert":
-		convertCmd.Parse(os.Args[2:])
-		runConvert(*convertInput, *convertOutput, *convertContract)
+		if err := convertCmd.Parse(os.Args[2:]); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		runConvert(ctx, *convertInput, *convertOutput, *convertContract)
 	case "prepare":
-		prepareCmd.Parse(os.Args[2:])
-		runPrepare(*prepareRegion, *prepareOutput)
+		if err := prepareCmd.Parse(os.Args[2:]); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		runPrepare(ctx, *prepareRegion, *prepareOutput)
 	case "validate":
-		validateCmd.Parse(os.Args[2:])
+		if err := validateCmd.Parse(os.Args[2:]); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+
 		runValidate(*validateDir)
 	default:
 		printUsage()

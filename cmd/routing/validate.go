@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 func runValidate(dir string) {
@@ -21,10 +23,37 @@ func runValidate(dir string) {
 func validateRoutingData(dir string) error {
 	// Check if directory exists
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		return fmt.Errorf("directory does not exist: %s", dir)
+		return errors.Wrapf(err, "directory does not exist: %s", dir)
 	}
 
 	// Check for required files
+	if err := checkRequiredFiles(dir); err != nil {
+		return err
+	}
+
+	// Load and validate metadata
+	metadata, err := loadAndValidateMetadata(dir)
+	if err != nil {
+		return err
+	}
+
+	// Validate output files match metadata
+	if err := validateFilesAgainstMetadata(dir, metadata); err != nil {
+		return err
+	}
+
+	// Validate CSV file formats
+	if err := validateCSVFormats(dir); err != nil {
+		return err
+	}
+
+	// Check data consistency
+	logConsistencyStats(metadata)
+
+	return nil
+}
+
+func checkRequiredFiles(dir string) error {
 	requiredFiles := []string{
 		"metadata.json",
 		"vertices.csv",
@@ -33,51 +62,66 @@ func validateRoutingData(dir string) error {
 	}
 
 	fmt.Println("Checking required files...")
+
 	for _, filename := range requiredFiles {
 		filePath := filepath.Join(dir, filename)
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			return fmt.Errorf("required file missing: %s", filename)
+			return errors.Errorf("required file missing: %s", filename)
 		}
+
 		fmt.Printf("  ✅ %s\n", filename)
 	}
 
-	// Load and validate metadata
+	return nil
+}
+
+func loadAndValidateMetadata(dir string) (*RoutingMetadata, error) {
 	fmt.Println("\nValidating metadata...")
+
 	metadataPath := filepath.Join(dir, "metadata.json")
+
 	metadata, err := LoadMetadataFromFile(metadataPath)
 	if err != nil {
-		return fmt.Errorf("failed to load metadata: %w", err)
+		return nil, errors.Wrap(err, "failed to load metadata")
 	}
 
 	// Validate metadata structure
 	if metadata.Version != "1.0" {
-		return fmt.Errorf("unsupported metadata version: %s", metadata.Version)
+		return nil, errors.Errorf("unsupported metadata version: %s", metadata.Version)
 	}
 
 	fmt.Printf("  ✅ Version: %s\n", metadata.Version)
 	fmt.Printf("  ✅ Source: %s (%s)\n", metadata.Source.Filename, formatBytes(metadata.Source.SizeBytes))
 	fmt.Printf("  ✅ Generated: %s\n", metadata.Processing.GeneratedAt.Format("2006-01-02 15:04:05"))
 
-	// Validate output files exist and match metadata
+	return metadata, nil
+}
+
+func validateFilesAgainstMetadata(dir string, metadata *RoutingMetadata) error {
 	fmt.Println("\nValidating output files...")
+
 	for filename, fileMeta := range metadata.Output.Files {
 		filePath := filepath.Join(dir, filename)
 
 		info, err := os.Stat(filePath)
 		if err != nil {
-			return fmt.Errorf("output file not found: %s", filename)
+			return errors.Wrapf(err, "output file not found: %s", filename)
 		}
 
 		if info.Size() != fileMeta.SizeBytes {
-			return fmt.Errorf("file size mismatch for %s: expected %d, got %d",
+			return errors.Errorf("file size mismatch for %s: expected %d, got %d",
 				filename, fileMeta.SizeBytes, info.Size())
 		}
 
 		fmt.Printf("  ✅ %s (%s)\n", filename, formatBytes(info.Size()))
 	}
 
-	// Validate CSV file formats (basic check)
+	return nil
+}
+
+func validateCSVFormats(dir string) error {
 	fmt.Println("\nValidating CSV formats...")
+
 	csvChecks := map[string]func(string) error{
 		"vertices.csv":  validateVerticesCSV,
 		"edges.csv":     validateEdgesCSV,
@@ -87,13 +131,18 @@ func validateRoutingData(dir string) error {
 	for filename, validator := range csvChecks {
 		filePath := filepath.Join(dir, filename)
 		if err := validator(filePath); err != nil {
-			return fmt.Errorf("CSV validation failed for %s: %w", filename, err)
+			return errors.Wrapf(err, "CSV validation failed for %s", filename)
 		}
+
 		fmt.Printf("  ✅ %s format\n", filename)
 	}
 
-	// Check data consistency
+	return nil
+}
+
+func logConsistencyStats(metadata *RoutingMetadata) {
 	fmt.Println("\nChecking data consistency...")
+
 	if metadata.Output.VerticesCount == 0 {
 		fmt.Println("  ⚠️  Warning: No vertices count in metadata")
 	} else {
@@ -111,8 +160,6 @@ func validateRoutingData(dir string) error {
 	} else {
 		fmt.Printf("  ✅ Shortcuts: %d\n", metadata.Output.ShortcutsCount)
 	}
-
-	return nil
 }
 
 // validateVerticesCSV performs basic validation of vertices.csv
@@ -134,34 +181,35 @@ func validateShortcutsCSV(filePath string) error {
 func validateCSVHasColumns(filePath string, expectedColumns []string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
+		return errors.Wrap(err, "failed to open file")
 	}
 	defer file.Close()
 
 	// For now, just check if file is readable and has some content
 	// In production, you'd use encoding/csv package for proper CSV parsing
 	buf := make([]byte, 1024)
-	n, err := file.Read(buf)
+	bytesRead, err := file.Read(buf)
 	if err != nil && err.Error() != "EOF" {
-		return fmt.Errorf("failed to read file: %w", err)
+		return errors.Wrap(err, "failed to read file")
 	}
 
-	if n == 0 {
-		return fmt.Errorf("file is empty")
+	if bytesRead == 0 {
+		return errors.New("file is empty")
 	}
 
 	// Basic check: should contain expected column names somewhere in first line
-	firstLine := string(buf[:n])
-	for i, b := range buf {
+	firstLine := string(buf[:bytesRead])
+	for i, b := range buf[:bytesRead] {
 		if b == '\n' {
 			firstLine = string(buf[:i])
+
 			break
 		}
 	}
 
 	for _, expected := range expectedColumns {
 		if !strings.Contains(firstLine, expected) {
-			return fmt.Errorf("missing required column '%s' in header", expected)
+			return errors.Errorf("missing required column '%s' in header", expected)
 		}
 	}
 

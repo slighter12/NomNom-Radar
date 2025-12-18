@@ -2,7 +2,6 @@ package impl
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 )
 
 var (
@@ -86,7 +86,7 @@ func (s *notificationService) PublishLocationNotification(
 	}
 
 	if err := s.notificationRepo.CreateNotification(ctx, notification); err != nil {
-		return nil, fmt.Errorf("failed to create notification: %w", err)
+		return nil, errors.Wrap(err, "failed to create notification")
 	}
 
 	// Get devices for subscribers
@@ -116,7 +116,7 @@ func (s *notificationService) GetMerchantNotificationHistory(
 ) ([]*entity.MerchantLocationNotification, error) {
 	notifications, err := s.notificationRepo.FindNotificationsByMerchant(ctx, merchantID, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find notifications by merchant: %w", err)
+		return nil, errors.Wrap(err, "failed to find notifications by merchant")
 	}
 
 	return notifications, nil
@@ -133,7 +133,7 @@ func (s *notificationService) getLocationInfo(
 		// Fetch address from repository
 		address, fetchErr := s.addressRepo.FindAddressByID(ctx, *addressID)
 		if fetchErr != nil {
-			return "", "", 0, 0, fmt.Errorf("failed to fetch address: %w", fetchErr)
+			return "", "", 0, 0, errors.Wrap(fetchErr, "failed to fetch address")
 		}
 
 		// Verify ownership
@@ -264,7 +264,7 @@ func (s *notificationService) getSubscriberDevices(
 	// Find subscribers within radius using PostGIS
 	subscriptions, err := s.subscriptionRepo.FindSubscribersWithinRadius(ctx, merchantID, latitude, longitude)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to find subscribers: %w", err)
+		return nil, nil, errors.Wrap(err, "failed to find subscribers")
 	}
 
 	// If no subscribers, return early
@@ -281,7 +281,7 @@ func (s *notificationService) getSubscriberDevices(
 	// Get all active devices for these users
 	devices, err := s.subscriptionRepo.FindDevicesForUsers(ctx, userIDs)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to fetch devices: %w", err)
+		return nil, nil, errors.Wrap(err, "failed to fetch devices")
 	}
 
 	// If no devices, return early
@@ -348,7 +348,7 @@ func (s *notificationService) sendAndProcessNotifications(
 
 	// Update notification statistics
 	if err := s.notificationRepo.UpdateNotificationStatus(ctx, notification.ID, totalSent, totalFailed); err != nil {
-		return fmt.Errorf("failed to update notification status: %w", err)
+		return errors.Wrap(err, "failed to update notification status")
 	}
 
 	// Update notification object

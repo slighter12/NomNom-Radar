@@ -2,12 +2,12 @@ package qrcode
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"radar/config"
 	"radar/internal/domain/service"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/skip2/go-qrcode"
 )
 
@@ -64,19 +64,19 @@ func (s *qrcodeService) GenerateSubscriptionQR(merchantID uuid.UUID) ([]byte, er
 	// Convert to JSON
 	jsonData, err := json.Marshal(data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal QR code data: %w", err)
+		return nil, errors.Wrap(err, "failed to marshal QR code data")
 	}
 
 	// Generate QR code
 	qrCode, err := qrcode.New(string(jsonData), s.errorCorrectionLevel)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create QR code: %w", err)
+		return nil, errors.Wrap(err, "failed to create QR code")
 	}
 
 	// Generate PNG image
 	pngBytes, err := qrCode.PNG(s.size)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate PNG: %w", err)
+		return nil, errors.Wrap(err, "failed to generate PNG")
 	}
 
 	return pngBytes, nil
@@ -86,18 +86,18 @@ func (s *qrcodeService) GenerateSubscriptionQR(merchantID uuid.UUID) ([]byte, er
 func (s *qrcodeService) ParseSubscriptionQR(qrData string) (uuid.UUID, error) {
 	var data QRCodeData
 	if err := json.Unmarshal([]byte(qrData), &data); err != nil {
-		return uuid.Nil, fmt.Errorf("failed to unmarshal QR code data: %w", err)
+		return uuid.Nil, errors.Wrap(err, "failed to unmarshal QR code data")
 	}
 
 	// Validate type
 	if data.Type != "subscription" {
-		return uuid.Nil, fmt.Errorf("invalid QR code type: %s", data.Type)
+		return uuid.Nil, errors.Errorf("invalid QR code type: %s", data.Type)
 	}
 
 	// Parse UUID
 	merchantID, err := uuid.Parse(data.MerchantID)
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("failed to parse merchant ID: %w", err)
+		return uuid.Nil, errors.Wrap(err, "failed to parse merchant ID")
 	}
 
 	return merchantID, nil

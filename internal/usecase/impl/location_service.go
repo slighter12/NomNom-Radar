@@ -2,8 +2,6 @@ package impl
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"time"
 
 	"radar/config"
@@ -12,6 +10,7 @@ import (
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 )
 
 var (
@@ -50,7 +49,7 @@ func NewLocationService(addressRepo repository.AddressRepository, cfg *config.Co
 func (s *locationService) GetUserLocations(ctx context.Context, userID uuid.UUID) ([]*entity.Address, error) {
 	addresses, err := s.addressRepo.FindAddressesByOwner(ctx, userID, entity.OwnerTypeUserProfile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find addresses by owner: %w", err)
+		return nil, errors.Wrap(err, "failed to find addresses by owner")
 	}
 
 	return addresses, nil
@@ -61,7 +60,7 @@ func (s *locationService) AddUserLocation(ctx context.Context, userID uuid.UUID,
 	// Check location limit
 	count, err := s.addressRepo.CountAddressesByOwner(ctx, userID, entity.OwnerTypeUserProfile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to count addresses by owner: %w", err)
+		return nil, errors.Wrap(err, "failed to count addresses by owner")
 	}
 
 	maxLocations := s.config.LocationNotification.UserMaxLocations
@@ -85,7 +84,7 @@ func (s *locationService) AddUserLocation(ctx context.Context, userID uuid.UUID,
 	}
 
 	if err := s.addressRepo.CreateAddress(ctx, address); err != nil {
-		return nil, fmt.Errorf("failed to create address: %w", err)
+		return nil, errors.Wrap(err, "failed to create address")
 	}
 
 	return address, nil
@@ -100,7 +99,7 @@ func (s *locationService) UpdateUserLocation(ctx context.Context, userID, locati
 			return nil, ErrLocationNotFound
 		}
 
-		return nil, fmt.Errorf("failed to find address by ID: %w", err)
+		return nil, errors.Wrap(err, "failed to find address by ID")
 	}
 
 	// Verify ownership
@@ -112,7 +111,7 @@ func (s *locationService) UpdateUserLocation(ctx context.Context, userID, locati
 	s.applyAddressUpdates(address, input)
 
 	if err := s.addressRepo.UpdateAddress(ctx, address); err != nil {
-		return nil, fmt.Errorf("failed to update address: %w", err)
+		return nil, errors.Wrap(err, "failed to update address")
 	}
 
 	return address, nil
@@ -150,7 +149,7 @@ func (s *locationService) DeleteUserLocation(ctx context.Context, userID, locati
 			return ErrLocationNotFound
 		}
 
-		return fmt.Errorf("failed to find address by ID: %w", err)
+		return errors.Wrap(err, "failed to find address by ID")
 	}
 
 	// Verify ownership
@@ -159,7 +158,7 @@ func (s *locationService) DeleteUserLocation(ctx context.Context, userID, locati
 	}
 
 	if err := s.addressRepo.DeleteAddress(ctx, locationID); err != nil {
-		return fmt.Errorf("failed to delete address: %w", err)
+		return errors.Wrap(err, "failed to delete address")
 	}
 
 	return nil
@@ -169,7 +168,7 @@ func (s *locationService) DeleteUserLocation(ctx context.Context, userID, locati
 func (s *locationService) GetMerchantLocations(ctx context.Context, merchantID uuid.UUID) ([]*entity.Address, error) {
 	addresses, err := s.addressRepo.FindAddressesByOwner(ctx, merchantID, entity.OwnerTypeMerchantProfile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find addresses by owner: %w", err)
+		return nil, errors.Wrap(err, "failed to find addresses by owner")
 	}
 
 	return addresses, nil
@@ -180,7 +179,7 @@ func (s *locationService) AddMerchantLocation(ctx context.Context, merchantID uu
 	// Check location limit
 	count, err := s.addressRepo.CountAddressesByOwner(ctx, merchantID, entity.OwnerTypeMerchantProfile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to count addresses by owner: %w", err)
+		return nil, errors.Wrap(err, "failed to count addresses by owner")
 	}
 
 	maxLocations := s.config.LocationNotification.MerchantMaxLocations
@@ -204,7 +203,7 @@ func (s *locationService) AddMerchantLocation(ctx context.Context, merchantID uu
 	}
 
 	if err := s.addressRepo.CreateAddress(ctx, address); err != nil {
-		return nil, fmt.Errorf("failed to create address: %w", err)
+		return nil, errors.Wrap(err, "failed to create address")
 	}
 
 	return address, nil
@@ -219,7 +218,7 @@ func (s *locationService) UpdateMerchantLocation(ctx context.Context, merchantID
 			return nil, ErrLocationNotFound
 		}
 
-		return nil, fmt.Errorf("failed to find address by ID: %w", err)
+		return nil, errors.Wrap(err, "failed to find address by ID")
 	}
 
 	// Verify ownership
@@ -231,7 +230,7 @@ func (s *locationService) UpdateMerchantLocation(ctx context.Context, merchantID
 	s.applyAddressUpdates(address, input)
 
 	if err := s.addressRepo.UpdateAddress(ctx, address); err != nil {
-		return nil, fmt.Errorf("failed to update address: %w", err)
+		return nil, errors.Wrap(err, "failed to update address")
 	}
 
 	return address, nil
@@ -246,7 +245,7 @@ func (s *locationService) DeleteMerchantLocation(ctx context.Context, merchantID
 			return ErrLocationNotFound
 		}
 
-		return fmt.Errorf("failed to find address by ID: %w", err)
+		return errors.Wrap(err, "failed to find address by ID")
 	}
 
 	// Verify ownership
@@ -255,7 +254,7 @@ func (s *locationService) DeleteMerchantLocation(ctx context.Context, merchantID
 	}
 
 	if err := s.addressRepo.DeleteAddress(ctx, locationID); err != nil {
-		return fmt.Errorf("failed to delete address: %w", err)
+		return errors.Wrap(err, "failed to delete address")
 	}
 
 	return nil
