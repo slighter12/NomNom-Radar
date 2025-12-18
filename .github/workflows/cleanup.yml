@@ -1,0 +1,107 @@
+name: GHCR image cleanup
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # Runs daily at UTC 03:00
+  workflow_dispatch:
+
+permissions:
+  packages: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set variables
+        run: |
+          echo "OWNER=${GITHUB_REPOSITORY_OWNER}" >> $GITHUB_ENV
+          echo "PACKAGE_NAME=$(echo ${GITHUB_REPOSITORY#*/} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Cleanup GHCR images
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          OWNER="${OWNER}"
+          PACKAGE_NAME="${PACKAGE_NAME}"
+          RETAIN_PER_BRANCH=5
+          MAX_DAYS=14
+
+          # Fetch all tags (simple pagination handling, can be extended if needed)
+          echo "Fetching package versions from GHCR..."
+          VERSIONS_JSON=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/users/${OWNER}/packages/container/${PACKAGE_NAME}/versions?per_page=100")
+
+          # Get current timestamp in seconds
+          NOW_TS=$(date +%s)
+
+          # Use jq to flatten tags into: version_id, tag_name, created_at
+          TAGS=$(echo "$VERSIONS_JSON" | jq -r '
+            .[] as $v |
+            $v.metadata.container.tags[]? as $tag |
+            [$v.id, $tag, $v.created_at] | @tsv
+          ')
+
+          if [ -z "$TAGS" ]; then
+            echo "No tags found, exit."
+            exit 0
+          fi
+
+          # Group by branch; assumes tag format is <branch>-something
+          # e.g., main-20251218-xxxx, featureX-20251218-xxxx
+          # Adjust the cut/sed logic based on your actual tag naming convention
+          echo "$TAGS" | while IFS=$'\t' read -r VID TAG CREATED_AT; do
+            BRANCH=$(echo "$TAG" | cut -d'-' -f1)
+            CREATED_TS=$(date -d "$CREATED_AT" +%s)
+            AGE_DAYS=$(( (NOW_TS - CREATED_TS) / 86400 ))
+
+            echo "${BRANCH} ${VID} ${TAG} ${CREATED_AT} ${AGE_DAYS}"
+          done | sort -k1,1 -k4,4r > /tmp/all_tags.txt
+          # Sort: first by branch, then by creation time (newest first)
+
+          # Process by branch
+          CURRENT_BRANCH=""
+          INDEX=0
+
+          while read -r BRANCH VID TAG CREATED_AT AGE_DAYS; do
+            if [ "$BRANCH" != "$CURRENT_BRANCH" ]; then
+              CURRENT_BRANCH="$BRANCH"
+              INDEX=0
+              echo "Processing branch: $BRANCH"
+            fi
+
+            INDEX=$((INDEX + 1))
+
+            DELETE=false
+
+            # Rule 1: Keep only the latest RETAIN_PER_BRANCH images per branch
+            if [ "$INDEX" -gt "$RETAIN_PER_BRANCH" ]; then
+              DELETE=true
+            fi
+
+            # Rule 2: Delete images older than MAX_DAYS
+            if [ "$AGE_DAYS" -gt "$MAX_DAYS" ]; then
+              DELETE=true
+            fi
+
+            # Special handling for main: always keep at least 1 image
+            if [ "$BRANCH" = "main" ]; then
+              # If this is main and INDEX == 1, it's the newest one, never delete
+              if [ "$INDEX" -eq 1 ]; then
+                DELETE=false
+              fi
+            fi
+
+            if [ "$DELETE" = true ]; then
+              echo "Will delete: branch=$BRANCH tag=$TAG id=$VID age=${AGE_DAYS}d index=$INDEX"
+
+              gh api \
+                --method DELETE \
+                -H "Accept: application/vnd.github+json" \
+                "/users/${OWNER}/packages/container/${PACKAGE_NAME}/versions/${VID}"
+            else
+              echo "Keep     : branch=$BRANCH tag=$TAG id=$VID age=${AGE_DAYS}d index=$INDEX"
+            fi
+          done < /tmp/all_tags.txt
