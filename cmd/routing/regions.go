@@ -1,5 +1,7 @@
 package main
 
+import "sort"
+
 // RegionConfig defines supported OSM regions
 type RegionConfig struct {
 	Name        string
@@ -41,6 +43,8 @@ func ListRegions() []string {
 	for region := range supported {
 		regions = append(regions, region)
 	}
+
+	sort.Strings(regions)
 
 	return regions
 }
