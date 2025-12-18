@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"github.com/pkg/errors"
 )
 
 // Supported subcommands:
@@ -44,42 +46,42 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	runSubcommand(ctx, downloadCmd, convertCmd, prepareCmd, validateCmd, downloadRegion, downloadOutput, convertInput, convertOutput, convertContract, prepareRegion, prepareOutput, validateDir)
+	if err := runSubcommand(ctx, downloadCmd, convertCmd, prepareCmd, validateCmd, downloadRegion, downloadOutput, convertInput, convertOutput, convertContract, prepareRegion, prepareOutput, validateDir); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 }
 
-func runSubcommand(ctx context.Context, downloadCmd, convertCmd, prepareCmd, validateCmd *flag.FlagSet, downloadRegion, downloadOutput, convertInput, convertOutput *string, convertContract *bool, prepareRegion, prepareOutput, validateDir *string) {
+func runSubcommand(ctx context.Context, downloadCmd, convertCmd, prepareCmd, validateCmd *flag.FlagSet, downloadRegion, downloadOutput, convertInput, convertOutput *string, convertContract *bool, prepareRegion, prepareOutput, validateDir *string) error {
 	switch os.Args[1] {
 	case "download":
 		if err := downloadCmd.Parse(os.Args[2:]); err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+			return errors.Wrap(err, "failed to parse download flags")
 		}
 
-		runDownload(ctx, *downloadRegion, *downloadOutput)
+		return runDownload(ctx, *downloadRegion, *downloadOutput)
 	case "convert":
 		if err := convertCmd.Parse(os.Args[2:]); err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+			return errors.Wrap(err, "failed to parse convert flags")
 		}
 
-		runConvert(ctx, *convertInput, *convertOutput, *convertContract)
+		return runConvert(ctx, *convertInput, *convertOutput, *convertContract)
 	case "prepare":
 		if err := prepareCmd.Parse(os.Args[2:]); err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+			return errors.Wrap(err, "failed to parse prepare flags")
 		}
 
-		runPrepare(ctx, *prepareRegion, *prepareOutput)
+		return runPrepare(ctx, *prepareRegion, *prepareOutput)
 	case "validate":
 		if err := validateCmd.Parse(os.Args[2:]); err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+			return errors.Wrap(err, "failed to parse validate flags")
 		}
 
-		runValidate(*validateDir)
+		return runValidate(*validateDir)
 	default:
 		printUsage()
-		os.Exit(1)
+
+		return errors.New("unknown subcommand")
 	}
 }
 

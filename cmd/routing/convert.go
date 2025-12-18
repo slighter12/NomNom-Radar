@@ -12,36 +12,34 @@ import (
 	"github.com/pkg/errors"
 )
 
-func runConvert(ctx context.Context, input, output string, contract bool) {
+func runConvert(ctx context.Context, input, output string, contract bool) error {
 	fmt.Printf("Converting OSM data from %s to %s\n", input, output)
 	fmt.Printf("Contraction enabled: %v\n", contract)
 	fmt.Println()
 
 	// Validate input file exists
 	if _, err := os.Stat(input); os.IsNotExist(err) {
-		fmt.Printf("Error: Input file does not exist: %s\n", input)
-		os.Exit(1)
+		return errors.Errorf("input file does not exist: %s", input)
 	}
 
 	// Create output directory
 	if err := os.MkdirAll(output, 0755); err != nil {
-		fmt.Printf("Error: Failed to create output directory: %v\n", err)
-		os.Exit(1)
+		return errors.Wrap(err, "failed to create output directory")
 	}
 
 	// Run osm2ch conversion
 	if err := runOSM2CHConversion(ctx, input, output, contract); err != nil {
-		fmt.Printf("Error: Conversion failed: %v\n", err)
-		os.Exit(1)
+		return errors.Wrap(err, "conversion failed")
 	}
 
 	// Generate metadata
 	if err := generateMetadata(input, output, contract); err != nil {
-		fmt.Printf("Error: Failed to generate metadata: %v\n", err)
-		os.Exit(1)
+		return errors.Wrap(err, "failed to generate metadata")
 	}
 
 	fmt.Println("Conversion completed successfully!")
+
+	return nil
 }
 
 // runOSM2CHConversion executes the osm2ch command

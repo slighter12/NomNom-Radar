@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,13 +26,11 @@ type DownloadConfig struct {
 	Verify    bool
 }
 
-func runDownload(ctx context.Context, region, outputDir string) {
+func runDownload(ctx context.Context, region, outputDir string) error {
 	// Get region configuration
 	regionConfig, exists := GetRegionConfig(region)
 	if !exists {
-		fmt.Printf("Error: Unsupported region '%s'\n", region)
-		fmt.Printf("Supported regions: %s\n", strings.Join(ListRegions(), ", "))
-		os.Exit(1)
+		return errors.Errorf("unsupported region '%s'. Supported regions: %s", region, strings.Join(ListRegions(), ", "))
 	}
 
 	// Create download config
@@ -52,11 +51,12 @@ func runDownload(ctx context.Context, region, outputDir string) {
 
 	// Download the file
 	if err := downloadFile(ctx, config); err != nil {
-		fmt.Printf("Error: Failed to download file: %v\n", err)
-		os.Exit(1)
+		return errors.Wrap(err, "failed to download file")
 	}
 
 	fmt.Printf("\nDownload completed successfully!\n")
+
+	return nil
 }
 
 // downloadFile handles the actual download with progress tracking and resume support
@@ -283,8 +283,8 @@ func formatDuration(duration time.Duration) string {
 
 // parseContentLength parses Content-Length header
 func parseContentLength(length string) (int64, error) {
-	var size int64
-	if _, err := fmt.Sscanf(length, "%d", &size); err != nil {
+	size, err := strconv.ParseInt(length, 10, 64)
+	if err != nil {
 		return 0, errors.Wrap(err, "failed to parse content length")
 	}
 

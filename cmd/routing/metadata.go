@@ -54,7 +54,7 @@ type OutputMetadata struct {
 // FileMetadata contains metadata for individual output files
 type FileMetadata struct {
 	SizeBytes int64  `json:"size_bytes"`
-	MD5       string `json:"md5"`
+	MD5       string `json:"md5,omitempty"`
 	SHA256    string `json:"sha256,omitempty"`
 }
 
@@ -146,15 +146,15 @@ func getOutputMetadata(outputDir string) (*OutputMetadata, error) {
 		}
 
 		// Calculate checksums
-		md5Hash, _, err := calculateFileChecksums(filePath)
-		if err != nil {
-			fmt.Printf("Warning: Failed to calculate checksum for %s: %v\n", filename, err)
-			md5Hash = "error"
-		}
-
 		fileMeta := FileMetadata{
 			SizeBytes: info.Size(),
-			MD5:       md5Hash,
+		}
+		md5Hash, sha256Hash, err := calculateFileChecksums(filePath)
+		if err != nil {
+			fmt.Printf("Warning: Failed to calculate checksum for %s: %v\n", filename, err)
+		} else {
+			fileMeta.MD5 = md5Hash
+			fileMeta.SHA256 = sha256Hash
 		}
 
 		output.Files[filename] = fileMeta

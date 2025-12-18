@@ -9,15 +9,16 @@ import (
 	"github.com/pkg/errors"
 )
 
-func runValidate(dir string) {
+func runValidate(dir string) error {
 	fmt.Printf("Validating routing data in directory: %s\n", dir)
 
 	if err := validateRoutingData(dir); err != nil {
-		fmt.Printf("❌ Validation failed: %v\n", err)
-		os.Exit(1)
+		return errors.Wrap(err, "validation failed")
 	}
 
 	fmt.Println("✅ Validation passed!")
+
+	return nil
 }
 
 func validateRoutingData(dir string) error {
