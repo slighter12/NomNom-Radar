@@ -26,11 +26,6 @@ func validateRoutingData(dir string) error {
 		return errors.Wrapf(err, "directory does not exist: %s", dir)
 	}
 
-	// Check for required files
-	if err := checkRequiredFiles(dir); err != nil {
-		return err
-	}
-
 	// Load and validate metadata
 	metadata, err := loadAndValidateMetadata(dir)
 	if err != nil {
@@ -43,34 +38,12 @@ func validateRoutingData(dir string) error {
 	}
 
 	// Validate CSV file formats
-	if err := validateCSVFormats(dir); err != nil {
+	if err := validateCSVFormats(dir, metadata); err != nil {
 		return err
 	}
 
 	// Check data consistency
 	logConsistencyStats(metadata)
-
-	return nil
-}
-
-func checkRequiredFiles(dir string) error {
-	requiredFiles := []string{
-		"metadata.json",
-		"vertices.csv",
-		"edges.csv",
-		"shortcuts.csv",
-	}
-
-	fmt.Println("Checking required files...")
-
-	for _, filename := range requiredFiles {
-		filePath := filepath.Join(dir, filename)
-		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			return errors.Errorf("required file missing: %s", filename)
-		}
-
-		fmt.Printf("  ✅ %s\n", filename)
-	}
 
 	return nil
 }
@@ -119,7 +92,7 @@ func validateFilesAgainstMetadata(dir string, metadata *RoutingMetadata) error {
 	return nil
 }
 
-func validateCSVFormats(dir string) error {
+func validateCSVFormats(dir string, metadata *RoutingMetadata) error {
 	fmt.Println("\nValidating CSV formats...")
 
 	csvChecks := map[string]func(string) error{
@@ -129,6 +102,11 @@ func validateCSVFormats(dir string) error {
 	}
 
 	for filename, validator := range csvChecks {
+		// Only validate if the file is present in metadata
+		if _, exists := metadata.Output.Files[filename]; !exists {
+			continue
+		}
+
 		filePath := filepath.Join(dir, filename)
 		if err := validator(filePath); err != nil {
 			return errors.Wrapf(err, "CSV validation failed for %s", filename)
