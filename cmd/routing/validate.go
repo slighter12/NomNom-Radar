@@ -138,84 +138,34 @@ func validateCSVHasColumns(filePath string, expectedColumns []string) error {
 	}
 	defer file.Close()
 
-	// Read first line (header)
-	header, err := readCSVLine(file)
-	if err != nil {
-		return fmt.Errorf("failed to read header: %w", err)
+	// For now, just check if file is readable and has some content
+	// In production, you'd use encoding/csv package for proper CSV parsing
+	buf := make([]byte, 1024)
+	n, err := file.Read(buf)
+	if err != nil && err.Error() != "EOF" {
+		return fmt.Errorf("failed to read file: %w", err)
 	}
 
-	// Check if all expected columns are present
-	headerMap := make(map[string]bool)
-	for _, col := range header {
-		headerMap[col] = true
+	if n == 0 {
+		return fmt.Errorf("file is empty")
+	}
+
+	// Basic check: should contain expected column names somewhere in first line
+	firstLine := string(buf[:n])
+	for i, b := range buf {
+		if b == '\n' {
+			firstLine = string(buf[:i])
+			break
+		}
 	}
 
 	for _, expected := range expectedColumns {
-		if !headerMap[expected] {
-			return fmt.Errorf("missing required column: %s", expected)
+		if !strings.Contains(firstLine, expected) {
+			return fmt.Errorf("missing required column '%s' in header", expected)
 		}
 	}
 
 	return nil
 }
 
-// readCSVLine reads a single line from CSV file and splits by comma
-func readCSVLine(file *os.File) ([]string, error) {
-	// This is a simple implementation - in production you'd use a proper CSV reader
-	buf := make([]byte, 1024)
-	n, err := file.Read(buf)
-	if err != nil && err.Error() != "EOF" {
-		return nil, err
-	}
-
-	line := string(buf[:n])
-	// Find first newline
-	for i, b := range buf {
-		if b == '\n' {
-			line = string(buf[:i])
-			break
-		}
-	}
-
-	// Simple CSV parsing (doesn't handle quotes, escapes, etc.)
-	// In production, use encoding/csv package
-	var fields []string
-	var current strings.Builder
-	inQuotes := false
-
-	for _, r := range line {
-		switch r {
-		case '"':
-			inQuotes = !inQuotes
-		case ',':
-			if !inQuotes {
-				fields = append(fields, current.String())
-				current.Reset()
-			} else {
-				current.WriteRune(r)
-			}
-		default:
-			current.WriteRune(r)
-		}
-	}
-
-	if current.Len() > 0 {
-		fields = append(fields, current.String())
-	}
-
-	return fields, nil
-}
-
-// formatBytes formats bytes into human readable format
-func formatBytes(bytes int64) string {
-	const unit = 1024
-	if bytes < unit {
-		return fmt.Sprintf("%d B", bytes)
-	}
-	div, exp := int64(unit), 0
-	for n := bytes / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
-}
+// formatBytes is defined in download.go

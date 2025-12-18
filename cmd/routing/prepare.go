@@ -54,6 +54,8 @@ func runPrepare(region, output string) {
 		os.Exit(1)
 	}
 
+	metadataPath := filepath.Join(output, "metadata.json")
+
 	// Step 4: Validate results
 	fmt.Println("\n=== Step 4: Validating results ===")
 	if err := validateRoutingData(output); err != nil {

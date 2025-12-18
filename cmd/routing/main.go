@@ -71,26 +71,4 @@ func printUsage() {
 	fmt.Println("Use 'routing-cli <command> -h' for more information about a command.")
 }
 
-func runDownload(region, output string) {
-	fmt.Printf("Downloading OSM data for region: %s to %s\n", region, output)
-	// TODO: Implement download logic
-	fmt.Println("Download command not implemented yet")
-}
-
-func runConvert(input, output string, contract bool) {
-	fmt.Printf("Converting OSM data from %s to %s (contract: %v)\n", input, output, contract)
-	// TODO: Implement convert logic
-	fmt.Println("Convert command not implemented yet")
-}
-
-func runPrepare(region, output string) {
-	fmt.Printf("Preparing routing data for region: %s to %s\n", region, output)
-	// TODO: Implement prepare logic
-	fmt.Println("Prepare command not implemented yet")
-}
-
-func runValidate(dir string) {
-	fmt.Printf("Validating routing data in directory: %s\n", dir)
-	// TODO: Implement validate logic
-	fmt.Println("Validate command not implemented yet")
-}
+// Command implementations are in their respective files

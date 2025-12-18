@@ -200,7 +200,6 @@ func estimateLineCount(filePath string) int {
 
 	buf := make([]byte, 64*1024) // 64KB buffer
 	count := 0
-	newline := []byte{'\n'}
 
 	for {
 		n, err := file.Read(buf)
@@ -209,7 +208,7 @@ func estimateLineCount(filePath string) int {
 		}
 
 		for i := 0; i < n; i++ {
-			if buf[i] == newline[0] {
+			if buf[i] == '\n' {
 				count++
 			}
 		}

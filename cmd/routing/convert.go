@@ -45,6 +45,11 @@ func runConvert(input, output string, contract bool) {
 func runOSM2CHConversion(input, output string, contract bool) error {
 	fmt.Println("Running osm2ch conversion...")
 
+	// Check if osm2ch is available
+	if _, err := exec.LookPath("osm2ch"); err != nil {
+		return fmt.Errorf("osm2ch command not found in PATH. Please install osm2ch first: go install github.com/LdDl/osm2ch/cmd/osm2ch@latest")
+	}
+
 	// Build osm2ch command arguments
 	args := []string{
 		"--file", input,

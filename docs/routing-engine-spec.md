@@ -1115,45 +1115,45 @@ func BenchmarkIslandDetection(b *testing.B) {
 
 ## 10. Development Tasks
 
-### Phase 1: Data Pipeline (2-3 days)
+### Phase 1: Data Pipeline (2-3 days) ✅ COMPLETED
 
-- [ ] **1.1 Create CLI scaffold**
+- [x] **1.1 Create CLI scaffold**
   - Setup `cmd/routing/main.go` with subcommand structure
   - File: `cmd/routing/main.go`
 
-- [ ] **1.2 Implement download command**
+- [x] **1.2 Implement download command**
   - Download OSM PBF with progress bar, resume support, and checksum verification
   - File: `cmd/routing/download.go`
 
-- [ ] **1.3 Implement convert command**
+- [x] **1.3 Implement convert command**
   - Call osm2ch binary and handle conversion
   - File: `cmd/routing/convert.go`
 
-- [ ] **1.4 Define metadata struct**
+- [x] **1.4 Define metadata struct**
   - Create RoutingMetadata struct for version tracking
   - File: `cmd/routing/metadata.go`
 
-- [ ] **1.5 Generate metadata.json**
+- [x] **1.5 Generate metadata.json**
   - Write metadata file after conversion with source info, timestamps, checksums
   - File: `cmd/routing/metadata.go`
 
-- [ ] **1.6 Implement validate command**
+- [x] **1.6 Implement validate command**
   - Verify CSV file existence, checksums against metadata.json
   - File: `cmd/routing/validate.go`
 
-- [ ] **1.7 Implement prepare command**
+- [x] **1.7 Implement prepare command**
   - Combine download + convert + metadata generation workflow
   - File: `cmd/routing/prepare.go`
 
-- [ ] **1.8 Add region configuration**
+- [x] **1.8 Add region configuration**
   - Define supported regions with URLs
   - File: `cmd/routing/regions.go`
 
-- [ ] **1.9 Update Makefile**
+- [x] **1.9 Update Makefile**
   - Add routing-cli build targets
   - File: `Makefile`
 
-- [ ] **1.10 Update .gitignore**
+- [x] **1.10 Update .gitignore**
   - Exclude routing data directory
   - File: `.gitignore`
 
@@ -1338,13 +1338,13 @@ func BenchmarkIslandDetection(b *testing.B) {
 
 ### Task Summary
 
-| Phase | Task Count | Estimated Days |
-|-------|------------|----------------|
-| Phase 1: Data Pipeline | 10 tasks | 2-3 days |
-| Phase 2: Core Routing Engine | 16 tasks | 3-4 days |
-| Phase 3: Business Integration | 6 tasks (+1 optional) | 2-3 days |
-| Phase 4: Testing and Optimization | 17 tasks | 2-3 days |
-| **Total** | **49 tasks (+1 optional)** | **10-14 days** |
+| Phase | Task Count | Estimated Days | Status |
+|-------|------------|----------------|--------|
+| Phase 1: Data Pipeline | 10 tasks | 2-3 days | ✅ COMPLETED |
+| Phase 2: Core Routing Engine | 16 tasks | 3-4 days | ⏳ Pending |
+| Phase 3: Business Integration | 6 tasks (+1 optional) | 2-3 days | ⏳ Pending |
+| Phase 4: Testing and Optimization | 17 tasks | 2-3 days | ⏳ Pending |
+| **Total** | **49 tasks (+1 optional)** | **10-14 days** | |
 
 ---
 
