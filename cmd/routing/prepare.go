@@ -48,7 +48,7 @@ func runPrepare(ctx context.Context, region, output string) error {
 
 	// Step 3: Generate metadata
 	fmt.Println("\n=== Step 3: Generating metadata ===")
-	if err := generateMetadata(inputFile, output, true); err != nil {
+	if err := generateMetadata(inputFile, output, region, true); err != nil {
 		return errors.Wrap(err, "failed to generate metadata")
 	}
 

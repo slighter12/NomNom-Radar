@@ -6,14 +6,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/pkg/errors"
 )
 
-func runConvert(ctx context.Context, input, output string, contract bool) error {
+func runConvert(ctx context.Context, input, output, region string, contract bool) error {
 	fmt.Printf("Converting OSM data from %s to %s\n", input, output)
+	fmt.Printf("Region: %s\n", region)
 	fmt.Printf("Contraction enabled: %v\n", contract)
 	fmt.Println()
 
@@ -33,7 +33,7 @@ func runConvert(ctx context.Context, input, output string, contract bool) error 
 	}
 
 	// Generate metadata
-	if err := generateMetadata(input, output, contract); err != nil {
+	if err := generateMetadata(input, output, region, contract); err != nil {
 		return errors.Wrap(err, "failed to generate metadata")
 	}
 
@@ -89,16 +89,8 @@ func runOSM2CHConversion(ctx context.Context, input, output string, contract boo
 }
 
 // generateMetadata creates metadata.json for the converted data
-func generateMetadata(input, output string, contract bool) error {
+func generateMetadata(input, output, region string, contract bool) error {
 	fmt.Println("Generating metadata...")
-
-	// Determine region from input filename (simple heuristic)
-	region := "unknown"
-	if strings.Contains(filepath.Base(input), "taiwan") {
-		region = "taiwan"
-	} else if strings.Contains(filepath.Base(input), "japan") {
-		region = "japan"
-	}
 
 	// Generate metadata using the new structure
 	metadata, err := GenerateMetadata(input, output, region, contract)

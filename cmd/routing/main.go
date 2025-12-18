@@ -30,6 +30,7 @@ func main() {
 	convertInput := convertCmd.String("input", "", "Input PBF file path")
 	convertOutput := convertCmd.String("output", "./data/routing", "Output directory for CSV files")
 	convertContract := convertCmd.Bool("contract", true, "Enable CH contraction preprocessing")
+	convertRegion := convertCmd.String("region", "unknown", "Region of the input data (taiwan, japan, etc.)")
 
 	// prepare parameters (combines download + convert)
 	prepareRegion := prepareCmd.String("region", "taiwan", "Region to download")
@@ -46,13 +47,13 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := runSubcommand(ctx, downloadCmd, convertCmd, prepareCmd, validateCmd, downloadRegion, downloadOutput, convertInput, convertOutput, convertContract, prepareRegion, prepareOutput, validateDir); err != nil {
+	if err := runSubcommand(ctx, downloadCmd, convertCmd, prepareCmd, validateCmd, downloadRegion, downloadOutput, convertInput, convertOutput, convertContract, convertRegion, prepareRegion, prepareOutput, validateDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func runSubcommand(ctx context.Context, downloadCmd, convertCmd, prepareCmd, validateCmd *flag.FlagSet, downloadRegion, downloadOutput, convertInput, convertOutput *string, convertContract *bool, prepareRegion, prepareOutput, validateDir *string) error {
+func runSubcommand(ctx context.Context, downloadCmd, convertCmd, prepareCmd, validateCmd *flag.FlagSet, downloadRegion, downloadOutput, convertInput, convertOutput *string, convertContract *bool, convertRegion, prepareRegion, prepareOutput, validateDir *string) error {
 	switch os.Args[1] {
 	case "download":
 		if err := downloadCmd.Parse(os.Args[2:]); err != nil {
@@ -65,7 +66,7 @@ func runSubcommand(ctx context.Context, downloadCmd, convertCmd, prepareCmd, val
 			return errors.Wrap(err, "failed to parse convert flags")
 		}
 
-		return runConvert(ctx, *convertInput, *convertOutput, *convertContract)
+		return runConvert(ctx, *convertInput, *convertOutput, *convertRegion, *convertContract)
 	case "prepare":
 		if err := prepareCmd.Parse(os.Args[2:]); err != nil {
 			return errors.Wrap(err, "failed to parse prepare flags")
