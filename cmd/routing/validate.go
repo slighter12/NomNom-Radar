@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -168,7 +169,7 @@ func validateCSVHasColumns(filePath string, expectedColumns []string) error {
 	// In production, you'd use encoding/csv package for proper CSV parsing
 	buf := make([]byte, 1024)
 	bytesRead, err := file.Read(buf)
-	if err != nil && err.Error() != "EOF" {
+	if err != nil && !errors.Is(err, io.EOF) {
 		return errors.Wrap(err, "failed to read file")
 	}
 
