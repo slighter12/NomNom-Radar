@@ -4,11 +4,11 @@ package repository
 
 import (
 	"context"
-	"errors"
 
 	"radar/internal/domain/entity"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 )
 
 // ErrUserNotFound is a domain-specific error returned when a user is not found.

@@ -2,13 +2,13 @@
 package auth
 
 import (
-	"fmt"
 	"regexp"
 	"unicode"
 
 	"radar/config"
 	"radar/internal/domain/service"
 
+	"github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -41,12 +41,12 @@ func NewBcryptHasher(cfg *config.Config) (service.PasswordHasher, error) {
 func (h *bcryptHasher) Hash(password string) (string, error) {
 	// Validate password strength before hashing
 	if err := h.ValidatePasswordStrength(password); err != nil {
-		return "", fmt.Errorf("password does not meet strength requirements: %w", err)
+		return "", errors.Wrap(err, "password does not meet strength requirements")
 	}
 
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), h.bcryptCost)
 	if err != nil {
-		return "", fmt.Errorf("failed to hash password: %w", err)
+		return "", errors.Wrap(err, "failed to hash password")
 	}
 
 	return string(bytes), nil
@@ -76,11 +76,11 @@ func (h *bcryptHasher) ValidatePasswordStrength(password string) error {
 // validatePasswordLength checks if password meets length requirements
 func (h *bcryptHasher) validatePasswordLength(password string, minLength, maxLength int) error {
 	if len(password) < minLength {
-		return fmt.Errorf("password must be at least %d characters long", minLength)
+		return errors.Errorf("password must be at least %d characters long", minLength)
 	}
 
 	if maxLength > 0 && len(password) > maxLength {
-		return fmt.Errorf("password must be no more than %d characters long", maxLength)
+		return errors.Errorf("password must be no more than %d characters long", maxLength)
 	}
 
 	return nil
@@ -89,19 +89,19 @@ func (h *bcryptHasher) validatePasswordLength(password string, minLength, maxLen
 // validatePasswordCharacters checks if password contains required character types
 func (h *bcryptHasher) validatePasswordCharacters(password string) error {
 	if h.passwordStrengthConfig.RequireUppercase && !h.hasUppercase(password) {
-		return fmt.Errorf("password must contain at least one uppercase letter")
+		return errors.New("password must contain at least one uppercase letter")
 	}
 
 	if h.passwordStrengthConfig.RequireLowercase && !h.hasLowercase(password) {
-		return fmt.Errorf("password must contain at least one lowercase letter")
+		return errors.New("password must contain at least one lowercase letter")
 	}
 
 	if h.passwordStrengthConfig.RequireNumbers && !h.hasNumbers(password) {
-		return fmt.Errorf("password must contain at least one number")
+		return errors.New("password must contain at least one number")
 	}
 
 	if h.passwordStrengthConfig.RequireSpecial && !h.hasSpecialChars(password) {
-		return fmt.Errorf("password must contain at least one special character")
+		return errors.New("password must contain at least one special character")
 	}
 
 	return nil

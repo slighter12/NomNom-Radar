@@ -3,7 +3,8 @@
     db-postgres-init db-postgres-seeders-init \
     db-postgres-create db-postgres-up db-postgres-down db-postgres-down-all \
 	gci-format build docker-image-build \
-	docker-up docker-down docker-logs docker-clean
+	docker-up docker-down docker-logs docker-clean \
+	routing-cli routing-prepare routing-validate
 
 help: ## show this help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {sub("\\\\n",sprintf("\n%22c"," "), $$2);printf "\033[36m%-25s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -157,3 +158,16 @@ docker-logs: ## show logs from PostgreSQL services
 
 docker-clean: ## remove all containers, networks, and volumes
 	docker-compose down -v --remove-orphans
+
+#############
+#  Routing  #
+#############
+
+routing-cli: ## build the routing CLI tool
+	go build -o bin/routing-cli ./cmd/routing
+
+routing-prepare: routing-cli ## prepare routing data for Taiwan
+	./bin/routing-cli prepare --region taiwan --output ./data/routing
+
+routing-validate: routing-cli ## validate routing data
+	./bin/routing-cli validate --dir ./data/routing

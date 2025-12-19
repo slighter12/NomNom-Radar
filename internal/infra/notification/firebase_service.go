@@ -2,7 +2,6 @@ package notification
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	"radar/config"
@@ -10,6 +9,7 @@ import (
 
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/messaging"
+	"github.com/pkg/errors"
 	"go.uber.org/fx"
 	"google.golang.org/api/option"
 )
@@ -98,7 +98,7 @@ func (s *firebaseService) SendSingleNotification(ctx context.Context, token, tit
 
 	_, err := s.client.Send(ctx, message)
 	if err != nil {
-		return fmt.Errorf("failed to send notification: %w", err)
+		return errors.Wrap(err, "failed to send notification")
 	}
 
 	return nil
@@ -112,7 +112,7 @@ func (s *firebaseService) SendBatchNotification(ctx context.Context, tokens []st
 
 	// Firebase limits to 500 tokens per request
 	if len(tokens) > 500 {
-		return 0, 0, nil, fmt.Errorf("token count exceeds limit: %d (max 500)", len(tokens))
+		return 0, 0, nil, errors.Errorf("token count exceeds limit: %d (max 500)", len(tokens))
 	}
 
 	message := &messaging.MulticastMessage{
@@ -126,7 +126,7 @@ func (s *firebaseService) SendBatchNotification(ctx context.Context, tokens []st
 
 	response, err := s.client.SendEachForMulticast(ctx, message)
 	if err != nil {
-		return 0, 0, nil, fmt.Errorf("failed to send multicast notification: %w", err)
+		return 0, 0, nil, errors.Wrap(err, "failed to send multicast notification")
 	}
 
 	successCount = response.SuccessCount

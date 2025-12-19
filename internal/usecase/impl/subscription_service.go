@@ -2,8 +2,6 @@ package impl
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"time"
 
 	"radar/config"
@@ -13,6 +11,7 @@ import (
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 )
 
 var (
@@ -51,7 +50,7 @@ func (s *subscriptionService) SubscribeToMerchant(ctx context.Context, userID, m
 	// Check if subscription already exists
 	existingSub, err := s.subscriptionRepo.FindSubscriptionByUserAndMerchant(ctx, userID, merchantID)
 	if err != nil && !errors.Is(err, repository.ErrSubscriptionNotFound) {
-		return nil, fmt.Errorf("failed to find subscription by user and merchant: %w", err)
+		return nil, errors.Wrap(err, "failed to find subscription by user and merchant")
 	}
 
 	// If subscription exists, reactivate it
@@ -67,7 +66,7 @@ func (s *subscriptionService) SubscribeToMerchant(ctx context.Context, userID, m
 func (s *subscriptionService) reactivateSubscription(ctx context.Context, userID uuid.UUID, sub *entity.UserMerchantSubscription, deviceInfo *usecase.DeviceInfo) (*entity.UserMerchantSubscription, error) {
 	if !sub.IsActive {
 		if err := s.subscriptionRepo.UpdateSubscriptionStatus(ctx, sub.ID, true); err != nil {
-			return nil, fmt.Errorf("failed to update subscription status: %w", err)
+			return nil, errors.Wrap(err, "failed to update subscription status")
 		}
 		sub.IsActive = true
 		sub.UpdatedAt = time.Now()
@@ -96,7 +95,7 @@ func (s *subscriptionService) createNewSubscription(ctx context.Context, userID,
 	}
 
 	if err := s.subscriptionRepo.CreateSubscription(ctx, subscription); err != nil {
-		return nil, fmt.Errorf("failed to create subscription: %w", err)
+		return nil, errors.Wrap(err, "failed to create subscription")
 	}
 
 	// Register device if provided
@@ -118,11 +117,11 @@ func (s *subscriptionService) UnsubscribeFromMerchant(ctx context.Context, userI
 			return ErrSubscriptionNotFound
 		}
 
-		return fmt.Errorf("failed to find subscription by user and merchant: %w", err)
+		return errors.Wrap(err, "failed to find subscription by user and merchant")
 	}
 
 	if err := s.subscriptionRepo.DeleteSubscription(ctx, subscription.ID); err != nil {
-		return fmt.Errorf("failed to delete subscription: %w", err)
+		return errors.Wrap(err, "failed to delete subscription")
 	}
 
 	return nil
@@ -132,7 +131,7 @@ func (s *subscriptionService) UnsubscribeFromMerchant(ctx context.Context, userI
 func (s *subscriptionService) GetUserSubscriptions(ctx context.Context, userID uuid.UUID) ([]*entity.UserMerchantSubscription, error) {
 	subscriptions, err := s.subscriptionRepo.FindSubscriptionsByUser(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find subscriptions by user: %w", err)
+		return nil, errors.Wrap(err, "failed to find subscriptions by user")
 	}
 
 	return subscriptions, nil
@@ -142,7 +141,7 @@ func (s *subscriptionService) GetUserSubscriptions(ctx context.Context, userID u
 func (s *subscriptionService) GetMerchantSubscribers(ctx context.Context, merchantID uuid.UUID) ([]*entity.UserMerchantSubscription, error) {
 	subscriptions, err := s.subscriptionRepo.FindSubscriptionsByMerchant(ctx, merchantID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find subscriptions by merchant: %w", err)
+		return nil, errors.Wrap(err, "failed to find subscriptions by merchant")
 	}
 
 	return subscriptions, nil
@@ -152,7 +151,7 @@ func (s *subscriptionService) GetMerchantSubscribers(ctx context.Context, mercha
 func (s *subscriptionService) GenerateSubscriptionQR(ctx context.Context, merchantID uuid.UUID) ([]byte, error) {
 	qrCode, err := s.qrcodeService.GenerateSubscriptionQR(merchantID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate subscription QR: %w", err)
+		return nil, errors.Wrap(err, "failed to generate subscription QR")
 	}
 
 	return qrCode, nil
@@ -175,7 +174,7 @@ func (s *subscriptionService) registerDevice(ctx context.Context, userID uuid.UU
 	// Check if device already exists for this user
 	devices, err := s.deviceRepo.FindDevicesByUser(ctx, userID)
 	if err != nil {
-		return fmt.Errorf("failed to find devices by user: %w", err)
+		return errors.Wrap(err, "failed to find devices by user")
 	}
 
 	// Look for existing device with same device_id
@@ -183,7 +182,7 @@ func (s *subscriptionService) registerDevice(ctx context.Context, userID uuid.UU
 		if device.DeviceID == deviceInfo.DeviceID {
 			// Update FCM token for existing device
 			if err := s.deviceRepo.UpdateFCMToken(ctx, device.ID, deviceInfo.FCMToken); err != nil {
-				return fmt.Errorf("failed to update FCM token: %w", err)
+				return errors.Wrap(err, "failed to update FCM token")
 			}
 
 			return nil
@@ -203,7 +202,7 @@ func (s *subscriptionService) registerDevice(ctx context.Context, userID uuid.UU
 	}
 
 	if err := s.deviceRepo.CreateDevice(ctx, device); err != nil {
-		return fmt.Errorf("failed to create device: %w", err)
+		return errors.Wrap(err, "failed to create device")
 	}
 
 	return nil

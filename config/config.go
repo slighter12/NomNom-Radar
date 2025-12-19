@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -148,12 +147,12 @@ func LoadWithEnv[T any](currEnv string, configPath ...string) (*T, error) {
 	}
 
 	if !found {
-		return nil, fmt.Errorf("config file %s.yaml not found in any search path", currEnv)
+		return nil, errors.Errorf("config file %s.yaml not found in any search path", currEnv)
 	}
 
 	// Load YAML config file
 	if err := koanfInstance.Load(file.Provider(configFile), yaml.Parser()); err != nil {
-		return nil, fmt.Errorf("read %s config failed: %w", currEnv, err)
+		return nil, errors.Wrapf(err, "read %s config failed", currEnv)
 	}
 
 	// Load environment variables
@@ -165,12 +164,12 @@ func LoadWithEnv[T any](currEnv string, configPath ...string) (*T, error) {
 			return key, v
 		},
 	}), nil); err != nil {
-		return nil, fmt.Errorf("load env variables failed: %w", err)
+		return nil, errors.Wrap(err, "load env variables failed")
 	}
 
 	// Unmarshal into the config struct
 	if err := koanfInstance.Unmarshal("", cfg); err != nil {
-		return nil, fmt.Errorf("unmarshal %s config failed: %w", currEnv, err)
+		return nil, errors.Wrapf(err, "unmarshal %s config failed", currEnv)
 	}
 
 	return cfg, nil
