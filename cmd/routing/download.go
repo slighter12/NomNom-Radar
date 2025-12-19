@@ -11,10 +11,29 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
 )
+
+// httpClient is initialized once and reused to allow TCP connection reuse.
+//
+//nolint:gochecknoglobals // shared client is intentional and safe for concurrent use
+var (
+	httpClient *http.Client
+	clientOnce sync.Once
+)
+
+func getHTTPClient() *http.Client {
+	clientOnce.Do(func() {
+		httpClient = &http.Client{
+			Timeout: 30 * time.Minute,
+		}
+	})
+
+	return httpClient
+}
 
 // DownloadConfig holds download configuration
 type DownloadConfig struct {
@@ -80,7 +99,7 @@ func downloadFile(ctx context.Context, config DownloadConfig) error {
 	}
 
 	// Make request
-	resp, err := (&http.Client{Timeout: 30 * time.Minute}).Do(req)
+	resp, err := getHTTPClient().Do(req)
 	if err != nil {
 		return errors.Wrap(err, "failed to make request")
 	}
