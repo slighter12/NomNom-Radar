@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -68,7 +69,7 @@ func runDownload(ctx context.Context, region, outputDir string) error {
 	fmt.Println()
 
 	// Download the file
-	if err := downloadFile(ctx, config); err != nil {
+	if err := downloadFile(ctx, &config); err != nil {
 		return errors.Wrap(err, "failed to download file")
 	}
 
@@ -78,7 +79,7 @@ func runDownload(ctx context.Context, region, outputDir string) error {
 }
 
 // downloadFile handles the actual download with progress tracking and resume support
-func downloadFile(ctx context.Context, config DownloadConfig) error {
+func downloadFile(ctx context.Context, config *DownloadConfig) error {
 	// Ensure output directory exists
 	if err := os.MkdirAll(config.OutputDir, 0755); err != nil {
 		return errors.Wrap(err, "failed to create output directory")
@@ -124,7 +125,7 @@ func getExistingSize(resume bool, path string) int64 {
 	return 0
 }
 
-func checkResponseStatus(resp *http.Response, config DownloadConfig) error {
+func checkResponseStatus(resp *http.Response, config *DownloadConfig) error {
 	switch resp.StatusCode {
 	case http.StatusRequestedRangeNotSatisfiable:
 		fmt.Println("File is already complete")
@@ -137,7 +138,7 @@ func checkResponseStatus(resp *http.Response, config DownloadConfig) error {
 	}
 }
 
-func performDownload(ctx context.Context, resp *http.Response, path string, existingSize int64, config DownloadConfig) error {
+func performDownload(ctx context.Context, resp *http.Response, path string, existingSize int64, config *DownloadConfig) error {
 	file, err := openOutputFile(path, existingSize, resp.StatusCode)
 	if err != nil {
 		return err
@@ -318,7 +319,7 @@ func parseContentLength(length string) (int64, error) {
 }
 
 // verifyFileIntegrity verifies the downloaded file integrity
-func verifyFileIntegrity(config DownloadConfig) error {
+func verifyFileIntegrity(config *DownloadConfig) error {
 	outputPath := filepath.Join(config.OutputDir, config.Filename)
 
 	fmt.Printf("Verifying file integrity: %s\n", outputPath)
@@ -338,10 +339,53 @@ func verifyFileIntegrity(config DownloadConfig) error {
 
 	sha256Sum := fmt.Sprintf("%x", sha256Hash.Sum(nil))
 
-	fmt.Printf("SHA256: %s\n", sha256Sum)
+	fmt.Printf("SHA256 (calculated): %s\n", sha256Sum)
 
-	// Note: In production, you would compare against expected checksums
-	// For now, we just display them
+	expected, source, err := loadExpectedChecksum(outputPath)
+	if err != nil {
+		return errors.Wrap(err, "failed to load expected checksum")
+	}
+
+	if expected != "" {
+		if sha256Sum != expected {
+			return errors.Errorf("checksum mismatch: expected %s (%s), got %s", expected, source, sha256Sum)
+		}
+
+		fmt.Printf("Checksum verified against expected value (%s).\n", source)
+	} else {
+		fmt.Println("No expected checksum available; computed value shown for reference.")
+	}
 
 	return nil
+}
+
+// loadExpectedChecksum loads an expected SHA256 from a sidecar JSON file if present.
+// The sidecar file is expected to be located at "<downloaded-file>.sha256.json" with shape:
+// { "sha256": "<hex>" }
+func loadExpectedChecksum(filePath string) (value string, source string, err error) {
+	sidecarPath := filePath + ".sha256.json"
+
+	file, err := os.Open(sidecarPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", "", nil
+		}
+
+		return "", "", errors.Wrapf(err, "failed to open checksum sidecar %s", sidecarPath)
+	}
+	defer file.Close()
+
+	var payload struct {
+		SHA256 string `json:"sha256"`
+	}
+
+	if err := json.NewDecoder(file).Decode(&payload); err != nil {
+		return "", "", errors.Wrapf(err, "failed to decode checksum sidecar %s", sidecarPath)
+	}
+
+	if payload.SHA256 == "" {
+		return "", "", nil
+	}
+
+	return payload.SHA256, "sidecar", nil
 }
