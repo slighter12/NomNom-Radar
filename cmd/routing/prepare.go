@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -18,26 +19,12 @@ func runPrepare(ctx context.Context, region, output string) error {
 
 	// Step 1: Download OSM data
 	fmt.Println("=== Step 1: Downloading OSM data ===")
-	tempDir := "/tmp"
-	downloadConfig := DownloadConfig{
-		Region:    region,
-		OutputDir: tempDir,
-		Resume:    true,
-		Verify:    true,
-	}
-
-	regionConfig, exists := GetRegionConfig(region)
-	if !exists {
-		return errors.Errorf("unsupported region '%s'", region)
-	}
-
-	downloadConfig.URL = regionConfig.URL
-	downloadConfig.Filename = regionConfig.Filename
-
-	if err := downloadFile(ctx, downloadConfig); err != nil {
+	tempDir := os.TempDir()
+	if err := runDownload(ctx, region, tempDir); err != nil {
 		return errors.Wrap(err, "download failed")
 	}
 
+	regionConfig, _ := GetRegionConfig(region) // validated inside runDownload
 	inputFile := filepath.Join(tempDir, regionConfig.Filename)
 
 	// Step 2: Convert OSM data
