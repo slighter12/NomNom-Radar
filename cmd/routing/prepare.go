@@ -27,22 +27,16 @@ func runPrepare(ctx context.Context, region, output string) error {
 	regionConfig, _ := GetRegionConfig(region) // validated inside runDownload
 	inputFile := filepath.Join(tempDir, regionConfig.Filename)
 
-	// Step 2: Convert OSM data
-	fmt.Println("\n=== Step 2: Converting OSM data ===")
-	if err := runOSM2CHConversion(ctx, inputFile, output, true); err != nil {
+	// Step 2: Convert OSM data and generate metadata
+	fmt.Println("\n=== Step 2: Converting OSM data and generating metadata ===")
+	if err := runConvert(ctx, inputFile, output, region, true); err != nil {
 		return errors.Wrap(err, "conversion failed")
-	}
-
-	// Step 3: Generate metadata
-	fmt.Println("\n=== Step 3: Generating metadata ===")
-	if err := generateMetadata(inputFile, output, region, true); err != nil {
-		return errors.Wrap(err, "failed to generate metadata")
 	}
 
 	metadataPath := filepath.Join(output, "metadata.json")
 
-	// Step 4: Validate results
-	fmt.Println("\n=== Step 4: Validating results ===")
+	// Step 3: Validate results
+	fmt.Println("\n=== Step 3: Validating results ===")
 	if err := validateRoutingData(output); err != nil {
 		return errors.Wrap(err, "validation failed")
 	}
