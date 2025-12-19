@@ -205,4 +205,4 @@ func validateCSVHasColumns(filePath string, expectedColumns []string) error {
 	return nil
 }
 
-// formatBytes is defined in download.go
+// formatBytes is defined in internal/util/util.go
