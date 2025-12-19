@@ -1,11 +1,11 @@
 package main
 
 import (
+	"encoding/csv"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -165,31 +165,25 @@ func validateCSVHasColumns(filePath string, expectedColumns []string) error {
 	}
 	defer file.Close()
 
-	// For now, just check if file is readable and has some content
-	// In production, you'd use encoding/csv package for proper CSV parsing
-	buf := make([]byte, 1024)
-	bytesRead, err := file.Read(buf)
-	if err != nil && !errors.Is(err, io.EOF) {
-		return errors.Wrap(err, "failed to read file")
-	}
+	reader := csv.NewReader(file)
 
-	if bytesRead == 0 {
-		return errors.New("file is empty")
-	}
-
-	// Basic check: should contain expected column names somewhere in first line
-	firstLine := string(buf[:bytesRead])
-	for i, b := range buf[:bytesRead] {
-		if b == '\n' {
-			firstLine = string(buf[:i])
-
-			break
+	header, err := reader.Read()
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return errors.New("file is empty or has no header")
 		}
+
+		return errors.Wrap(err, "failed to read CSV header")
+	}
+
+	headerSet := make(map[string]struct{}, len(header))
+	for _, h := range header {
+		headerSet[h] = struct{}{}
 	}
 
 	for _, expected := range expectedColumns {
-		if !strings.Contains(firstLine, expected) {
-			return errors.Errorf("missing required column '%s' in header", expected)
+		if _, ok := headerSet[expected]; !ok {
+			return errors.Errorf("missing required column '%s' in header. Got: %v", expected, header)
 		}
 	}
 
