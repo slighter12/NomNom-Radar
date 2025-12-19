@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"radar/internal/util"
+
 	"github.com/pkg/errors"
 )
 
@@ -77,7 +79,7 @@ func canSkipConversion(inputFile, outputDir string, contract bool) (bool, string
 		return false, "metadata missing source checksum"
 	}
 
-	currentSHA, err := calculateFileChecksums(inputFile)
+	currentSHA, err := util.CalculateFileChecksum(inputFile)
 	if err != nil {
 		return false, fmt.Sprintf("failed to checksum source: %v", err)
 	}

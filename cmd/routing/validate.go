@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"radar/internal/util"
+
 	"github.com/pkg/errors"
 )
 
@@ -66,7 +68,7 @@ func loadAndValidateMetadata(dir string) (*RoutingMetadata, error) {
 	}
 
 	fmt.Printf("  ✅ Version: %s\n", metadata.Version)
-	fmt.Printf("  ✅ Source: %s (%s)\n", metadata.Source.Filename, formatBytes(metadata.Source.SizeBytes))
+	fmt.Printf("  ✅ Source: %s (%s)\n", metadata.Source.Filename, util.FormatBytes(metadata.Source.SizeBytes))
 	fmt.Printf("  ✅ Generated: %s\n", metadata.Processing.GeneratedAt.Format("2006-01-02 15:04:05"))
 
 	return metadata, nil
@@ -90,7 +92,7 @@ func validateFilesAgainstMetadata(dir string, metadata *RoutingMetadata) error {
 
 		// Validate checksum when available
 		if fileMeta.SHA256 != "" {
-			sha256Hash, err := calculateFileChecksums(filePath)
+			sha256Hash, err := util.CalculateFileChecksum(filePath)
 			if err != nil {
 				return errors.Wrapf(err, "failed to calculate checksum for %s", filename)
 			}
@@ -101,7 +103,7 @@ func validateFilesAgainstMetadata(dir string, metadata *RoutingMetadata) error {
 			}
 		}
 
-		fmt.Printf("  ✅ %s (%s)\n", filename, formatBytes(info.Size()))
+		fmt.Printf("  ✅ %s (%s)\n", filename, util.FormatBytes(info.Size()))
 	}
 
 	return nil

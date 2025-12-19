@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"radar/internal/util"
 
 	"github.com/pkg/errors"
 )
@@ -245,7 +246,7 @@ func (dp *DownloadProgress) displayProgress() {
 
 	if dp.Total <= 0 {
 		// Unknown total size
-		fmt.Printf("\rDownloaded: %s | ???%% complete", formatBytes(dp.Downloaded))
+		fmt.Printf("\rDownloaded: %s | ???%% complete", util.FormatBytes(dp.Downloaded))
 
 		return
 	}
@@ -265,48 +266,11 @@ func (dp *DownloadProgress) displayProgress() {
 	fmt.Printf("\r[%s] %d%% | %s/%s | %s/s | ETA: %s",
 		bar,
 		percentage,
-		formatBytes(dp.Downloaded),
-		formatBytes(dp.Total),
-		formatBytes(int64(speed)),
-		formatDuration(eta),
+		util.FormatBytes(dp.Downloaded),
+		util.FormatBytes(dp.Total),
+		util.FormatBytes(int64(speed)),
+		util.FormatDuration(eta),
 	)
-}
-
-// formatBytes formats bytes into human readable format
-func formatBytes(bytes int64) string {
-	const unit = 1024
-	if bytes < unit {
-		return fmt.Sprintf("%d B", bytes)
-	}
-	const units = "KMGTPEZY"
-	div, exp := int64(unit), 0
-	for n := bytes / unit; n >= unit &&
-		exp < len(units)-1; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), units[exp])
-}
-
-// formatDuration formats duration into human readable format (e.g., "1h30m", "5m10s", "45s")
-func formatDuration(duration time.Duration) string {
-	duration = duration.Round(time.Second)
-
-	if duration < time.Minute {
-		return fmt.Sprintf("%ds", int(duration.Seconds()))
-	}
-
-	if duration < time.Hour {
-		m := int(duration.Minutes())
-		s := int(duration.Seconds()) % 60
-
-		return fmt.Sprintf("%dm%ds", m, s)
-	}
-
-	h := int(duration.Hours())
-	m := int(duration.Minutes()) % 60
-
-	return fmt.Sprintf("%dh%dm", h, m)
 }
 
 // parseContentLength parses Content-Length header
@@ -331,14 +295,10 @@ func verifyFileIntegrity(config *DownloadConfig) error {
 	}
 	defer file.Close()
 
-	// Calculate SHA256
-	sha256Hash := sha256.New()
-
-	if _, err := io.Copy(sha256Hash, file); err != nil {
+	sha256Sum, err := util.CalculateFileChecksum(outputPath)
+	if err != nil {
 		return errors.Wrap(err, "failed to calculate checksum")
 	}
-
-	sha256Sum := fmt.Sprintf("%x", sha256Hash.Sum(nil))
 
 	fmt.Printf("SHA256 (calculated): %s\n", sha256Sum)
 

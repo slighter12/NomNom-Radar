@@ -2,13 +2,14 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"time"
+
+	"radar/internal/util"
 
 	"github.com/pkg/errors"
 )
@@ -97,7 +98,7 @@ func getSourceMetadata(inputFile, region string) (*SourceMetadata, error) {
 	}
 
 	// Calculate checksum
-	sha256Hash, err := calculateFileChecksums(inputFile)
+	sha256Hash, err := util.CalculateFileChecksum(inputFile)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to calculate checksums")
 	}
@@ -146,7 +147,7 @@ func getOutputMetadata(outputDir string) (*OutputMetadata, error) {
 		fileMeta := FileMetadata{
 			SizeBytes: info.Size(),
 		}
-		sha256Hash, err := calculateFileChecksums(filePath)
+		sha256Hash, err := util.CalculateFileChecksum(filePath)
 		if err != nil {
 			fmt.Printf("Warning: Failed to calculate checksum for %s: %v\n", filename, err)
 		} else {
@@ -172,25 +173,6 @@ func getOutputMetadata(outputDir string) (*OutputMetadata, error) {
 	}
 
 	return output, nil
-}
-
-// calculateFileChecksums calculates the SHA256 checksum for a file
-func calculateFileChecksums(filePath string) (string, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to open file")
-	}
-	defer file.Close()
-
-	sha256Hash := sha256.New()
-
-	if _, err := io.Copy(sha256Hash, file); err != nil {
-		return "", errors.Wrap(err, "failed to calculate checksum")
-	}
-
-	sha256Sum := fmt.Sprintf("%x", sha256Hash.Sum(nil))
-
-	return sha256Sum, nil
 }
 
 // estimateLineCount gives a rough estimate of line count in a file
