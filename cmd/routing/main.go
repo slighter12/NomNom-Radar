@@ -47,38 +47,94 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := runSubcommand(ctx, downloadCmd, convertCmd, prepareCmd, validateCmd, downloadRegion, downloadOutput, convertInput, convertOutput, convertContract, convertRegion, prepareRegion, prepareOutput, validateDir); err != nil {
+	flags := routingFlags{
+		Download: downloadFlags{
+			cmd:    downloadCmd,
+			region: downloadRegion,
+			output: downloadOutput,
+		},
+		Convert: convertFlags{
+			cmd:      convertCmd,
+			input:    convertInput,
+			output:   convertOutput,
+			contract: convertContract,
+			region:   convertRegion,
+		},
+		Prepare: prepareFlags{
+			cmd:    prepareCmd,
+			region: prepareRegion,
+			output: prepareOutput,
+		},
+		Validate: validateFlags{
+			cmd: validateCmd,
+			dir: validateDir,
+		},
+	}
+
+	if err := runSubcommand(ctx, &flags); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func runSubcommand(ctx context.Context, downloadCmd, convertCmd, prepareCmd, validateCmd *flag.FlagSet, downloadRegion, downloadOutput, convertInput, convertOutput *string, convertContract *bool, convertRegion, prepareRegion, prepareOutput, validateDir *string) error {
+type routingFlags struct {
+	Download downloadFlags
+	Convert  convertFlags
+	Prepare  prepareFlags
+	Validate validateFlags
+}
+
+type downloadFlags struct {
+	cmd    *flag.FlagSet
+	region *string
+	output *string
+}
+
+type convertFlags struct {
+	cmd      *flag.FlagSet
+	input    *string
+	output   *string
+	contract *bool
+	region   *string
+}
+
+type prepareFlags struct {
+	cmd    *flag.FlagSet
+	region *string
+	output *string
+}
+
+type validateFlags struct {
+	cmd *flag.FlagSet
+	dir *string
+}
+
+func runSubcommand(ctx context.Context, flags *routingFlags) error {
 	switch os.Args[1] {
 	case "download":
-		if err := downloadCmd.Parse(os.Args[2:]); err != nil {
+		if err := flags.Download.cmd.Parse(os.Args[2:]); err != nil {
 			return errors.Wrap(err, "failed to parse download flags")
 		}
 
-		return runDownload(ctx, *downloadRegion, *downloadOutput)
+		return runDownload(ctx, *flags.Download.region, *flags.Download.output)
 	case "convert":
-		if err := convertCmd.Parse(os.Args[2:]); err != nil {
+		if err := flags.Convert.cmd.Parse(os.Args[2:]); err != nil {
 			return errors.Wrap(err, "failed to parse convert flags")
 		}
 
-		return runConvert(ctx, *convertInput, *convertOutput, *convertRegion, *convertContract)
+		return runConvert(ctx, *flags.Convert.input, *flags.Convert.output, *flags.Convert.region, *flags.Convert.contract)
 	case "prepare":
-		if err := prepareCmd.Parse(os.Args[2:]); err != nil {
+		if err := flags.Prepare.cmd.Parse(os.Args[2:]); err != nil {
 			return errors.Wrap(err, "failed to parse prepare flags")
 		}
 
-		return runPrepare(ctx, *prepareRegion, *prepareOutput)
+		return runPrepare(ctx, *flags.Prepare.region, *flags.Prepare.output)
 	case "validate":
-		if err := validateCmd.Parse(os.Args[2:]); err != nil {
+		if err := flags.Validate.cmd.Parse(os.Args[2:]); err != nil {
 			return errors.Wrap(err, "failed to parse validate flags")
 		}
 
-		return runValidate(*validateDir)
+		return runValidate(*flags.Validate.dir)
 	default:
 		printUsage()
 
