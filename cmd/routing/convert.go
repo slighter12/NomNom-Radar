@@ -12,28 +12,37 @@ import (
 )
 
 func runConvert(ctx context.Context, input, output, region string, contract bool) error {
-	fmt.Printf("Converting OSM data from %s to %s\n", input, output)
+	absInput, err := filepath.Abs(input)
+	if err != nil {
+		return errors.Wrap(err, "failed to resolve absolute input path")
+	}
+	absOutput, err := filepath.Abs(output)
+	if err != nil {
+		return errors.Wrap(err, "failed to resolve absolute output path")
+	}
+
+	fmt.Printf("Converting OSM data from %s to %s\n", absInput, absOutput)
 	fmt.Printf("Region: %s\n", region)
 	fmt.Printf("Contraction enabled: %v\n", contract)
 	fmt.Println()
 
 	// Validate input file exists
-	if _, err := os.Stat(input); os.IsNotExist(err) {
-		return errors.Errorf("input file does not exist: %s", input)
+	if _, err := os.Stat(absInput); os.IsNotExist(err) {
+		return errors.Errorf("input file does not exist: %s", absInput)
 	}
 
 	// Create output directory
-	if err := os.MkdirAll(output, 0755); err != nil {
+	if err := os.MkdirAll(absOutput, 0755); err != nil {
 		return errors.Wrap(err, "failed to create output directory")
 	}
 
 	// Run osm2ch conversion
-	if err := runOSM2CHConversion(ctx, input, output, contract); err != nil {
+	if err := runOSM2CHConversion(ctx, absInput, absOutput, contract); err != nil {
 		return errors.Wrap(err, "conversion failed")
 	}
 
 	// Generate metadata
-	if err := generateMetadata(input, output, region, contract); err != nil {
+	if err := generateMetadata(absInput, absOutput, region, contract); err != nil {
 		return errors.Wrap(err, "failed to generate metadata")
 	}
 
@@ -67,9 +76,6 @@ func runOSM2CHConversion(ctx context.Context, input, output string, contract boo
 
 	// Execute osm2ch command
 	cmd := exec.CommandContext(ctx, "osm2ch", args...)
-
-	// Set working directory if needed
-	cmd.Dir = "."
 
 	// Capture output
 	cmd.Stdout = os.Stdout
