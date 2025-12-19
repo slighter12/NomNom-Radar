@@ -156,13 +156,18 @@ func getOutputMetadata(outputDir string) (*OutputMetadata, error) {
 		output.Files[filename] = fileMeta
 
 		// Count lines for statistics (approximate)
-		switch filename {
-		case "vertices.csv":
-			output.VerticesCount = estimateLineCount(filePath)
-		case "edges.csv":
-			output.EdgesCount = estimateLineCount(filePath)
-		case "shortcuts.csv":
-			output.ShortcutsCount = estimateLineCount(filePath)
+		count, err := estimateLineCount(filePath)
+		if err != nil {
+			fmt.Printf("Warning: Failed to estimate line count for %s: %v\n", filename, err)
+		} else {
+			switch filename {
+			case "vertices.csv":
+				output.VerticesCount = count
+			case "edges.csv":
+				output.EdgesCount = count
+			case "shortcuts.csv":
+				output.ShortcutsCount = count
+			}
 		}
 	}
 
@@ -189,10 +194,10 @@ func calculateFileChecksums(filePath string) (string, error) {
 }
 
 // estimateLineCount gives a rough estimate of line count in a file
-func estimateLineCount(filePath string) int {
+func estimateLineCount(filePath string) (int, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return 0
+		return 0, errors.Wrap(err, "failed to open file")
 	}
 	defer file.Close()
 
@@ -201,18 +206,16 @@ func estimateLineCount(filePath string) int {
 
 	for {
 		n, err := file.Read(buf)
-		if err != nil && !errors.Is(err, io.EOF) {
-			break
-		}
-
 		count += bytes.Count(buf[:n], []byte{'\n'})
 
-		if errors.Is(err, io.EOF) {
-			break
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return count, nil
+			}
+
+			return count, errors.Wrap(err, "failed to read file")
 		}
 	}
-
-	return count
 }
 
 // WriteMetadataToFile writes metadata to a JSON file
