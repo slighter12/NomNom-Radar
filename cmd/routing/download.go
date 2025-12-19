@@ -278,13 +278,14 @@ func formatBytes(bytes int64) string {
 	if bytes < unit {
 		return fmt.Sprintf("%d B", bytes)
 	}
+	const units = "KMGTPEZY"
 	div, exp := int64(unit), 0
-	for n := bytes / unit; n >= unit; n /= unit {
+	for n := bytes / unit; n >= unit &&
+		exp < len(units)-1; n /= unit {
 		div *= unit
 		exp++
 	}
-
-	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPEZY"[exp])
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), units[exp])
 }
 
 // formatDuration formats duration into human readable format (e.g., "1h30m", "5m10s", "45s")
