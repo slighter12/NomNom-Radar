@@ -1,15 +1,25 @@
-with-expecter: true
 packages:
   radar/internal/domain/repository:
     config:
-      dir: "internal/mocks/repository"
+      dir: "{{.ConfigDir}}/internal/mocks/repository"
+      filename: "{{.InterfaceName}}.go"
     interfaces:
       AddressRepository:
+      AuthRepository:
       DeviceRepository:
+      NotificationRepository:
+      RefreshTokenRepository:
       SubscriptionRepository:
+      TransactionManager:
+      RepositoryFactory:
+      UserRepository:
   radar/internal/domain/service:
     config:
-      dir: "internal/mocks/service"
+      dir: "{{.ConfigDir}}/internal/mocks/service"
+      filename: "{{.InterfaceName}}.go"
     interfaces:
-      QRCodeService:
       NotificationService:
+      OAuthAuthService:
+      PasswordHasher:
+      QRCodeService:
+      TokenService:

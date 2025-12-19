@@ -58,6 +58,9 @@ type Config struct {
 
 	// QRCode configuration for subscription QR codes
 	QRCode *QRCodeConfig `json:"qrcode" yaml:"qrcode"`
+
+	// Routing configuration for the routing engine
+	Routing *RoutingConfig `json:"routing" yaml:"routing"`
 }
 
 type GoogleOAuthConfig struct {
@@ -113,6 +116,21 @@ type QRCodeConfig struct {
 	Size                 int    `json:"size" yaml:"size"`
 	ErrorCorrectionLevel string `json:"errorCorrectionLevel" yaml:"errorCorrectionLevel"`
 	BaseURL              string `json:"baseUrl" yaml:"baseUrl"`
+}
+
+// RoutingConfig defines routing engine configuration
+type RoutingConfig struct {
+	// Maximum distance in kilometers for GPS coordinate snapping to road network
+	MaxSnapDistanceKm float64 `json:"maxSnapDistanceKm" yaml:"maxSnapDistanceKm"`
+
+	// Default vehicle speed in km/h for duration estimation when routing data is unavailable
+	DefaultSpeedKmh float64 `json:"defaultSpeedKmh" yaml:"defaultSpeedKmh"`
+
+	// Path to routing data directory containing CH graph files
+	DataPath string `json:"dataPath" yaml:"dataPath"`
+
+	// Enable routing engine (set to false to use Haversine fallback only)
+	Enabled bool `json:"enabled" yaml:"enabled"`
 }
 
 // LoadWithEnv loads .yaml files through koanf.

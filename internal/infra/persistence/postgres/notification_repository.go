@@ -8,21 +8,25 @@ import (
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	"radar/internal/infra/persistence/model"
+	"radar/internal/infra/persistence/postgres/query"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"go.uber.org/fx"
 	"gorm.io/gorm"
 )
 
 // notificationRepository implements the repository.NotificationRepository interface.
 type notificationRepository struct {
-	db *gorm.DB
+	fx.In
+
+	q *query.Query
 }
 
 // NewNotificationRepository is the constructor for notificationRepository.
 func NewNotificationRepository(db *gorm.DB) repository.NotificationRepository {
 	return &notificationRepository{
-		db: db,
+		q: query.Use(db),
 	}
 }
 
@@ -30,7 +34,7 @@ func NewNotificationRepository(db *gorm.DB) repository.NotificationRepository {
 func (repo *notificationRepository) CreateNotification(ctx context.Context, notification *entity.MerchantLocationNotification) error {
 	notificationM := fromNotificationDomain(notification)
 
-	if err := repo.db.WithContext(ctx).Create(notificationM).Error; err != nil {
+	if err := repo.q.MerchantLocationNotificationModel.WithContext(ctx).Create(notificationM); err != nil {
 		// Convert PostgreSQL errors to domain errors
 		if isForeignKeyConstraintViolation(err) {
 			return domainerrors.ErrUserCreationFailed.WrapMessage("invalid merchant or address reference")
@@ -53,11 +57,11 @@ func (repo *notificationRepository) CreateNotification(ctx context.Context, noti
 
 // FindNotificationByID retrieves a notification by its unique ID.
 func (repo *notificationRepository) FindNotificationByID(ctx context.Context, id uuid.UUID) (*entity.MerchantLocationNotification, error) {
-	var notificationM model.MerchantLocationNotificationModel
+	notificationM, err := repo.q.MerchantLocationNotificationModel.WithContext(ctx).
+		Where(repo.q.MerchantLocationNotificationModel.ID.Eq(id)).
+		First()
 
-	if err := repo.db.WithContext(ctx).
-		Where("id = ?", id).
-		First(&notificationM).Error; err != nil {
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, repository.ErrNotificationNotFound
 		}
@@ -65,25 +69,24 @@ func (repo *notificationRepository) FindNotificationByID(ctx context.Context, id
 		return nil, errors.Wrap(err, "failed to find notification by ID")
 	}
 
-	return toNotificationDomain(&notificationM), nil
+	return toNotificationDomain(notificationM), nil
 }
 
 // FindNotificationsByMerchant retrieves all notifications for a specific merchant with pagination.
 func (repo *notificationRepository) FindNotificationsByMerchant(ctx context.Context, merchantID uuid.UUID, limit, offset int) ([]*entity.MerchantLocationNotification, error) {
-	var notificationModels []*model.MerchantLocationNotificationModel
-
-	query := repo.db.WithContext(ctx).
-		Where("merchant_id = ?", merchantID).
-		Order("published_at DESC")
+	q := repo.q.MerchantLocationNotificationModel.WithContext(ctx).
+		Where(repo.q.MerchantLocationNotificationModel.MerchantID.Eq(merchantID)).
+		Order(repo.q.MerchantLocationNotificationModel.PublishedAt.Desc())
 
 	if limit > 0 {
-		query = query.Limit(limit)
+		q = q.Limit(limit)
 	}
 	if offset > 0 {
-		query = query.Offset(offset)
+		q = q.Offset(offset)
 	}
 
-	if err := query.Find(&notificationModels).Error; err != nil {
+	notificationModels, err := q.Find()
+	if err != nil {
 		return nil, errors.Wrap(err, "failed to find notifications by merchant")
 	}
 
@@ -97,16 +100,15 @@ func (repo *notificationRepository) FindNotificationsByMerchant(ctx context.Cont
 
 // UpdateNotificationStatus updates the total sent and failed counts for a notification.
 func (repo *notificationRepository) UpdateNotificationStatus(ctx context.Context, id uuid.UUID, totalSent, totalFailed int) error {
-	result := repo.db.WithContext(ctx).
-		Model(&model.MerchantLocationNotificationModel{}).
-		Where("id = ?", id).
+	result, err := repo.q.MerchantLocationNotificationModel.WithContext(ctx).
+		Where(repo.q.MerchantLocationNotificationModel.ID.Eq(id)).
 		Updates(map[string]interface{}{
 			"total_sent":   totalSent,
 			"total_failed": totalFailed,
 		})
 
-	if result.Error != nil {
-		return errors.Wrap(result.Error, "failed to update notification status")
+	if err != nil {
+		return errors.Wrap(err, "failed to update notification status")
 	}
 
 	if result.RowsAffected == 0 {
@@ -120,7 +122,7 @@ func (repo *notificationRepository) UpdateNotificationStatus(ctx context.Context
 func (repo *notificationRepository) CreateNotificationLog(ctx context.Context, log *entity.NotificationLog) error {
 	logM := fromNotificationLogDomain(log)
 
-	if err := repo.db.WithContext(ctx).Create(logM).Error; err != nil {
+	if err := repo.q.NotificationLogModel.WithContext(ctx).Create(logM); err != nil {
 		// Convert PostgreSQL errors to domain errors
 		if isForeignKeyConstraintViolation(err) {
 			return domainerrors.ErrUserCreationFailed.WrapMessage("invalid notification, user, or device reference")
@@ -152,7 +154,7 @@ func (repo *notificationRepository) BatchCreateNotificationLogs(ctx context.Cont
 
 	// Use GORM's CreateInBatches for efficient batch insertion
 	// Default batch size is 100, which is a good balance between performance and memory
-	if err := repo.db.WithContext(ctx).CreateInBatches(logModels, 100).Error; err != nil {
+	if err := repo.q.NotificationLogModel.WithContext(ctx).CreateInBatches(logModels, 100); err != nil {
 		// Convert PostgreSQL errors to domain errors
 		if isForeignKeyConstraintViolation(err) {
 			return domainerrors.ErrUserCreationFailed.WrapMessage("invalid notification, user, or device reference in batch")

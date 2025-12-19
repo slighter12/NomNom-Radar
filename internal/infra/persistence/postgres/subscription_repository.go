@@ -3,26 +3,31 @@ package postgres
 
 import (
 	"context"
+	"database/sql/driver"
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	"radar/internal/infra/persistence/model"
+	"radar/internal/infra/persistence/postgres/query"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"go.uber.org/fx"
 	"gorm.io/gorm"
 )
 
 // subscriptionRepository implements the repository.SubscriptionRepository interface.
 type subscriptionRepository struct {
-	db *gorm.DB
+	fx.In
+
+	q *query.Query
 }
 
 // NewSubscriptionRepository is the constructor for subscriptionRepository.
 func NewSubscriptionRepository(db *gorm.DB) repository.SubscriptionRepository {
 	return &subscriptionRepository{
-		db: db,
+		q: query.Use(db),
 	}
 }
 
@@ -30,7 +35,7 @@ func NewSubscriptionRepository(db *gorm.DB) repository.SubscriptionRepository {
 func (repo *subscriptionRepository) CreateSubscription(ctx context.Context, subscription *entity.UserMerchantSubscription) error {
 	subscriptionM := fromSubscriptionDomain(subscription)
 
-	if err := repo.db.WithContext(ctx).Create(subscriptionM).Error; err != nil {
+	if err := repo.q.UserMerchantSubscriptionModel.WithContext(ctx).Create(subscriptionM); err != nil {
 		// Convert PostgreSQL errors to domain errors
 		if isUniqueConstraintViolation(err) {
 			return repository.ErrDuplicateSubscription
@@ -55,11 +60,11 @@ func (repo *subscriptionRepository) CreateSubscription(ctx context.Context, subs
 
 // FindSubscriptionByID retrieves a subscription by its unique ID.
 func (repo *subscriptionRepository) FindSubscriptionByID(ctx context.Context, id uuid.UUID) (*entity.UserMerchantSubscription, error) {
-	var subscriptionM model.UserMerchantSubscriptionModel
+	subscriptionM, err := repo.q.UserMerchantSubscriptionModel.WithContext(ctx).
+		Where(repo.q.UserMerchantSubscriptionModel.ID.Eq(id)).
+		First()
 
-	if err := repo.db.WithContext(ctx).
-		Where("id = ?", id).
-		First(&subscriptionM).Error; err != nil {
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, repository.ErrSubscriptionNotFound
 		}
@@ -67,16 +72,19 @@ func (repo *subscriptionRepository) FindSubscriptionByID(ctx context.Context, id
 		return nil, errors.Wrap(err, "failed to find subscription by ID")
 	}
 
-	return toSubscriptionDomain(&subscriptionM), nil
+	return toSubscriptionDomain(subscriptionM), nil
 }
 
 // FindSubscriptionByUserAndMerchant retrieves a subscription by user and merchant IDs.
 func (repo *subscriptionRepository) FindSubscriptionByUserAndMerchant(ctx context.Context, userID, merchantID uuid.UUID) (*entity.UserMerchantSubscription, error) {
-	var subscriptionM model.UserMerchantSubscriptionModel
+	subscriptionM, err := repo.q.UserMerchantSubscriptionModel.WithContext(ctx).
+		Where(
+			repo.q.UserMerchantSubscriptionModel.UserID.Eq(userID),
+			repo.q.UserMerchantSubscriptionModel.MerchantID.Eq(merchantID),
+		).
+		First()
 
-	if err := repo.db.WithContext(ctx).
-		Where("user_id = ? AND merchant_id = ?", userID, merchantID).
-		First(&subscriptionM).Error; err != nil {
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, repository.ErrSubscriptionNotFound
 		}
@@ -84,17 +92,17 @@ func (repo *subscriptionRepository) FindSubscriptionByUserAndMerchant(ctx contex
 		return nil, errors.Wrap(err, "failed to find subscription by user and merchant")
 	}
 
-	return toSubscriptionDomain(&subscriptionM), nil
+	return toSubscriptionDomain(subscriptionM), nil
 }
 
 // FindSubscriptionsByUser retrieves all subscriptions for a specific user (excluding soft-deleted).
 func (repo *subscriptionRepository) FindSubscriptionsByUser(ctx context.Context, userID uuid.UUID) ([]*entity.UserMerchantSubscription, error) {
-	var subscriptionModels []*model.UserMerchantSubscriptionModel
+	subscriptionModels, err := repo.q.UserMerchantSubscriptionModel.WithContext(ctx).
+		Where(repo.q.UserMerchantSubscriptionModel.UserID.Eq(userID)).
+		Order(repo.q.UserMerchantSubscriptionModel.SubscribedAt.Desc()).
+		Find()
 
-	if err := repo.db.WithContext(ctx).
-		Where("user_id = ?", userID).
-		Order("subscribed_at DESC").
-		Find(&subscriptionModels).Error; err != nil {
+	if err != nil {
 		return nil, errors.Wrap(err, "failed to find subscriptions by user")
 	}
 
@@ -108,12 +116,12 @@ func (repo *subscriptionRepository) FindSubscriptionsByUser(ctx context.Context,
 
 // FindSubscriptionsByMerchant retrieves all subscriptions for a specific merchant (excluding soft-deleted).
 func (repo *subscriptionRepository) FindSubscriptionsByMerchant(ctx context.Context, merchantID uuid.UUID) ([]*entity.UserMerchantSubscription, error) {
-	var subscriptionModels []*model.UserMerchantSubscriptionModel
+	subscriptionModels, err := repo.q.UserMerchantSubscriptionModel.WithContext(ctx).
+		Where(repo.q.UserMerchantSubscriptionModel.MerchantID.Eq(merchantID)).
+		Order(repo.q.UserMerchantSubscriptionModel.SubscribedAt.Desc()).
+		Find()
 
-	if err := repo.db.WithContext(ctx).
-		Where("merchant_id = ?", merchantID).
-		Order("subscribed_at DESC").
-		Find(&subscriptionModels).Error; err != nil {
+	if err != nil {
 		return nil, errors.Wrap(err, "failed to find subscriptions by merchant")
 	}
 
@@ -127,13 +135,12 @@ func (repo *subscriptionRepository) FindSubscriptionsByMerchant(ctx context.Cont
 
 // UpdateSubscriptionStatus updates the active status of a subscription.
 func (repo *subscriptionRepository) UpdateSubscriptionStatus(ctx context.Context, id uuid.UUID, isActive bool) error {
-	result := repo.db.WithContext(ctx).
-		Model(&model.UserMerchantSubscriptionModel{}).
-		Where("id = ?", id).
-		Update("is_active", isActive)
+	result, err := repo.q.UserMerchantSubscriptionModel.WithContext(ctx).
+		Where(repo.q.UserMerchantSubscriptionModel.ID.Eq(id)).
+		Update(repo.q.UserMerchantSubscriptionModel.IsActive, isActive)
 
-	if result.Error != nil {
-		return errors.Wrap(result.Error, "failed to update subscription status")
+	if err != nil {
+		return errors.Wrap(err, "failed to update subscription status")
 	}
 
 	if result.RowsAffected == 0 {
@@ -145,13 +152,12 @@ func (repo *subscriptionRepository) UpdateSubscriptionStatus(ctx context.Context
 
 // UpdateNotificationRadius updates the notification radius for a subscription.
 func (repo *subscriptionRepository) UpdateNotificationRadius(ctx context.Context, id uuid.UUID, radius float64) error {
-	result := repo.db.WithContext(ctx).
-		Model(&model.UserMerchantSubscriptionModel{}).
-		Where("id = ?", id).
-		Update("notification_radius", radius)
+	result, err := repo.q.UserMerchantSubscriptionModel.WithContext(ctx).
+		Where(repo.q.UserMerchantSubscriptionModel.ID.Eq(id)).
+		Update(repo.q.UserMerchantSubscriptionModel.NotificationRadius, radius)
 
-	if result.Error != nil {
-		return errors.Wrap(result.Error, "failed to update notification radius")
+	if err != nil {
+		return errors.Wrap(err, "failed to update notification radius")
 	}
 
 	if result.RowsAffected == 0 {
@@ -163,12 +169,12 @@ func (repo *subscriptionRepository) UpdateNotificationRadius(ctx context.Context
 
 // DeleteSubscription removes a subscription by its ID (soft delete).
 func (repo *subscriptionRepository) DeleteSubscription(ctx context.Context, id uuid.UUID) error {
-	result := repo.db.WithContext(ctx).
-		Where("id = ?", id).
-		Delete(&model.UserMerchantSubscriptionModel{})
+	result, err := repo.q.UserMerchantSubscriptionModel.WithContext(ctx).
+		Where(repo.q.UserMerchantSubscriptionModel.ID.Eq(id)).
+		Delete()
 
-	if result.Error != nil {
-		return errors.Wrap(result.Error, "failed to delete subscription")
+	if err != nil {
+		return errors.Wrap(err, "failed to delete subscription")
 	}
 
 	if result.RowsAffected == 0 {
@@ -181,35 +187,28 @@ func (repo *subscriptionRepository) DeleteSubscription(ctx context.Context, id u
 // FindSubscribersWithinRadius performs a PostGIS geographic query to find all active subscriptions
 // where the user has at least one active address within the notification radius of the merchant's location.
 func (repo *subscriptionRepository) FindSubscribersWithinRadius(ctx context.Context, merchantID uuid.UUID, merchantLat, merchantLon float64) ([]*entity.UserMerchantSubscription, error) {
+	s := repo.q.UserMerchantSubscriptionModel
+	a := repo.q.AddressModel
+
+	// Build subquery for EXISTS check using GORM fluent API
+	subQuery := a.WithContext(ctx).Select(a.ID).Where(
+		a.UserProfileID.EqCol(s.UserID),
+		a.IsActive.Is(true),
+		a.DeletedAt.IsNull(),
+	).UnderlyingDB().Where("ST_DWithin(location, ST_SetSRID(ST_MakePoint(?, ?), 4326), notification_radius)", merchantLon, merchantLat)
+
 	var subscriptionModels []*model.UserMerchantSubscriptionModel
+	err := s.WithContext(ctx).
+		Where(
+			s.MerchantID.Eq(merchantID),
+			s.IsActive.Is(true),
+			s.DeletedAt.IsNull(),
+		).UnderlyingDB().
+		Where("EXISTS (?)", subQuery).
+		Order("subscribed_at DESC").
+		Find(&subscriptionModels).Error
 
-	// Use PostGIS ST_DWithin for efficient geographic queries
-	// This query finds distinct subscriptions where the user has at least one active address within range
-	query := `
-		SELECT DISTINCT s.*
-		FROM user_merchant_subscriptions s
-		WHERE s.merchant_id = ?
-		  AND s.is_active = true
-		  AND s.deleted_at IS NULL
-		  AND EXISTS (
-		    SELECT 1
-		    FROM addresses a
-		    WHERE a.owner_id = s.user_id
-		      AND a.owner_type = 'user_profile'
-		      AND a.is_active = true
-		      AND a.deleted_at IS NULL
-		      AND ST_DWithin(
-		        a.location,
-		        ST_SetSRID(ST_MakePoint(?, ?), 4326),
-		        s.notification_radius
-		      )
-		  )
-		ORDER BY s.subscribed_at DESC
-	`
-
-	if err := repo.db.WithContext(ctx).
-		Raw(query, merchantID, merchantLon, merchantLat).
-		Scan(&subscriptionModels).Error; err != nil {
+	if err != nil {
 		return nil, errors.Wrap(err, "failed to find subscribers within radius")
 	}
 
@@ -221,18 +220,62 @@ func (repo *subscriptionRepository) FindSubscribersWithinRadius(ctx context.Cont
 	return subscriptions, nil
 }
 
+// FindSubscriberAddressesWithinRadius performs a PostGIS geographic query to find all active addresses
+// within the notification radius of the merchant's location for active subscriptions.
+func (repo *subscriptionRepository) FindSubscriberAddressesWithinRadius(ctx context.Context, merchantID uuid.UUID, merchantLat, merchantLon float64) ([]*entity.Address, error) {
+	a := repo.q.AddressModel
+	s := repo.q.UserMerchantSubscriptionModel
+
+	// Construct complex query using fluent API for structure and UnderlyingDB for PostGIS specifics
+	var addressModels []*model.AddressModel
+	err := a.WithContext(ctx).
+		Distinct().
+		Join(s, s.UserID.EqCol(a.UserProfileID)).
+		Where(
+			a.UserProfileID.IsNotNull(),
+			a.IsActive.Is(true),
+			a.DeletedAt.IsNull(),
+			s.MerchantID.Eq(merchantID),
+			s.IsActive.Is(true),
+			s.DeletedAt.IsNull(),
+		).UnderlyingDB().
+		Where("ST_DWithin(a.location, ST_SetSRID(ST_MakePoint(?, ?), 4326), s.notification_radius)", merchantLon, merchantLat).
+		Order(gorm.Expr("ST_Distance(a.location, ST_SetSRID(ST_MakePoint(?, ?), 4326))", merchantLon, merchantLat)).
+		Find(&addressModels).Error
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to find subscriber addresses within radius")
+	}
+
+	addresses := make([]*entity.Address, 0, len(addressModels))
+	for _, addressM := range addressModels {
+		addresses = append(addresses, toAddressDomain(addressM))
+	}
+
+	return addresses, nil
+}
+
 // FindDevicesForUsers retrieves all active devices for a list of user IDs.
 func (repo *subscriptionRepository) FindDevicesForUsers(ctx context.Context, userIDs []uuid.UUID) ([]*entity.UserDevice, error) {
 	if len(userIDs) == 0 {
 		return []*entity.UserDevice{}, nil
 	}
 
-	var deviceModels []*model.UserDeviceModel
+	// uuid.UUID implements driver.Valuer, so we convert slice for type safety with gen.Field.In
+	ids := make([]driver.Valuer, len(userIDs))
+	for i, id := range userIDs {
+		ids[i] = id
+	}
 
-	if err := repo.db.WithContext(ctx).
-		Where("user_id IN ? AND is_active = ?", userIDs, true).
-		Order("created_at DESC").
-		Find(&deviceModels).Error; err != nil {
+	deviceModels, err := repo.q.UserDeviceModel.WithContext(ctx).
+		Where(
+			repo.q.UserDeviceModel.UserID.In(ids...),
+			repo.q.UserDeviceModel.IsActive.Is(true),
+		).
+		Order(repo.q.UserDeviceModel.CreatedAt.Desc()).
+		Find()
+
+	if err != nil {
 		return nil, errors.Wrap(err, "failed to find devices for users")
 	}
 

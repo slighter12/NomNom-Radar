@@ -30,6 +30,7 @@ type notificationService struct {
 	deviceRepo       repository.DeviceRepository
 	addressRepo      repository.AddressRepository
 	notificationSvc  service.NotificationService
+	routingSvc       usecase.RoutingUsecase
 }
 
 // NewNotificationService creates a new notification service instance
@@ -39,6 +40,7 @@ func NewNotificationService(
 	deviceRepo repository.DeviceRepository,
 	addressRepo repository.AddressRepository,
 	notificationSvc service.NotificationService,
+	routingSvc usecase.RoutingUsecase,
 ) usecase.NotificationUsecase {
 	return &notificationService{
 		notificationRepo: notificationRepo,
@@ -46,6 +48,7 @@ func NewNotificationService(
 		deviceRepo:       deviceRepo,
 		addressRepo:      addressRepo,
 		notificationSvc:  notificationSvc,
+		routingSvc:       routingSvc,
 	}
 }
 
@@ -255,27 +258,64 @@ func (s *notificationService) handleInvalidTokens(ctx context.Context, invalidTo
 	}
 }
 
-// getSubscriberDevices retrieves devices for subscribers within radius
+// getSubscriberDevices retrieves devices for subscribers within radius using road network distance
 func (s *notificationService) getSubscriberDevices(
 	ctx context.Context,
 	merchantID uuid.UUID,
 	latitude, longitude float64,
 ) (tokens []string, deviceMap map[string]*entity.UserDevice, err error) {
-	// Find subscribers within radius using PostGIS
-	subscriptions, err := s.subscriptionRepo.FindSubscribersWithinRadius(ctx, merchantID, latitude, longitude)
+	// Find subscriber addresses within radius using PostGIS (rough geographic filtering)
+	candidateAddresses, err := s.subscriptionRepo.FindSubscriberAddressesWithinRadius(ctx, merchantID, latitude, longitude)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to find subscribers")
+		return nil, nil, errors.Wrap(err, "failed to find subscriber addresses")
 	}
 
-	// If no subscribers, return early
-	if len(subscriptions) == 0 {
+	// If no candidate addresses, return early
+	if len(candidateAddresses) == 0 {
 		return []string{}, make(map[string]*entity.UserDevice), nil
 	}
 
-	// Collect user IDs
-	userIDs := make([]uuid.UUID, 0, len(subscriptions))
-	for _, sub := range subscriptions {
-		userIDs = append(userIDs, sub.UserID)
+	// Build target coordinates from candidate addresses
+	targets := make([]usecase.Coordinate, len(candidateAddresses))
+	for i, addr := range candidateAddresses {
+		targets[i] = usecase.Coordinate{Lat: addr.Latitude, Lng: addr.Longitude}
+	}
+
+	// Calculate road network distances using routing service
+	source := usecase.Coordinate{Lat: latitude, Lng: longitude}
+	routeResults, err := s.routingSvc.OneToMany(ctx, source, targets)
+	if err != nil {
+		// If routing fails, log error and return empty (fail-safe behavior)
+		// TODO: Add proper error logging/metrics here
+		return []string{}, make(map[string]*entity.UserDevice), nil
+	}
+
+	// Filter addresses based on road network distance and subscription radius
+	validAddresses := make([]*entity.Address, 0, len(candidateAddresses))
+	for i, result := range routeResults.Results {
+		// Find the corresponding subscription to get the notification radius
+		// Note: We need to get subscription info for each address
+		// For now, we'll use a simplified approach - in production we'd need to join this data
+		subscription, err := s.subscriptionRepo.FindSubscriptionByUserAndMerchant(ctx, candidateAddresses[i].OwnerID, merchantID)
+		if err != nil {
+			continue // Skip if we can't get subscription info
+		}
+
+		// Check if road distance is within notification radius
+		if result.IsReachable && result.DistanceKm <= subscription.NotificationRadius {
+			validAddresses = append(validAddresses, candidateAddresses[i])
+		}
+	}
+
+	// If no valid addresses after routing filter, return early
+	if len(validAddresses) == 0 {
+		return []string{}, make(map[string]*entity.UserDevice), nil
+	}
+
+	// Collect user IDs from valid addresses
+	userIDs := make([]uuid.UUID, 0, len(validAddresses))
+	for _, addr := range validAddresses {
+		userIDs = append(userIDs, addr.OwnerID)
 	}
 
 	// Get all active devices for these users

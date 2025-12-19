@@ -89,6 +89,7 @@ func injectUsecase() fx.Option {
 			impl.NewDeviceService,
 			impl.NewSubscriptionService,
 			impl.NewNotificationService,
+			impl.NewRoutingService,
 		),
 	)
 }
