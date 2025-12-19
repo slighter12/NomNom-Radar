@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/md5" // #nosec G501
 	"crypto/sha256"
 	"encoding/json"
@@ -212,11 +213,7 @@ func estimateLineCount(filePath string) int {
 			break
 		}
 
-		for i := range n {
-			if buf[i] == '\n' {
-				count++
-			}
-		}
+		count += bytes.Count(buf[:n], []byte{'\n'})
 
 		if errors.Is(err, io.EOF) {
 			break
