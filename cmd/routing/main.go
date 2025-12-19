@@ -112,34 +112,54 @@ type validateFlags struct {
 func runSubcommand(ctx context.Context, flags *routingFlags) error {
 	switch os.Args[1] {
 	case "download":
-		if err := flags.Download.cmd.Parse(os.Args[2:]); err != nil {
-			return errors.Wrap(err, "failed to parse download flags")
-		}
-
-		return runDownload(ctx, *flags.Download.region, *flags.Download.output)
+		return handleDownload(ctx, flags)
 	case "convert":
-		if err := flags.Convert.cmd.Parse(os.Args[2:]); err != nil {
-			return errors.Wrap(err, "failed to parse convert flags")
-		}
-
-		return runConvert(ctx, *flags.Convert.input, *flags.Convert.output, *flags.Convert.region, *flags.Convert.contract)
+		return handleConvert(ctx, flags)
 	case "prepare":
-		if err := flags.Prepare.cmd.Parse(os.Args[2:]); err != nil {
-			return errors.Wrap(err, "failed to parse prepare flags")
-		}
-
-		return runPrepare(ctx, *flags.Prepare.region, *flags.Prepare.output)
+		return handlePrepare(ctx, flags)
 	case "validate":
-		if err := flags.Validate.cmd.Parse(os.Args[2:]); err != nil {
-			return errors.Wrap(err, "failed to parse validate flags")
-		}
-
-		return runValidate(*flags.Validate.dir)
+		return handleValidate(flags)
 	default:
 		printUsage()
 
 		return errors.New("unknown subcommand")
 	}
+}
+
+func handleDownload(ctx context.Context, flags *routingFlags) error {
+	if err := flags.Download.cmd.Parse(os.Args[2:]); err != nil {
+		return errors.Wrap(err, "failed to parse download flags")
+	}
+
+	return runDownload(ctx, *flags.Download.region, *flags.Download.output)
+}
+
+func handleConvert(ctx context.Context, flags *routingFlags) error {
+	if err := flags.Convert.cmd.Parse(os.Args[2:]); err != nil {
+		return errors.Wrap(err, "failed to parse convert flags")
+	}
+
+	if *flags.Convert.input == "" {
+		return errors.New("--input flag is required for convert command")
+	}
+
+	return runConvert(ctx, *flags.Convert.input, *flags.Convert.output, *flags.Convert.region, *flags.Convert.contract)
+}
+
+func handlePrepare(ctx context.Context, flags *routingFlags) error {
+	if err := flags.Prepare.cmd.Parse(os.Args[2:]); err != nil {
+		return errors.Wrap(err, "failed to parse prepare flags")
+	}
+
+	return runPrepare(ctx, *flags.Prepare.region, *flags.Prepare.output)
+}
+
+func handleValidate(flags *routingFlags) error {
+	if err := flags.Validate.cmd.Parse(os.Args[2:]); err != nil {
+		return errors.Wrap(err, "failed to parse validate flags")
+	}
+
+	return runValidate(*flags.Validate.dir)
 }
 
 func printUsage() {
