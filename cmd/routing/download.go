@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/md5" // #nosec G501
 	"crypto/sha256"
 	"fmt"
 	"io"
@@ -330,19 +329,15 @@ func verifyFileIntegrity(config DownloadConfig) error {
 	}
 	defer file.Close()
 
-	// Calculate MD5 and SHA256
-	// #nosec G401
-	md5Hash := md5.New()
+	// Calculate SHA256
 	sha256Hash := sha256.New()
 
-	if _, err := io.Copy(io.MultiWriter(md5Hash, sha256Hash), file); err != nil {
-		return errors.Wrap(err, "failed to calculate checksums")
+	if _, err := io.Copy(sha256Hash, file); err != nil {
+		return errors.Wrap(err, "failed to calculate checksum")
 	}
 
-	md5Sum := fmt.Sprintf("%x", md5Hash.Sum(nil))
 	sha256Sum := fmt.Sprintf("%x", sha256Hash.Sum(nil))
 
-	fmt.Printf("MD5:    %s\n", md5Sum)
 	fmt.Printf("SHA256: %s\n", sha256Sum)
 
 	// Note: In production, you would compare against expected checksums

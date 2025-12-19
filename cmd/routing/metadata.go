@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/md5" // #nosec G501
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -28,7 +27,6 @@ type SourceMetadata struct {
 	URL          string    `json:"url,omitempty"`
 	Filename     string    `json:"filename"`
 	SizeBytes    int64     `json:"size_bytes"`
-	MD5          string    `json:"md5"`
 	SHA256       string    `json:"sha256"`
 	OSMTimestamp time.Time `json:"osm_timestamp"`
 }
@@ -55,7 +53,6 @@ type OutputMetadata struct {
 // FileMetadata contains metadata for individual output files
 type FileMetadata struct {
 	SizeBytes int64  `json:"size_bytes"`
-	MD5       string `json:"md5,omitempty"`
 	SHA256    string `json:"sha256,omitempty"`
 }
 
@@ -99,8 +96,8 @@ func getSourceMetadata(inputFile, region string) (*SourceMetadata, error) {
 		return nil, errors.Wrap(err, "failed to stat input file")
 	}
 
-	// Calculate checksums
-	md5Hash, sha256Hash, err := calculateFileChecksums(inputFile)
+	// Calculate checksum
+	sha256Hash, err := calculateFileChecksums(inputFile)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to calculate checksums")
 	}
@@ -116,7 +113,6 @@ func getSourceMetadata(inputFile, region string) (*SourceMetadata, error) {
 		URL:          url,
 		Filename:     filepath.Base(inputFile),
 		SizeBytes:    info.Size(),
-		MD5:          md5Hash,
 		SHA256:       sha256Hash,
 		OSMTimestamp: info.ModTime(),
 	}
@@ -146,15 +142,14 @@ func getOutputMetadata(outputDir string) (*OutputMetadata, error) {
 			return nil, errors.Wrapf(err, "failed to stat file %s", filePath)
 		}
 
-		// Calculate checksums
+		// Calculate checksum
 		fileMeta := FileMetadata{
 			SizeBytes: info.Size(),
 		}
-		md5Hash, sha256Hash, err := calculateFileChecksums(filePath)
+		sha256Hash, err := calculateFileChecksums(filePath)
 		if err != nil {
 			fmt.Printf("Warning: Failed to calculate checksum for %s: %v\n", filename, err)
 		} else {
-			fileMeta.MD5 = md5Hash
 			fileMeta.SHA256 = sha256Hash
 		}
 
@@ -174,26 +169,23 @@ func getOutputMetadata(outputDir string) (*OutputMetadata, error) {
 	return output, nil
 }
 
-// calculateFileChecksums calculates MD5 and SHA256 checksums for a file
-func calculateFileChecksums(filePath string) (string, string, error) {
+// calculateFileChecksums calculates the SHA256 checksum for a file
+func calculateFileChecksums(filePath string) (string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return "", "", errors.Wrap(err, "failed to open file")
+		return "", errors.Wrap(err, "failed to open file")
 	}
 	defer file.Close()
 
-	// #nosec G401
-	md5Hash := md5.New()
 	sha256Hash := sha256.New()
 
-	if _, err := io.Copy(io.MultiWriter(md5Hash, sha256Hash), file); err != nil {
-		return "", "", errors.Wrap(err, "failed to calculate checksums")
+	if _, err := io.Copy(sha256Hash, file); err != nil {
+		return "", errors.Wrap(err, "failed to calculate checksum")
 	}
 
-	md5Sum := fmt.Sprintf("%x", md5Hash.Sum(nil))
 	sha256Sum := fmt.Sprintf("%x", sha256Hash.Sum(nil))
 
-	return md5Sum, sha256Sum, nil
+	return sha256Sum, nil
 }
 
 // estimateLineCount gives a rough estimate of line count in a file
