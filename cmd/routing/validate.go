@@ -88,6 +88,19 @@ func validateFilesAgainstMetadata(dir string, metadata *RoutingMetadata) error {
 				filename, fileMeta.SizeBytes, info.Size())
 		}
 
+		// Validate checksum when available
+		if fileMeta.SHA256 != "" {
+			sha256Hash, err := calculateFileChecksums(filePath)
+			if err != nil {
+				return errors.Wrapf(err, "failed to calculate checksum for %s", filename)
+			}
+
+			if sha256Hash != fileMeta.SHA256 {
+				return errors.Errorf("checksum mismatch for %s: expected %s, got %s",
+					filename, fileMeta.SHA256, sha256Hash)
+			}
+		}
+
 		fmt.Printf("  ✅ %s (%s)\n", filename, formatBytes(info.Size()))
 	}
 
