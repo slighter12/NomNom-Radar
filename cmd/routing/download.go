@@ -283,7 +283,7 @@ func formatBytes(bytes int64) string {
 		exp++
 	}
 
-	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPEZY"[exp])
 }
 
 // formatDuration formats duration into human readable format (e.g., "1h30m", "5m10s", "45s")
