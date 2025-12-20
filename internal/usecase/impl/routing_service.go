@@ -140,6 +140,15 @@ func (s *routingService) CalculateDistance(ctx context.Context, source, target u
 
 // calculateHaversineDistance calculates straight-line distance and estimated duration
 func (s *routingService) calculateHaversineDistance(source, target usecase.Coordinate) usecase.RouteResult {
+	// Handle invalid coordinates
+	if !s.isValidCoordinate(source) || !s.isValidCoordinate(target) {
+		return usecase.RouteResult{
+			Source:      source,
+			Target:      target,
+			IsReachable: false,
+		}
+	}
+
 	distanceKm := s.haversineDistance(source.Lat, source.Lng, target.Lat, target.Lng)
 	durationMin := (distanceKm / s.defaultSpeedKmh) * 60 // Convert hours to minutes
 
@@ -148,7 +157,7 @@ func (s *routingService) calculateHaversineDistance(source, target usecase.Coord
 		Target:      target,
 		DistanceKm:  distanceKm,
 		DurationMin: durationMin,
-		IsReachable: true, // Haversine assumes all points are reachable
+		IsReachable: true, // Haversine assumes all valid points are reachable
 	}
 }
 
@@ -261,12 +270,7 @@ func collectRouteResults(resultCh chan routeResultWithIndex, results []usecase.R
 		close(resultCh)
 	}()
 
-	resultsReceived := 0
 	for res := range resultCh {
 		results[res.index] = res.result
-		resultsReceived++
-		if resultsReceived == len(results) {
-			break
-		}
 	}
 }

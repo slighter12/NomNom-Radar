@@ -27,6 +27,18 @@ func TestNewRoutingService(t *testing.T) {
 	assert.False(t, service.IsReady()) // Should start as not ready
 }
 
+func TestNewRoutingService_ZeroConfig(t *testing.T) {
+	// Test with zero values - should use defaults without panic
+	cfg := &config.RoutingConfig{}
+
+	service := NewRoutingService(cfg)
+	impl := service.(*routingService)
+
+	assert.NotNil(t, service)
+	assert.Equal(t, defaultSnapDistanceKm, impl.maxSnapDistanceKm)
+	assert.Equal(t, defaultSpeedKmh, impl.defaultSpeedKmh)
+}
+
 func TestRoutingService_IsReady(t *testing.T) {
 	cfg := &config.RoutingConfig{}
 	service := NewRoutingService(cfg).(*routingService)
@@ -252,6 +264,33 @@ func TestRoutingService_IsValidCoordinate(t *testing.T) {
 	for _, coord := range invalidCoords {
 		assert.False(t, service.isValidCoordinate(coord), "Coordinate should be invalid: %+v", coord)
 	}
+}
+
+func TestRoutingService_CalculateDistance_InvalidCoordinates(t *testing.T) {
+	cfg := &config.RoutingConfig{
+		DefaultSpeedKmh: 30.0,
+	}
+	service := NewRoutingService(cfg)
+
+	ctx := context.Background()
+
+	// Test with NaN coordinate
+	source := usecase.Coordinate{Lat: 25.0330, Lng: 121.5654}
+	invalidTarget := usecase.Coordinate{Lat: math.NaN(), Lng: 121.5649}
+
+	result, err := service.CalculateDistance(ctx, source, invalidTarget)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.False(t, result.IsReachable, "Invalid coordinates should be marked as unreachable")
+
+	// Test with invalid source
+	invalidSource := usecase.Coordinate{Lat: 95.0, Lng: 0.0}
+	validTarget := usecase.Coordinate{Lat: 25.0425, Lng: 121.5649}
+
+	result, err = service.CalculateDistance(ctx, invalidSource, validTarget)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.False(t, result.IsReachable, "Invalid coordinates should be marked as unreachable")
 }
 
 func BenchmarkRoutingService_OneToMany(b *testing.B) {
