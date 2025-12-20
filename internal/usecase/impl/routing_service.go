@@ -13,6 +13,12 @@ import (
 )
 
 // routingService implements the RoutingUsecase interface
+const (
+	// fallback defaults to keep routing functional when config is missing/invalid
+	defaultSnapDistanceKm = 1.0
+	defaultSpeedKmh       = 30.0
+)
+
 type routingService struct {
 	// Configuration
 	maxSnapDistanceKm float64 // Maximum distance for GPS coordinate snapping
@@ -30,9 +36,19 @@ type routingService struct {
 
 // NewRoutingService creates a new routing service instance
 func NewRoutingService(config *config.RoutingConfig) usecase.RoutingUsecase {
+	snapDistance := config.MaxSnapDistanceKm
+	if snapDistance <= 0 {
+		snapDistance = defaultSnapDistanceKm
+	}
+
+	speedKmh := config.DefaultSpeedKmh
+	if speedKmh <= 0 {
+		speedKmh = defaultSpeedKmh
+	}
+
 	return &routingService{
-		maxSnapDistanceKm: config.MaxSnapDistanceKm,
-		defaultSpeedKmh:   config.DefaultSpeedKmh,
+		maxSnapDistanceKm: snapDistance,
+		defaultSpeedKmh:   speedKmh,
 		isReady:           false, // Will be set to true when CH data is loaded
 	}
 }
@@ -91,6 +107,10 @@ func (s *routingService) oneToManyHaversine(ctx context.Context, source usecase.
 func (s *routingService) FindNearestNode(ctx context.Context, coord usecase.Coordinate) (*usecase.NodeInfo, bool, error) {
 	// For now, return a mock node within maxSnapDistance
 	// Spatial index lookup will be added when the routing engine is integrated
+
+	if s.maxSnapDistanceKm <= 0 {
+		return nil, false, errors.New("invalid max snap distance configuration")
+	}
 
 	// Check if coordinate is within reasonable bounds (Taiwan)
 	if !s.isValidCoordinate(coord) {
