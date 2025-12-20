@@ -250,10 +250,8 @@ func (s *routingService) spawnRouteWorkers(
 ) *sync.WaitGroup {
 	var workerGroup sync.WaitGroup
 
-	for i := 0; i < workerCount; i++ {
-		workerGroup.Add(1)
-		go func() {
-			defer workerGroup.Done()
+	for range workerCount {
+		workerGroup.Go(func() {
 			for idx := range targetCh {
 				if ctx.Err() != nil {
 					return
@@ -262,7 +260,7 @@ func (s *routingService) spawnRouteWorkers(
 				result := s.calculateHaversineDistance(source, targets[idx])
 				resultCh <- routeResultWithIndex{index: idx, result: result}
 			}
-		}()
+		})
 	}
 
 	return &workerGroup
@@ -271,7 +269,7 @@ func (s *routingService) spawnRouteWorkers(
 func (s *routingService) dispatchRouteWork(ctx context.Context, targetCh chan<- int, targetCount int) {
 	defer close(targetCh)
 
-	for i := 0; i < targetCount; i++ {
+	for i := range targetCount {
 		if ctx.Err() != nil {
 			return
 		}

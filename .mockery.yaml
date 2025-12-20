@@ -2,7 +2,7 @@ packages:
   radar/internal/domain/repository:
     config:
       dir: "{{.ConfigDir}}/internal/mocks/repository"
-      filename: "{{.InterfaceName}}.go"
+      filename: "mock_{{ .InterfaceName | snakecase }}.go"
     interfaces:
       AddressRepository:
       AuthRepository:
@@ -16,7 +16,7 @@ packages:
   radar/internal/domain/service:
     config:
       dir: "{{.ConfigDir}}/internal/mocks/service"
-      filename: "{{.InterfaceName}}.go"
+      filename: "mock_{{ .InterfaceName | snakecase }}.go"
     interfaces:
       NotificationService:
       OAuthAuthService:
