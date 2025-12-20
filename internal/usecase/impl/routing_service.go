@@ -67,13 +67,31 @@ func (s *routingService) OneToMany(ctx context.Context, source usecase.Coordinat
 	}
 
 	// Check if CH engine is ready, otherwise use Haversine fallback
+	var (
+		result *usecase.OneToManyResult
+		err    error
+	)
+
 	if s.IsReady() {
 		// CH-based OneToMany routing will be wired when the engine is available; fallback for now
-		return s.oneToManyHaversine(ctx, source, targets)
+		result, err = s.oneToManyHaversine(ctx, source, targets)
+	} else {
+		// Use Haversine fallback
+		result, err = s.oneToManyHaversine(ctx, source, targets)
 	}
 
-	// Use Haversine fallback
-	return s.oneToManyHaversine(ctx, source, targets)
+	if err != nil {
+		return nil, err
+	}
+
+	// Always stamp duration here to avoid double-timing in helpers
+	if duration := time.Since(startTime); duration > 0 {
+		result.Duration = duration
+	} else {
+		result.Duration = time.Nanosecond
+	}
+
+	return result, nil
 }
 
 // oneToManyHaversine implements OneToMany using Haversine distance (straight-line)
