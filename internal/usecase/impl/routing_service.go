@@ -78,7 +78,6 @@ func (s *routingService) OneToMany(ctx context.Context, source usecase.Coordinat
 
 // oneToManyHaversine implements OneToMany using Haversine distance (straight-line)
 func (s *routingService) oneToManyHaversine(ctx context.Context, source usecase.Coordinate, targets []usecase.Coordinate) (*usecase.OneToManyResult, error) {
-	startTime := time.Now()
 	results := make([]usecase.RouteResult, len(targets))
 
 	targetCh := make(chan int, len(targets))
@@ -96,10 +95,9 @@ func (s *routingService) oneToManyHaversine(ctx context.Context, source usecase.
 	}
 
 	return &usecase.OneToManyResult{
-		Source:   source,
-		Targets:  targets,
-		Results:  results,
-		Duration: time.Since(startTime),
+		Source:  source,
+		Targets: targets,
+		Results: results,
 	}, nil
 }
 

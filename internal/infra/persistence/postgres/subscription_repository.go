@@ -244,7 +244,6 @@ func (repo *subscriptionRepository) FindSubscriberAddressesWithinRadius(ctx cont
 			subscriptionQuery.DeletedAt.IsNull(),
 		).UnderlyingDB().
 		Where("ST_DWithin(addresses.location, ST_SetSRID(ST_MakePoint(?, ?), 4326), user_merchant_subscriptions.notification_radius)", merchantLon, merchantLat).
-		Order(gorm.Expr("ST_Distance(addresses.location, ST_SetSRID(ST_MakePoint(?, ?), 4326))", merchantLon, merchantLat)).
 		Find(&addressModels).Error
 
 	if err != nil {
