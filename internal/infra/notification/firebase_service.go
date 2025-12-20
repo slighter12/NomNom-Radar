@@ -3,6 +3,7 @@ package notification
 import (
 	"context"
 	"log/slog"
+	"os"
 
 	"radar/config"
 	"radar/internal/domain/service"
@@ -43,10 +44,17 @@ func NewFirebaseService(params FirebaseDependencies) (service.NotificationServic
 		return &noopNotificationService{}, nil
 	}
 
+	credentialsJSON, readErr := os.ReadFile(params.Config.Firebase.CredentialsPath)
+	if readErr != nil {
+		params.Logger.Error("Failed to read Firebase credentials, notification service will be disabled", slog.Any("error", readErr))
+
+		return &noopNotificationService{}, nil
+	}
+
 	config := &firebase.Config{
 		ProjectID: params.Config.Firebase.ProjectID,
 	}
-	opt := option.WithCredentialsFile(params.Config.Firebase.CredentialsPath)
+	opt := option.WithAuthCredentialsJSON(option.ServiceAccount, credentialsJSON)
 	app, err := firebase.NewApp(params.LC, config, opt)
 	if err != nil {
 		params.Logger.Error("Failed to initialize Firebase app, notifications will be disabled", slog.Any("error", err))

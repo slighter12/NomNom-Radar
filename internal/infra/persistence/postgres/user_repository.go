@@ -12,14 +12,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
-	"go.uber.org/fx"
 	"gorm.io/gorm"
 )
 
 // userRepository implements the domain.UserRepository interface using GORM.
 type userRepository struct {
-	fx.In
-
 	q *query.Query
 }
 

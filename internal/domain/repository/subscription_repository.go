@@ -49,6 +49,11 @@ type SubscriptionRepository interface {
 	// Returns distinct user subscriptions to avoid duplicates when a user has multiple addresses in range.
 	FindSubscribersWithinRadius(ctx context.Context, merchantID uuid.UUID, merchantLat, merchantLon float64) ([]*entity.UserMerchantSubscription, error)
 
+	// FindSubscriberAddressesWithinRadius performs a PostGIS geographic query to find all active addresses
+	// within the notification radius of the merchant's location for active subscriptions.
+	// Returns addresses bundled with their subscription notification radius to avoid N+1 lookups.
+	FindSubscriberAddressesWithinRadius(ctx context.Context, merchantID uuid.UUID, merchantLat, merchantLon float64) ([]*entity.SubscriberAddress, error)
+
 	// FindDevicesForUsers retrieves all active devices for a list of user IDs.
 	// Used for batch fetching devices for notification sending.
 	FindDevicesForUsers(ctx context.Context, userIDs []uuid.UUID) ([]*entity.UserDevice, error)

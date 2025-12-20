@@ -4,7 +4,8 @@
     db-postgres-create db-postgres-up db-postgres-down db-postgres-down-all \
 	gci-format build docker-image-build \
 	docker-up docker-down docker-logs docker-clean \
-	routing-cli routing-prepare routing-validate
+	routing-cli routing-prepare routing-validate \
+	generate-mocks
 
 help: ## show this help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {sub("\\\\n",sprintf("\n%22c"," "), $$2);printf "\033[36m%-25s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -171,3 +172,6 @@ routing-prepare: routing-cli ## prepare routing data for Taiwan
 
 routing-validate: routing-cli ## validate routing data
 	./bin/routing-cli validate --dir ./data/routing
+
+generate-mocks: ## generate mocks for all interfaces
+	go generate ./...

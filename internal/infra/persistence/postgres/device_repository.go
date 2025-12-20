@@ -8,6 +8,7 @@ import (
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	"radar/internal/infra/persistence/model"
+	"radar/internal/infra/persistence/postgres/query"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -16,13 +17,13 @@ import (
 
 // deviceRepository implements the repository.DeviceRepository interface.
 type deviceRepository struct {
-	db *gorm.DB
+	q *query.Query
 }
 
 // NewDeviceRepository is the constructor for deviceRepository.
 func NewDeviceRepository(db *gorm.DB) repository.DeviceRepository {
 	return &deviceRepository{
-		db: db,
+		q: query.Use(db),
 	}
 }
 
@@ -30,7 +31,7 @@ func NewDeviceRepository(db *gorm.DB) repository.DeviceRepository {
 func (repo *deviceRepository) CreateDevice(ctx context.Context, device *entity.UserDevice) error {
 	deviceM := fromDeviceDomain(device)
 
-	if err := repo.db.WithContext(ctx).Create(deviceM).Error; err != nil {
+	if err := repo.q.UserDeviceModel.WithContext(ctx).Create(deviceM); err != nil {
 		// Convert PostgreSQL errors to domain errors
 		if isUniqueConstraintViolation(err) {
 			return repository.ErrDuplicateDevice
@@ -55,11 +56,11 @@ func (repo *deviceRepository) CreateDevice(ctx context.Context, device *entity.U
 
 // FindDeviceByID retrieves a device by its unique ID.
 func (repo *deviceRepository) FindDeviceByID(ctx context.Context, id uuid.UUID) (*entity.UserDevice, error) {
-	var deviceM model.UserDeviceModel
+	deviceM, err := repo.q.UserDeviceModel.WithContext(ctx).
+		Where(repo.q.UserDeviceModel.ID.Eq(id)).
+		First()
 
-	if err := repo.db.WithContext(ctx).
-		Where("id = ?", id).
-		First(&deviceM).Error; err != nil {
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, repository.ErrDeviceNotFound
 		}
@@ -67,17 +68,17 @@ func (repo *deviceRepository) FindDeviceByID(ctx context.Context, id uuid.UUID) 
 		return nil, errors.Wrap(err, "failed to find device by ID")
 	}
 
-	return toDeviceDomain(&deviceM), nil
+	return toDeviceDomain(deviceM), nil
 }
 
 // FindDevicesByUser retrieves all devices for a specific user (including inactive, excluding soft-deleted).
 func (repo *deviceRepository) FindDevicesByUser(ctx context.Context, userID uuid.UUID) ([]*entity.UserDevice, error) {
-	var deviceModels []*model.UserDeviceModel
+	deviceModels, err := repo.q.UserDeviceModel.WithContext(ctx).
+		Where(repo.q.UserDeviceModel.UserID.Eq(userID)).
+		Order(repo.q.UserDeviceModel.CreatedAt.Desc()).
+		Find()
 
-	if err := repo.db.WithContext(ctx).
-		Where("user_id = ?", userID).
-		Order("created_at DESC").
-		Find(&deviceModels).Error; err != nil {
+	if err != nil {
 		return nil, errors.Wrap(err, "failed to find devices by user")
 	}
 
@@ -91,12 +92,15 @@ func (repo *deviceRepository) FindDevicesByUser(ctx context.Context, userID uuid
 
 // FindActiveDevicesByUser retrieves all active devices for a specific user (excluding soft-deleted).
 func (repo *deviceRepository) FindActiveDevicesByUser(ctx context.Context, userID uuid.UUID) ([]*entity.UserDevice, error) {
-	var deviceModels []*model.UserDeviceModel
+	deviceModels, err := repo.q.UserDeviceModel.WithContext(ctx).
+		Where(
+			repo.q.UserDeviceModel.UserID.Eq(userID),
+			repo.q.UserDeviceModel.IsActive.Is(true),
+		).
+		Order(repo.q.UserDeviceModel.CreatedAt.Desc()).
+		Find()
 
-	if err := repo.db.WithContext(ctx).
-		Where("user_id = ? AND is_active = ?", userID, true).
-		Order("created_at DESC").
-		Find(&deviceModels).Error; err != nil {
+	if err != nil {
 		return nil, errors.Wrap(err, "failed to find active devices by user")
 	}
 
@@ -110,17 +114,16 @@ func (repo *deviceRepository) FindActiveDevicesByUser(ctx context.Context, userI
 
 // UpdateFCMToken updates the FCM token for a specific device.
 func (repo *deviceRepository) UpdateFCMToken(ctx context.Context, deviceID uuid.UUID, fcmToken string) error {
-	result := repo.db.WithContext(ctx).
-		Model(&model.UserDeviceModel{}).
-		Where("id = ?", deviceID).
-		Update("fcm_token", fcmToken)
+	result, err := repo.q.UserDeviceModel.WithContext(ctx).
+		Where(repo.q.UserDeviceModel.ID.Eq(deviceID)).
+		Update(repo.q.UserDeviceModel.FCMToken, fcmToken)
 
-	if result.Error != nil {
-		if isUniqueConstraintViolation(result.Error) {
+	if err != nil {
+		if isUniqueConstraintViolation(err) {
 			return repository.ErrDuplicateDevice
 		}
 
-		return errors.Wrap(result.Error, "failed to update FCM token")
+		return errors.Wrap(err, "failed to update FCM token")
 	}
 
 	if result.RowsAffected == 0 {
@@ -132,12 +135,12 @@ func (repo *deviceRepository) UpdateFCMToken(ctx context.Context, deviceID uuid.
 
 // DeleteDevice removes a device by its ID (soft delete).
 func (repo *deviceRepository) DeleteDevice(ctx context.Context, id uuid.UUID) error {
-	result := repo.db.WithContext(ctx).
-		Where("id = ?", id).
-		Delete(&model.UserDeviceModel{})
+	result, err := repo.q.UserDeviceModel.WithContext(ctx).
+		Where(repo.q.UserDeviceModel.ID.Eq(id)).
+		Delete()
 
-	if result.Error != nil {
-		return errors.Wrap(result.Error, "failed to delete device")
+	if err != nil {
+		return errors.Wrap(err, "failed to delete device")
 	}
 
 	if result.RowsAffected == 0 {

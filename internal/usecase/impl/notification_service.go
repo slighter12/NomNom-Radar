@@ -3,6 +3,8 @@ package impl
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"slices"
 	"time"
 
 	"radar/internal/domain/entity"
@@ -30,6 +32,7 @@ type notificationService struct {
 	deviceRepo       repository.DeviceRepository
 	addressRepo      repository.AddressRepository
 	notificationSvc  service.NotificationService
+	routingSvc       usecase.RoutingUsecase
 }
 
 // NewNotificationService creates a new notification service instance
@@ -39,6 +42,7 @@ func NewNotificationService(
 	deviceRepo repository.DeviceRepository,
 	addressRepo repository.AddressRepository,
 	notificationSvc service.NotificationService,
+	routingSvc usecase.RoutingUsecase,
 ) usecase.NotificationUsecase {
 	return &notificationService{
 		notificationRepo: notificationRepo,
@@ -46,6 +50,7 @@ func NewNotificationService(
 		deviceRepo:       deviceRepo,
 		addressRepo:      addressRepo,
 		notificationSvc:  notificationSvc,
+		routingSvc:       routingSvc,
 	}
 }
 
@@ -218,13 +223,9 @@ func (s *notificationService) createNotificationLogs(
 		errorMsg := ""
 
 		// Check if token is invalid
-		for _, invalidToken := range invalidTokens {
-			if token == invalidToken {
-				status = "failed"
-				errorMsg = "invalid or unregistered token"
-
-				break
-			}
+		if slices.Contains(invalidTokens, token) {
+			status = "failed"
+			errorMsg = "invalid or unregistered token"
 		}
 
 		log := &entity.NotificationLog{
@@ -249,55 +250,98 @@ func (s *notificationService) handleInvalidTokens(ctx context.Context, invalidTo
 		if device, ok := deviceMap[token]; ok {
 			if err := s.deviceRepo.DeleteDevice(ctx, device.ID); err != nil {
 				// Log error but continue
-				fmt.Printf("failed to delete invalid device %s: %v\n", device.ID, err)
+				slog.Warn("failed to delete invalid device", slog.String("device_id", device.ID.String()), slog.Any("error", err))
 			}
 		}
 	}
 }
 
-// getSubscriberDevices retrieves devices for subscribers within radius
+// getSubscriberDevices retrieves devices for subscribers within radius using road network distance
 func (s *notificationService) getSubscriberDevices(
 	ctx context.Context,
 	merchantID uuid.UUID,
 	latitude, longitude float64,
 ) (tokens []string, deviceMap map[string]*entity.UserDevice, err error) {
-	// Find subscribers within radius using PostGIS
-	subscriptions, err := s.subscriptionRepo.FindSubscribersWithinRadius(ctx, merchantID, latitude, longitude)
+	candidateAddresses, err := s.subscriptionRepo.FindSubscriberAddressesWithinRadius(ctx, merchantID, latitude, longitude)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to find subscribers")
+		return nil, nil, errors.Wrap(err, "failed to find subscriber addresses")
 	}
 
-	// If no subscribers, return early
-	if len(subscriptions) == 0 {
-		return []string{}, make(map[string]*entity.UserDevice), nil
+	if len(candidateAddresses) == 0 {
+		return s.emptyDeviceResponse()
 	}
 
-	// Collect user IDs
-	userIDs := make([]uuid.UUID, 0, len(subscriptions))
-	for _, sub := range subscriptions {
-		userIDs = append(userIDs, sub.UserID)
+	targets := s.buildTargetCoordinates(candidateAddresses)
+
+	source := usecase.Coordinate{Lat: latitude, Lng: longitude}
+	routeResults, err := s.routingSvc.OneToMany(ctx, source, targets)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "routing service failed")
 	}
 
-	// Get all active devices for these users
+	validAddresses := filterReachableAddresses(candidateAddresses, routeResults.Results)
+	if len(validAddresses) == 0 {
+		return s.emptyDeviceResponse()
+	}
+
+	userIDs := collectAddressUserIDs(validAddresses)
+
 	devices, err := s.subscriptionRepo.FindDevicesForUsers(ctx, userIDs)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to fetch devices")
 	}
 
-	// If no devices, return early
 	if len(devices) == 0 {
-		return []string{}, make(map[string]*entity.UserDevice), nil
+		return s.emptyDeviceResponse()
 	}
 
-	// Collect FCM tokens
-	tokens = make([]string, 0, len(devices))
-	deviceMap = make(map[string]*entity.UserDevice) // token -> device mapping
+	tokens, deviceMap = buildDeviceCollections(devices)
+
+	return tokens, deviceMap, nil
+}
+
+func (s *notificationService) emptyDeviceResponse() ([]string, map[string]*entity.UserDevice, error) {
+	return []string{}, make(map[string]*entity.UserDevice), nil
+}
+
+func (s *notificationService) buildTargetCoordinates(addresses []*entity.SubscriberAddress) []usecase.Coordinate {
+	targets := make([]usecase.Coordinate, len(addresses))
+	for i, addr := range addresses {
+		targets[i] = usecase.Coordinate{Lat: addr.Latitude, Lng: addr.Longitude}
+	}
+
+	return targets
+}
+
+func filterReachableAddresses(addresses []*entity.SubscriberAddress, results []usecase.RouteResult) []*entity.SubscriberAddress {
+	validAddresses := make([]*entity.SubscriberAddress, 0, len(addresses))
+	for idx, result := range results {
+		if result.IsReachable && result.DistanceKm <= addresses[idx].NotificationRadius {
+			validAddresses = append(validAddresses, addresses[idx])
+		}
+	}
+
+	return validAddresses
+}
+
+func collectAddressUserIDs(addresses []*entity.SubscriberAddress) []uuid.UUID {
+	userIDs := make([]uuid.UUID, 0, len(addresses))
+	for _, addr := range addresses {
+		userIDs = append(userIDs, addr.OwnerID)
+	}
+
+	return userIDs
+}
+
+func buildDeviceCollections(devices []*entity.UserDevice) ([]string, map[string]*entity.UserDevice) {
+	tokens := make([]string, 0, len(devices))
+	deviceMap := make(map[string]*entity.UserDevice, len(devices))
 	for _, device := range devices {
 		tokens = append(tokens, device.FCMToken)
 		deviceMap[device.FCMToken] = device
 	}
 
-	return tokens, deviceMap, nil
+	return tokens, deviceMap
 }
 
 // sendAndProcessNotifications sends notifications and processes the results

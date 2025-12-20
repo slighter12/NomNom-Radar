@@ -17,38 +17,50 @@ import (
 
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
-		db:                   db,
-		AddressModel:         newAddressModel(db, opts...),
-		AuthenticationModel:  newAuthenticationModel(db, opts...),
-		MerchantProfileModel: newMerchantProfileModel(db, opts...),
-		RefreshTokenModel:    newRefreshTokenModel(db, opts...),
-		UserModel:            newUserModel(db, opts...),
-		UserProfileModel:     newUserProfileModel(db, opts...),
+		db:                                db,
+		AddressModel:                      newAddressModel(db, opts...),
+		AuthenticationModel:               newAuthenticationModel(db, opts...),
+		MerchantLocationNotificationModel: newMerchantLocationNotificationModel(db, opts...),
+		MerchantProfileModel:              newMerchantProfileModel(db, opts...),
+		NotificationLogModel:              newNotificationLogModel(db, opts...),
+		RefreshTokenModel:                 newRefreshTokenModel(db, opts...),
+		UserDeviceModel:                   newUserDeviceModel(db, opts...),
+		UserMerchantSubscriptionModel:     newUserMerchantSubscriptionModel(db, opts...),
+		UserModel:                         newUserModel(db, opts...),
+		UserProfileModel:                  newUserProfileModel(db, opts...),
 	}
 }
 
 type Query struct {
 	db *gorm.DB
 
-	AddressModel         addressModel
-	AuthenticationModel  authenticationModel
-	MerchantProfileModel merchantProfileModel
-	RefreshTokenModel    refreshTokenModel
-	UserModel            userModel
-	UserProfileModel     userProfileModel
+	AddressModel                      addressModel
+	AuthenticationModel               authenticationModel
+	MerchantLocationNotificationModel merchantLocationNotificationModel
+	MerchantProfileModel              merchantProfileModel
+	NotificationLogModel              notificationLogModel
+	RefreshTokenModel                 refreshTokenModel
+	UserDeviceModel                   userDeviceModel
+	UserMerchantSubscriptionModel     userMerchantSubscriptionModel
+	UserModel                         userModel
+	UserProfileModel                  userProfileModel
 }
 
 func (q *Query) Available() bool { return q.db != nil }
 
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
-		db:                   db,
-		AddressModel:         q.AddressModel.clone(db),
-		AuthenticationModel:  q.AuthenticationModel.clone(db),
-		MerchantProfileModel: q.MerchantProfileModel.clone(db),
-		RefreshTokenModel:    q.RefreshTokenModel.clone(db),
-		UserModel:            q.UserModel.clone(db),
-		UserProfileModel:     q.UserProfileModel.clone(db),
+		db:                                db,
+		AddressModel:                      q.AddressModel.clone(db),
+		AuthenticationModel:               q.AuthenticationModel.clone(db),
+		MerchantLocationNotificationModel: q.MerchantLocationNotificationModel.clone(db),
+		MerchantProfileModel:              q.MerchantProfileModel.clone(db),
+		NotificationLogModel:              q.NotificationLogModel.clone(db),
+		RefreshTokenModel:                 q.RefreshTokenModel.clone(db),
+		UserDeviceModel:                   q.UserDeviceModel.clone(db),
+		UserMerchantSubscriptionModel:     q.UserMerchantSubscriptionModel.clone(db),
+		UserModel:                         q.UserModel.clone(db),
+		UserProfileModel:                  q.UserProfileModel.clone(db),
 	}
 }
 
@@ -62,33 +74,45 @@ func (q *Query) WriteDB() *Query {
 
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
-		db:                   db,
-		AddressModel:         q.AddressModel.replaceDB(db),
-		AuthenticationModel:  q.AuthenticationModel.replaceDB(db),
-		MerchantProfileModel: q.MerchantProfileModel.replaceDB(db),
-		RefreshTokenModel:    q.RefreshTokenModel.replaceDB(db),
-		UserModel:            q.UserModel.replaceDB(db),
-		UserProfileModel:     q.UserProfileModel.replaceDB(db),
+		db:                                db,
+		AddressModel:                      q.AddressModel.replaceDB(db),
+		AuthenticationModel:               q.AuthenticationModel.replaceDB(db),
+		MerchantLocationNotificationModel: q.MerchantLocationNotificationModel.replaceDB(db),
+		MerchantProfileModel:              q.MerchantProfileModel.replaceDB(db),
+		NotificationLogModel:              q.NotificationLogModel.replaceDB(db),
+		RefreshTokenModel:                 q.RefreshTokenModel.replaceDB(db),
+		UserDeviceModel:                   q.UserDeviceModel.replaceDB(db),
+		UserMerchantSubscriptionModel:     q.UserMerchantSubscriptionModel.replaceDB(db),
+		UserModel:                         q.UserModel.replaceDB(db),
+		UserProfileModel:                  q.UserProfileModel.replaceDB(db),
 	}
 }
 
 type queryCtx struct {
-	AddressModel         *addressModelDo
-	AuthenticationModel  *authenticationModelDo
-	MerchantProfileModel *merchantProfileModelDo
-	RefreshTokenModel    *refreshTokenModelDo
-	UserModel            *userModelDo
-	UserProfileModel     *userProfileModelDo
+	AddressModel                      *addressModelDo
+	AuthenticationModel               *authenticationModelDo
+	MerchantLocationNotificationModel *merchantLocationNotificationModelDo
+	MerchantProfileModel              *merchantProfileModelDo
+	NotificationLogModel              *notificationLogModelDo
+	RefreshTokenModel                 *refreshTokenModelDo
+	UserDeviceModel                   *userDeviceModelDo
+	UserMerchantSubscriptionModel     *userMerchantSubscriptionModelDo
+	UserModel                         *userModelDo
+	UserProfileModel                  *userProfileModelDo
 }
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
-		AddressModel:         q.AddressModel.WithContext(ctx),
-		AuthenticationModel:  q.AuthenticationModel.WithContext(ctx),
-		MerchantProfileModel: q.MerchantProfileModel.WithContext(ctx),
-		RefreshTokenModel:    q.RefreshTokenModel.WithContext(ctx),
-		UserModel:            q.UserModel.WithContext(ctx),
-		UserProfileModel:     q.UserProfileModel.WithContext(ctx),
+		AddressModel:                      q.AddressModel.WithContext(ctx),
+		AuthenticationModel:               q.AuthenticationModel.WithContext(ctx),
+		MerchantLocationNotificationModel: q.MerchantLocationNotificationModel.WithContext(ctx),
+		MerchantProfileModel:              q.MerchantProfileModel.WithContext(ctx),
+		NotificationLogModel:              q.NotificationLogModel.WithContext(ctx),
+		RefreshTokenModel:                 q.RefreshTokenModel.WithContext(ctx),
+		UserDeviceModel:                   q.UserDeviceModel.WithContext(ctx),
+		UserMerchantSubscriptionModel:     q.UserMerchantSubscriptionModel.WithContext(ctx),
+		UserModel:                         q.UserModel.WithContext(ctx),
+		UserProfileModel:                  q.UserProfileModel.WithContext(ctx),
 	}
 }
 

@@ -14,6 +14,10 @@ func main() {
 		model.AuthenticationModel{},
 		model.RefreshTokenModel{},
 		model.AddressModel{},
+		model.UserMerchantSubscriptionModel{},
+		model.UserDeviceModel{},
+		model.MerchantLocationNotificationModel{},
+		model.NotificationLogModel{},
 	}
 
 	gen := gen.NewGenerator(gen.Config{
