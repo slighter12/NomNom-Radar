@@ -13,14 +13,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
-	"go.uber.org/fx"
 	"gorm.io/gorm"
 )
 
 // subscriptionRepository implements the repository.SubscriptionRepository interface.
 type subscriptionRepository struct {
-	fx.In
-
 	q *query.Query
 }
 

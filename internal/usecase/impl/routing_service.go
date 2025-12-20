@@ -153,18 +153,17 @@ func (s *routingService) haversineDistance(lat1, lng1, lat2, lng2 float64) float
 	return earthRadiusKm * c
 }
 
-// isValidCoordinate checks if a coordinate is within reasonable bounds for Taiwan
+// isValidCoordinate checks if a coordinate is within valid geographic bounds (Earth)
 func (s *routingService) isValidCoordinate(coord usecase.Coordinate) bool {
-	// Taiwan approximate bounds
-	const (
-		minLat = 20.0
-		maxLat = 27.0
-		minLng = 118.0
-		maxLng = 125.0
-	)
+	// Reject NaN or infinities early
+	if math.IsNaN(coord.Lat) || math.IsNaN(coord.Lng) ||
+		math.IsInf(coord.Lat, 0) || math.IsInf(coord.Lng, 0) {
+		return false
+	}
 
-	return coord.Lat >= minLat && coord.Lat <= maxLat &&
-		coord.Lng >= minLng && coord.Lng <= maxLng
+	// Basic Earth bounds; allows offshore islands and nearby areas
+	return coord.Lat >= -90 && coord.Lat <= 90 &&
+		coord.Lng >= -180 && coord.Lng <= 180
 }
 
 // IsReady returns whether the routing engine is loaded and ready for queries

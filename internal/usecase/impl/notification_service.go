@@ -3,6 +3,7 @@ package impl
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"slices"
 	"time"
 
@@ -249,7 +250,7 @@ func (s *notificationService) handleInvalidTokens(ctx context.Context, invalidTo
 		if device, ok := deviceMap[token]; ok {
 			if err := s.deviceRepo.DeleteDevice(ctx, device.ID); err != nil {
 				// Log error but continue
-				fmt.Printf("failed to delete invalid device %s: %v\n", device.ID, err)
+				slog.Warn("failed to delete invalid device", slog.String("device_id", device.ID.String()), slog.Any("error", err))
 			}
 		}
 	}

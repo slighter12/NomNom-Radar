@@ -12,14 +12,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
-	"go.uber.org/fx"
 	"gorm.io/gorm"
 )
 
 // deviceRepository implements the repository.DeviceRepository interface.
 type deviceRepository struct {
-	fx.In
-
 	q *query.Query
 }
 

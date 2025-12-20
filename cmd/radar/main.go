@@ -46,6 +46,15 @@ func main() {
 func injectInfra() fx.Option {
 	return fx.Provide(
 		config.New,
+		// Expose routing config as a separate dependency to satisfy RoutingUsecase
+		func(cfg *config.Config) *config.RoutingConfig {
+			if cfg == nil || cfg.Routing == nil {
+				// Provide an empty config to keep Fx wiring intact even if the section is missing
+				return &config.RoutingConfig{}
+			}
+
+			return cfg.Routing
+		},
 		logs.New,
 		context.Background,
 		postgres.New,

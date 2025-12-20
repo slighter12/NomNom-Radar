@@ -3,6 +3,7 @@ package impl
 import (
 	"context"
 	"fmt"
+	"math"
 	"testing"
 
 	"radar/config"
@@ -97,12 +98,19 @@ func TestRoutingService_FindNearestNode_InvalidCoordinates(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Test with invalid coordinates (outside Taiwan bounds)
-	coord := usecase.Coordinate{Lat: 0.0, Lng: 0.0}
+	invalidCoords := []usecase.Coordinate{
+		{Lat: 95.0, Lng: 0.0},  // beyond north pole
+		{Lat: -95.0, Lng: 0.0}, // beyond south pole
+		{Lat: 0.0, Lng: 195.0}, // beyond valid longitude
+		{Lat: 0.0, Lng: -195.0},
+		{Lat: math.NaN(), Lng: 0.0},
+	}
 
-	_, _, err := service.FindNearestNode(ctx, coord)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "outside valid bounds")
+	for _, coord := range invalidCoords {
+		_, _, err := service.FindNearestNode(ctx, coord)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "outside valid bounds")
+	}
 }
 
 func TestRoutingService_OneToMany_EmptyTargets(t *testing.T) {
@@ -222,17 +230,23 @@ func TestRoutingService_IsValidCoordinate(t *testing.T) {
 	cfg := &config.RoutingConfig{}
 	service := NewRoutingService(cfg).(*routingService)
 
-	// Valid Taiwan coordinates
-	validCoord := usecase.Coordinate{Lat: 25.0330, Lng: 121.5654}
-	assert.True(t, service.isValidCoordinate(validCoord))
+	// Valid coordinates on Earth
+	validCoords := []usecase.Coordinate{
+		{Lat: 25.0330, Lng: 121.5654},  // Taiwan
+		{Lat: -33.8688, Lng: 151.2093}, // Sydney
+		{Lat: 0, Lng: 0},               // Gulf of Guinea
+	}
+	for _, coord := range validCoords {
+		assert.True(t, service.isValidCoordinate(coord))
+	}
 
 	// Invalid coordinates (outside Taiwan bounds)
 	invalidCoords := []usecase.Coordinate{
-		{Lat: 0.0, Lng: 0.0},    // Equator/Prime meridian
-		{Lat: 40.0, Lng: 121.0}, // Too north
-		{Lat: 25.0, Lng: 130.0}, // Too east
-		{Lat: 15.0, Lng: 121.0}, // Too south
-		{Lat: 25.0, Lng: 115.0}, // Too west
+		{Lat: 91.0, Lng: 0.0},   // Too far north
+		{Lat: -91.0, Lng: 0.0},  // Too far south
+		{Lat: 0.0, Lng: 181.0},  // Too far east
+		{Lat: 0.0, Lng: -181.0}, // Too far west
+		{Lat: math.NaN(), Lng: 0},
 	}
 
 	for _, coord := range invalidCoords {
