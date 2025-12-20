@@ -187,22 +187,22 @@ func (repo *subscriptionRepository) DeleteSubscription(ctx context.Context, id u
 // FindSubscribersWithinRadius performs a PostGIS geographic query to find all active subscriptions
 // where the user has at least one active address within the notification radius of the merchant's location.
 func (repo *subscriptionRepository) FindSubscribersWithinRadius(ctx context.Context, merchantID uuid.UUID, merchantLat, merchantLon float64) ([]*entity.UserMerchantSubscription, error) {
-	s := repo.q.UserMerchantSubscriptionModel
-	a := repo.q.AddressModel
+	subscriptionQuery := repo.q.UserMerchantSubscriptionModel
+	addressQuery := repo.q.AddressModel
 
 	// Build subquery for EXISTS check using GORM fluent API
-	subQuery := a.WithContext(ctx).Select(a.ID).Where(
-		a.UserProfileID.EqCol(s.UserID),
-		a.IsActive.Is(true),
-		a.DeletedAt.IsNull(),
+	subQuery := addressQuery.WithContext(ctx).Select(addressQuery.ID).Where(
+		addressQuery.UserProfileID.EqCol(subscriptionQuery.UserID),
+		addressQuery.IsActive.Is(true),
+		addressQuery.DeletedAt.IsNull(),
 	).UnderlyingDB().Where("ST_DWithin(location, ST_SetSRID(ST_MakePoint(?, ?), 4326), notification_radius)", merchantLon, merchantLat)
 
 	var subscriptionModels []*model.UserMerchantSubscriptionModel
-	err := s.WithContext(ctx).
+	err := subscriptionQuery.WithContext(ctx).
 		Where(
-			s.MerchantID.Eq(merchantID),
-			s.IsActive.Is(true),
-			s.DeletedAt.IsNull(),
+			subscriptionQuery.MerchantID.Eq(merchantID),
+			subscriptionQuery.IsActive.Is(true),
+			subscriptionQuery.DeletedAt.IsNull(),
 		).UnderlyingDB().
 		Where("EXISTS (?)", subQuery).
 		Order("subscribed_at DESC").
@@ -220,24 +220,31 @@ func (repo *subscriptionRepository) FindSubscribersWithinRadius(ctx context.Cont
 	return subscriptions, nil
 }
 
+type subscriberAddressModel struct {
+	model.AddressModel
+	NotificationRadius float64 `gorm:"column:notification_radius"`
+}
+
 // FindSubscriberAddressesWithinRadius performs a PostGIS geographic query to find all active addresses
 // within the notification radius of the merchant's location for active subscriptions.
-func (repo *subscriptionRepository) FindSubscriberAddressesWithinRadius(ctx context.Context, merchantID uuid.UUID, merchantLat, merchantLon float64) ([]*entity.Address, error) {
-	a := repo.q.AddressModel
-	s := repo.q.UserMerchantSubscriptionModel
+// Returns addresses with their subscription notification radius to avoid N+1 lookups.
+func (repo *subscriptionRepository) FindSubscriberAddressesWithinRadius(ctx context.Context, merchantID uuid.UUID, merchantLat, merchantLon float64) ([]*entity.SubscriberAddress, error) {
+	addressQuery := repo.q.AddressModel
+	subscriptionQuery := repo.q.UserMerchantSubscriptionModel
 
 	// Construct complex query using fluent API for structure and UnderlyingDB for PostGIS specifics
-	var addressModels []*model.AddressModel
-	err := a.WithContext(ctx).
+	var addressModels []*subscriberAddressModel
+	err := addressQuery.WithContext(ctx).
 		Distinct().
-		Join(s, s.UserID.EqCol(a.UserProfileID)).
+		Select(addressQuery.ALL, subscriptionQuery.NotificationRadius).
+		Join(subscriptionQuery, subscriptionQuery.UserID.EqCol(addressQuery.UserProfileID)).
 		Where(
-			a.UserProfileID.IsNotNull(),
-			a.IsActive.Is(true),
-			a.DeletedAt.IsNull(),
-			s.MerchantID.Eq(merchantID),
-			s.IsActive.Is(true),
-			s.DeletedAt.IsNull(),
+			addressQuery.UserProfileID.IsNotNull(),
+			addressQuery.IsActive.Is(true),
+			addressQuery.DeletedAt.IsNull(),
+			subscriptionQuery.MerchantID.Eq(merchantID),
+			subscriptionQuery.IsActive.Is(true),
+			subscriptionQuery.DeletedAt.IsNull(),
 		).UnderlyingDB().
 		Where("ST_DWithin(addresses.location, ST_SetSRID(ST_MakePoint(?, ?), 4326), user_merchant_subscriptions.notification_radius)", merchantLon, merchantLat).
 		Order(gorm.Expr("ST_Distance(addresses.location, ST_SetSRID(ST_MakePoint(?, ?), 4326))", merchantLon, merchantLat)).
@@ -247,9 +254,9 @@ func (repo *subscriptionRepository) FindSubscriberAddressesWithinRadius(ctx cont
 		return nil, errors.Wrap(err, "failed to find subscriber addresses within radius")
 	}
 
-	addresses := make([]*entity.Address, 0, len(addressModels))
+	addresses := make([]*entity.SubscriberAddress, 0, len(addressModels))
 	for _, addressM := range addressModels {
-		addresses = append(addresses, toAddressDomain(addressM))
+		addresses = append(addresses, toSubscriberAddressDomain(addressM))
 	}
 
 	return addresses, nil
@@ -320,5 +327,21 @@ func fromSubscriptionDomain(data *entity.UserMerchantSubscription) *model.UserMe
 		NotificationRadius: data.NotificationRadius,
 		SubscribedAt:       data.SubscribedAt,
 		UpdatedAt:          data.UpdatedAt,
+	}
+}
+
+func toSubscriberAddressDomain(data *subscriberAddressModel) *entity.SubscriberAddress {
+	if data == nil {
+		return nil
+	}
+
+	address := toAddressDomain(&data.AddressModel)
+	if address == nil {
+		return nil
+	}
+
+	return &entity.SubscriberAddress{
+		Address:            *address,
+		NotificationRadius: data.NotificationRadius,
 	}
 }

@@ -189,7 +189,7 @@ func TestRoutingService_OneToMany_ContextCancellation(t *testing.T) {
 	cfg := &config.RoutingConfig{}
 	service := NewRoutingService(cfg)
 
-	// Create a cancelled context
+	// Create a canceled context
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
@@ -200,7 +200,7 @@ func TestRoutingService_OneToMany_ContextCancellation(t *testing.T) {
 
 	_, err := service.OneToMany(ctx, source, targets)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "cancelled")
+	assert.Contains(t, err.Error(), "canceled")
 }
 
 func TestRoutingService_HaversineDistance(t *testing.T) {

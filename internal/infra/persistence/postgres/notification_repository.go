@@ -74,18 +74,18 @@ func (repo *notificationRepository) FindNotificationByID(ctx context.Context, id
 
 // FindNotificationsByMerchant retrieves all notifications for a specific merchant with pagination.
 func (repo *notificationRepository) FindNotificationsByMerchant(ctx context.Context, merchantID uuid.UUID, limit, offset int) ([]*entity.MerchantLocationNotification, error) {
-	q := repo.q.MerchantLocationNotificationModel.WithContext(ctx).
+	query := repo.q.MerchantLocationNotificationModel.WithContext(ctx).
 		Where(repo.q.MerchantLocationNotificationModel.MerchantID.Eq(merchantID)).
 		Order(repo.q.MerchantLocationNotificationModel.PublishedAt.Desc())
 
 	if limit > 0 {
-		q = q.Limit(limit)
+		query = query.Limit(limit)
 	}
 	if offset > 0 {
-		q = q.Offset(offset)
+		query = query.Offset(offset)
 	}
 
-	notificationModels, err := q.Find()
+	notificationModels, err := query.Find()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to find notifications by merchant")
 	}

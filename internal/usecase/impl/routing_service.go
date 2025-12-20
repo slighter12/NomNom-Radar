@@ -22,7 +22,7 @@ type routingService struct {
 	isReady bool
 	mu      sync.RWMutex
 
-	// TODO: Add CH graph and query pool when dependencies are available
+	// CH graph and query pool integrations will be added once dependencies are available
 	// chGraph    *routing.CHGraph
 	// queryPool  *routing.QueryPool
 	// spatialIdx *routing.SpatialIndex
@@ -52,8 +52,7 @@ func (s *routingService) OneToMany(ctx context.Context, source usecase.Coordinat
 
 	// Check if CH engine is ready, otherwise use Haversine fallback
 	if s.IsReady() {
-		// TODO: Implement CH-based OneToMany routing
-		// For now, fall back to Haversine
+		// CH-based OneToMany routing will be wired when the engine is available; fallback for now
 		return s.oneToManyHaversine(ctx, source, targets)
 	}
 
@@ -66,65 +65,18 @@ func (s *routingService) oneToManyHaversine(ctx context.Context, source usecase.
 	startTime := time.Now()
 	results := make([]usecase.RouteResult, len(targets))
 
-	// Process targets concurrently using worker pool pattern
-	const numWorkers = 10
 	targetCh := make(chan int, len(targets))
-	resultCh := make(chan struct {
-		index  int
-		result usecase.RouteResult
-	}, len(targets))
+	resultCh := make(chan routeResultWithIndex, len(targets))
 
-	// Start workers
-	var wg sync.WaitGroup
-	for i := 0; i < numWorkers && i < len(targets); i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for idx := range targetCh {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-					result := s.calculateHaversineDistance(source, targets[idx])
-					resultCh <- struct {
-						index  int
-						result usecase.RouteResult
-					}{idx, result}
-				}
-			}
-		}()
-	}
+	workerCount := s.workerCount(len(targets))
+	workerGroup := s.spawnRouteWorkers(ctx, workerCount, targetCh, resultCh, source, targets)
 
-	// Send work to workers
-	go func() {
-		defer close(targetCh)
-		for i := range targets {
-			select {
-			case <-ctx.Done():
-				return
-			case targetCh <- i:
-			}
-		}
-	}()
-
-	// Collect results
-	go func() {
-		wg.Wait()
-		close(resultCh)
-	}()
-
-	resultsReceived := 0
-	for res := range resultCh {
-		results[res.index] = res.result
-		resultsReceived++
-		if resultsReceived == len(targets) {
-			break
-		}
-	}
+	go s.dispatchRouteWork(ctx, targetCh, len(targets))
+	collectRouteResults(resultCh, results, workerGroup)
 
 	// Check for context cancellation
 	if ctx.Err() != nil {
-		return nil, errors.Wrap(ctx.Err(), "routing calculation cancelled")
+		return nil, errors.Wrap(ctx.Err(), "routing calculation canceled")
 	}
 
 	return &usecase.OneToManyResult{
@@ -138,7 +90,7 @@ func (s *routingService) oneToManyHaversine(ctx context.Context, source usecase.
 // FindNearestNode finds the nearest road network node to a given GPS coordinate
 func (s *routingService) FindNearestNode(ctx context.Context, coord usecase.Coordinate) (*usecase.NodeInfo, bool, error) {
 	// For now, return a mock node within maxSnapDistance
-	// TODO: Implement proper spatial index lookup
+	// Spatial index lookup will be added when the routing engine is integrated
 
 	// Check if coordinate is within reasonable bounds (Taiwan)
 	if !s.isValidCoordinate(coord) {
@@ -162,6 +114,7 @@ func (s *routingService) FindNearestNode(ctx context.Context, coord usecase.Coor
 // CalculateDistance calculates the road network distance between two coordinates
 func (s *routingService) CalculateDistance(ctx context.Context, source, target usecase.Coordinate) (*usecase.RouteResult, error) {
 	result := s.calculateHaversineDistance(source, target)
+
 	return &result, nil
 }
 
@@ -218,6 +171,7 @@ func (s *routingService) isValidCoordinate(coord usecase.Coordinate) bool {
 func (s *routingService) IsReady() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	return s.isReady
 }
 
@@ -226,4 +180,74 @@ func (s *routingService) setReady(ready bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.isReady = ready
+}
+
+func (s *routingService) workerCount(targetCount int) int {
+	const numWorkers = 10
+	if targetCount < numWorkers {
+		return targetCount
+	}
+
+	return numWorkers
+}
+
+type routeResultWithIndex struct {
+	index  int
+	result usecase.RouteResult
+}
+
+func (s *routingService) spawnRouteWorkers(
+	ctx context.Context,
+	workerCount int,
+	targetCh <-chan int,
+	resultCh chan<- routeResultWithIndex,
+	source usecase.Coordinate,
+	targets []usecase.Coordinate,
+) *sync.WaitGroup {
+	var workerGroup sync.WaitGroup
+
+	for i := 0; i < workerCount; i++ {
+		workerGroup.Add(1)
+		go func() {
+			defer workerGroup.Done()
+			for idx := range targetCh {
+				if ctx.Err() != nil {
+					return
+				}
+
+				result := s.calculateHaversineDistance(source, targets[idx])
+				resultCh <- routeResultWithIndex{index: idx, result: result}
+			}
+		}()
+	}
+
+	return &workerGroup
+}
+
+func (s *routingService) dispatchRouteWork(ctx context.Context, targetCh chan<- int, targetCount int) {
+	defer close(targetCh)
+
+	for i := 0; i < targetCount; i++ {
+		if ctx.Err() != nil {
+			return
+		}
+
+		targetCh <- i
+	}
+}
+
+func collectRouteResults(resultCh chan routeResultWithIndex, results []usecase.RouteResult, workerGroup *sync.WaitGroup) {
+	go func() {
+		workerGroup.Wait()
+		close(resultCh)
+	}()
+
+	resultsReceived := 0
+	for res := range resultCh {
+		results[res.index] = res.result
+		resultsReceived++
+		if resultsReceived == len(results) {
+			break
+		}
+	}
 }

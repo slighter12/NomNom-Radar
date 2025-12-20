@@ -51,8 +51,8 @@ type SubscriptionRepository interface {
 
 	// FindSubscriberAddressesWithinRadius performs a PostGIS geographic query to find all active addresses
 	// within the notification radius of the merchant's location for active subscriptions.
-	// Returns address entities with associated subscription information for routing calculations.
-	FindSubscriberAddressesWithinRadius(ctx context.Context, merchantID uuid.UUID, merchantLat, merchantLon float64) ([]*entity.Address, error)
+	// Returns addresses bundled with their subscription notification radius to avoid N+1 lookups.
+	FindSubscriberAddressesWithinRadius(ctx context.Context, merchantID uuid.UUID, merchantLat, merchantLon float64) ([]*entity.SubscriberAddress, error)
 
 	// FindDevicesForUsers retrieves all active devices for a list of user IDs.
 	// Used for batch fetching devices for notification sending.

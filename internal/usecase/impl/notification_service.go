@@ -3,6 +3,7 @@ package impl
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"radar/internal/domain/entity"
@@ -221,13 +222,9 @@ func (s *notificationService) createNotificationLogs(
 		errorMsg := ""
 
 		// Check if token is invalid
-		for _, invalidToken := range invalidTokens {
-			if token == invalidToken {
-				status = "failed"
-				errorMsg = "invalid or unregistered token"
-
-				break
-			}
+		if slices.Contains(invalidTokens, token) {
+			status = "failed"
+			errorMsg = "invalid or unregistered token"
 		}
 
 		log := &entity.NotificationLog{
@@ -264,80 +261,86 @@ func (s *notificationService) getSubscriberDevices(
 	merchantID uuid.UUID,
 	latitude, longitude float64,
 ) (tokens []string, deviceMap map[string]*entity.UserDevice, err error) {
-	// Find subscriber addresses within radius using PostGIS (rough geographic filtering)
 	candidateAddresses, err := s.subscriptionRepo.FindSubscriberAddressesWithinRadius(ctx, merchantID, latitude, longitude)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to find subscriber addresses")
 	}
 
-	// If no candidate addresses, return early
 	if len(candidateAddresses) == 0 {
-		return []string{}, make(map[string]*entity.UserDevice), nil
+		return s.emptyDeviceResponse()
 	}
 
-	// Build target coordinates from candidate addresses
-	targets := make([]usecase.Coordinate, len(candidateAddresses))
-	for i, addr := range candidateAddresses {
-		targets[i] = usecase.Coordinate{Lat: addr.Latitude, Lng: addr.Longitude}
-	}
+	targets := s.buildTargetCoordinates(candidateAddresses)
 
-	// Calculate road network distances using routing service
 	source := usecase.Coordinate{Lat: latitude, Lng: longitude}
 	routeResults, err := s.routingSvc.OneToMany(ctx, source, targets)
 	if err != nil {
-		// If routing fails, log error and return empty (fail-safe behavior)
-		// TODO: Add proper error logging/metrics here
-		return []string{}, make(map[string]*entity.UserDevice), nil
+		return nil, nil, errors.Wrap(err, "routing service failed")
 	}
 
-	// Filter addresses based on road network distance and subscription radius
-	validAddresses := make([]*entity.Address, 0, len(candidateAddresses))
-	for i, result := range routeResults.Results {
-		// Find the corresponding subscription to get the notification radius
-		// Note: We need to get subscription info for each address
-		// For now, we'll use a simplified approach - in production we'd need to join this data
-		subscription, err := s.subscriptionRepo.FindSubscriptionByUserAndMerchant(ctx, candidateAddresses[i].OwnerID, merchantID)
-		if err != nil {
-			continue // Skip if we can't get subscription info
-		}
-
-		// Check if road distance is within notification radius
-		if result.IsReachable && result.DistanceKm <= subscription.NotificationRadius {
-			validAddresses = append(validAddresses, candidateAddresses[i])
-		}
-	}
-
-	// If no valid addresses after routing filter, return early
+	validAddresses := filterReachableAddresses(candidateAddresses, routeResults.Results)
 	if len(validAddresses) == 0 {
-		return []string{}, make(map[string]*entity.UserDevice), nil
+		return s.emptyDeviceResponse()
 	}
 
-	// Collect user IDs from valid addresses
-	userIDs := make([]uuid.UUID, 0, len(validAddresses))
-	for _, addr := range validAddresses {
-		userIDs = append(userIDs, addr.OwnerID)
-	}
+	userIDs := collectAddressUserIDs(validAddresses)
 
-	// Get all active devices for these users
 	devices, err := s.subscriptionRepo.FindDevicesForUsers(ctx, userIDs)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to fetch devices")
 	}
 
-	// If no devices, return early
 	if len(devices) == 0 {
-		return []string{}, make(map[string]*entity.UserDevice), nil
+		return s.emptyDeviceResponse()
 	}
 
-	// Collect FCM tokens
-	tokens = make([]string, 0, len(devices))
-	deviceMap = make(map[string]*entity.UserDevice) // token -> device mapping
+	tokens, deviceMap = buildDeviceCollections(devices)
+
+	return tokens, deviceMap, nil
+}
+
+func (s *notificationService) emptyDeviceResponse() ([]string, map[string]*entity.UserDevice, error) {
+	return []string{}, make(map[string]*entity.UserDevice), nil
+}
+
+func (s *notificationService) buildTargetCoordinates(addresses []*entity.SubscriberAddress) []usecase.Coordinate {
+	targets := make([]usecase.Coordinate, len(addresses))
+	for i, addr := range addresses {
+		targets[i] = usecase.Coordinate{Lat: addr.Latitude, Lng: addr.Longitude}
+	}
+
+	return targets
+}
+
+func filterReachableAddresses(addresses []*entity.SubscriberAddress, results []usecase.RouteResult) []*entity.SubscriberAddress {
+	validAddresses := make([]*entity.SubscriberAddress, 0, len(addresses))
+	for idx, result := range results {
+		if result.IsReachable && result.DistanceKm <= addresses[idx].NotificationRadius {
+			validAddresses = append(validAddresses, addresses[idx])
+		}
+	}
+
+	return validAddresses
+}
+
+func collectAddressUserIDs(addresses []*entity.SubscriberAddress) []uuid.UUID {
+	userIDs := make([]uuid.UUID, 0, len(addresses))
+	for _, addr := range addresses {
+		userIDs = append(userIDs, addr.OwnerID)
+	}
+
+	return userIDs
+}
+
+func buildDeviceCollections(devices []*entity.UserDevice) ([]string, map[string]*entity.UserDevice) {
+	tokens := make([]string, 0, len(devices))
+	deviceMap := make(map[string]*entity.UserDevice, len(devices))
 	for _, device := range devices {
 		tokens = append(tokens, device.FCMToken)
 		deviceMap[device.FCMToken] = device
 	}
 
-	return tokens, deviceMap, nil
+	return tokens, deviceMap
 }
 
 // sendAndProcessNotifications sends notifications and processes the results

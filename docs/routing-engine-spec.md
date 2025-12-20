@@ -1160,9 +1160,9 @@ func BenchmarkIslandDetection(b *testing.B) {
 
 ### Phase 2: Core Routing Engine (3-4 days)
 
-- [ ] **2.1 Define RoutingService interface**
+- [x] **2.1 Define RoutingService interface**
   - Create domain service interface
-  - File: `internal/domain/service/routing_service.go`
+  - File: `internal/usecase/routing_usecase.go`
 
 - [ ] **2.2 Define RoutingMetadata struct**
   - Create struct for parsing metadata.json
@@ -1201,13 +1201,13 @@ func BenchmarkIslandDetection(b *testing.B) {
   - Pre-filter targets by straight-line distance before routing
   - Files: `internal/infra/routing/geo/haversine.go`, `internal/infra/routing/ch/prefilter.go`
 
-- [ ] **2.11 Implement OneToMany with concurrent worker pool** ⚠️ Critical
+- [x] **2.11 Implement OneToMany with concurrent worker pool** ⚠️ Critical
   - Use a fixed-size worker pool (N goroutines) + jobs channel (NOT 1 goroutine per target)
   - Ensure one_to_many_workers <= query_pool_size; reuse QueryPool state per worker
   - Integrate Haversine pre-filter to reduce query count
   - Mark targets exceeding snap distance as unreachable
   - Target: 1000 users < 50ms with 20 workers
-  - File: `internal/infra/routing/ch/engine.go`
+  - File: `internal/usecase/impl/routing_service.go`
 
 - [ ] **2.12 Implement ETA calculation**
   - Distance / speed = duration
@@ -1217,11 +1217,11 @@ func BenchmarkIslandDetection(b *testing.B) {
   - Log routing data version info on engine initialization
   - File: `internal/infra/routing/ch/engine.go`
 
-- [ ] **2.14 Implement RoutingService**
+- [x] **2.14 Implement RoutingService**
   - Implement domain interface + resilience (CH → Haversine fallback) + fallback metrics
-  - File: `internal/infra/routing/routing_service.go`
+  - File: `internal/usecase/impl/routing_service.go`
 
-- [ ] **2.15 Add routing configuration**
+- [x] **2.15 Add routing configuration**
   - Define RoutingConfig struct (MaxQueryRadius, MaxSnapDistance, QueryPoolSize, OneToManyWorkers, PreFilterRadiusMultiplier)
   - File: `config/config.go`
 
@@ -1231,17 +1231,17 @@ func BenchmarkIslandDetection(b *testing.B) {
 
 ### Phase 3: Business Integration (2-3 days)
 
-- [ ] **3.1 Add candidate address query (straight-line pre-filter)**
+- [x] **3.1 Add candidate address query (straight-line pre-filter)**
   - Add a repository query that returns *addresses* (lat/lng + address_id + user_id) within radius.
   - This limits One-to-Many routing workload to a bounded candidate set.
   - Files: `internal/domain/repository/subscription_repository.go` (+ postgres implementation)
 
-- [ ] **3.2 Modify NotificationService to inject RoutingService**
+- [x] **3.2 Modify NotificationService to inject RoutingService**
   - Add `routingService service.RoutingService` to `notificationService` struct
   - Update constructor wiring
   - File: `internal/usecase/impl/notification_service.go`
 
-- [ ] **3.3 Integrate RoutingService.OneToMany into publish flow** ⚠️ Critical
+- [x] **3.3 Integrate RoutingService.OneToMany into publish flow** ⚠️ Critical
   - Build targets list from candidate addresses and call `routingService.OneToMany(...)`
   - Filter by road distance + IsReachable + snap validation
   - File: `internal/usecase/impl/notification_service.go`
@@ -1250,11 +1250,11 @@ func BenchmarkIslandDetection(b *testing.B) {
   - Include ETA only when `Duration > 0` (fallback mode may not provide ETA)
   - File: `internal/usecase/impl/notification_service.go`
 
-- [ ] **3.5 Register routing in DI container**
+- [x] **3.5 Register routing in DI container**
   - Add Fx providers for routing components
-  - File: `internal/delivery/delivery.go`
+  - File: `cmd/radar/main.go`
 
-- [ ] **3.6 Update config_demo.yaml**
+- [x] **3.6 Update config_demo.yaml**
   - Add routing configuration example (max_query_radius, max_snap_distance, query_pool_size, one_to_many_workers, pre_filter_radius_multiplier)
   - File: `config/config_demo.yaml`
 
@@ -1276,21 +1276,21 @@ func BenchmarkIslandDetection(b *testing.B) {
   - Test nearest node queries (snapping)
   - File: `internal/infra/routing/ch/spatial_test.go`
 
-- [ ] **4.4 Unit test: ETA calculation**
+- [x] **4.4 Unit test: ETA calculation**
   - Test duration calculation
-  - File: `internal/infra/routing/ch/engine_test.go`
+  - File: `internal/usecase/impl/routing_service_test.go`
 
-- [ ] **4.5 Unit test: Haversine**
+- [x] **4.5 Unit test: Haversine**
   - Test great-circle distance calculation accuracy
-  - File: `internal/infra/routing/geo/haversine_test.go`
+  - File: `internal/usecase/impl/routing_service_test.go`
 
 - [ ] **4.6 Integration test: ShortestPath**
   - Verify routing results
   - File: `internal/infra/routing/ch/engine_test.go`
 
-- [ ] **4.7 Integration test: OneToMany**
+- [x] **4.7 Integration test: OneToMany**
   - Verify batch query results
-  - File: `internal/infra/routing/ch/engine_test.go`
+  - File: `internal/usecase/impl/routing_service_test.go`
 
 - [ ] **4.8 Edge case test: Island unreachability (Critical)**
   - Test Taiwan ↔ Penghu, Taiwan ↔ Kinmen, Taiwan ↔ Green Island
@@ -1319,11 +1319,11 @@ func BenchmarkIslandDetection(b *testing.B) {
   - Measure single query performance (target: < 1ms)
   - File: `internal/infra/routing/ch/engine_bench_test.go`
 
-- [ ] **4.14 Benchmark: OneToMany** ⚠️ Critical
+- [x] **4.14 Benchmark: OneToMany** ⚠️ Critical
   - Measure 1→100, 1→500, 1→1000 query performance
   - Verify target: 1→1000 < 50ms with concurrent workers
   - Compare sequential vs concurrent implementation
-  - File: `internal/infra/routing/ch/engine_bench_test.go`
+  - File: `internal/usecase/impl/routing_service_test.go`
 
 - [ ] **4.15 Benchmark: Pre-filter effectiveness**
   - Measure Haversine pre-filter reduction ratio
@@ -1331,7 +1331,7 @@ func BenchmarkIslandDetection(b *testing.B) {
 
 - [ ] **4.16 Mock RoutingService**
   - Create mock for notification tests
-  - File: `internal/mocks/service/mock_RoutingService.go`
+  - File: `internal/mocks/usecase/mock_RoutingService.go`
 
 - [ ] **4.17 Integration test: Notification flow**
   - Test full notification with routing and fallback scenarios

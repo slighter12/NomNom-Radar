@@ -222,23 +222,23 @@ func (_c *MockSubscriptionRepository_FindDevicesForUsers_Call) RunAndReturn(run 
 }
 
 // FindSubscriberAddressesWithinRadius provides a mock function for the type MockSubscriptionRepository
-func (_mock *MockSubscriptionRepository) FindSubscriberAddressesWithinRadius(ctx context.Context, merchantID uuid.UUID, merchantLat float64, merchantLon float64) ([]*entity.Address, error) {
+func (_mock *MockSubscriptionRepository) FindSubscriberAddressesWithinRadius(ctx context.Context, merchantID uuid.UUID, merchantLat float64, merchantLon float64) ([]*entity.SubscriberAddress, error) {
 	ret := _mock.Called(ctx, merchantID, merchantLat, merchantLon)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FindSubscriberAddressesWithinRadius")
 	}
 
-	var r0 []*entity.Address
+	var r0 []*entity.SubscriberAddress
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, float64, float64) ([]*entity.Address, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, float64, float64) ([]*entity.SubscriberAddress, error)); ok {
 		return returnFunc(ctx, merchantID, merchantLat, merchantLon)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, float64, float64) []*entity.Address); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, float64, float64) []*entity.SubscriberAddress); ok {
 		r0 = returnFunc(ctx, merchantID, merchantLat, merchantLon)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*entity.Address)
+			r0 = ret.Get(0).([]*entity.SubscriberAddress)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID, float64, float64) error); ok {
@@ -291,12 +291,12 @@ func (_c *MockSubscriptionRepository_FindSubscriberAddressesWithinRadius_Call) R
 	return _c
 }
 
-func (_c *MockSubscriptionRepository_FindSubscriberAddressesWithinRadius_Call) Return(addresss []*entity.Address, err error) *MockSubscriptionRepository_FindSubscriberAddressesWithinRadius_Call {
-	_c.Call.Return(addresss, err)
+func (_c *MockSubscriptionRepository_FindSubscriberAddressesWithinRadius_Call) Return(subscriberAddresss []*entity.SubscriberAddress, err error) *MockSubscriptionRepository_FindSubscriberAddressesWithinRadius_Call {
+	_c.Call.Return(subscriberAddresss, err)
 	return _c
 }
 
-func (_c *MockSubscriptionRepository_FindSubscriberAddressesWithinRadius_Call) RunAndReturn(run func(ctx context.Context, merchantID uuid.UUID, merchantLat float64, merchantLon float64) ([]*entity.Address, error)) *MockSubscriptionRepository_FindSubscriberAddressesWithinRadius_Call {
+func (_c *MockSubscriptionRepository_FindSubscriberAddressesWithinRadius_Call) RunAndReturn(run func(ctx context.Context, merchantID uuid.UUID, merchantLat float64, merchantLon float64) ([]*entity.SubscriberAddress, error)) *MockSubscriptionRepository_FindSubscriberAddressesWithinRadius_Call {
 	_c.Call.Return(run)
 	return _c
 }
