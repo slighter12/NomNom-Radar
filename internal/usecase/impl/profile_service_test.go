@@ -7,11 +7,13 @@ import (
 	"testing"
 
 	"radar/internal/domain/entity"
+	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	mockRepo "radar/internal/mocks/repository"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -188,11 +190,12 @@ func TestProfileService_UpdateMerchantProfile_NoProfile(t *testing.T) {
 
 			_ = fn(mockFactory)
 		}).
-		Return(assert.AnError)
+		Return(errors.Wrap(domainerrors.ErrValidationFailed, "user does not have a merchant profile"))
 
 	err := service.UpdateMerchantProfile(ctx, userID, input)
 
 	assert.Error(t, err)
+	assert.True(t, errors.Is(err, domainerrors.ErrValidationFailed))
 }
 
 func TestProfileService_GetProfile_NotFound(t *testing.T) {

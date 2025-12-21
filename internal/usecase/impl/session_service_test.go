@@ -8,10 +8,12 @@ import (
 	"time"
 
 	"radar/internal/domain/entity"
+	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	mockRepo "radar/internal/mocks/repository"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -164,6 +166,7 @@ func TestSessionService_CleanupExpiredSessions_Error(t *testing.T) {
 	service := NewSessionService(txManager, logger)
 
 	ctx := context.Background()
+	dbError := errors.New("database connection failed")
 
 	txManager.EXPECT().
 		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
@@ -172,15 +175,16 @@ func TestSessionService_CleanupExpiredSessions_Error(t *testing.T) {
 			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 
 			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
-			mockRefreshRepo.EXPECT().DeleteExpiredRefreshTokens(ctx).Return(assert.AnError)
+			mockRefreshRepo.EXPECT().DeleteExpiredRefreshTokens(ctx).Return(dbError)
 
 			_ = fn(mockFactory)
 		}).
-		Return(assert.AnError)
+		Return(errors.Wrap(dbError, "failed to delete expired sessions"))
 
 	_, err := service.CleanupExpiredSessions(ctx)
 
 	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to cleanup expired sessions")
 }
 
 func TestSessionService_GetSessionInfo_OwnerMismatch(t *testing.T) {
@@ -210,10 +214,11 @@ func TestSessionService_GetSessionInfo_OwnerMismatch(t *testing.T) {
 
 			_ = fn(mockFactory)
 		}).
-		Return(assert.AnError)
+		Return(errors.Wrap(domainerrors.ErrForbidden, "session does not belong to user"))
 
 	info, err := service.GetSessionInfo(ctx, userID, sessionID)
 
 	assert.Error(t, err)
 	assert.Nil(t, info)
+	assert.True(t, errors.Is(err, domainerrors.ErrForbidden))
 }

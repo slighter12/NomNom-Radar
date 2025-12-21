@@ -7,12 +7,14 @@ import (
 	"testing"
 
 	"radar/internal/domain/entity"
+	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	mockRepo "radar/internal/mocks/repository"
 	mockSvc "radar/internal/mocks/service"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -147,10 +149,11 @@ func TestUserService_RegisterUser_InvalidCredentials(t *testing.T) {
 
 			_ = fn(mockFactory)
 		}).
-		Return(assert.AnError)
+		Return(errors.Wrap(domainerrors.ErrInvalidCredentials, "password mismatch during registration"))
 
 	output, err := service.RegisterUser(ctx, input)
 
 	assert.Error(t, err)
 	assert.Nil(t, output)
+	assert.True(t, errors.Is(err, domainerrors.ErrInvalidCredentials))
 }
