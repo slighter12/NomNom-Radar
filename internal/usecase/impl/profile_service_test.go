@@ -19,10 +19,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestProfileService_GetProfile_Success(t *testing.T) {
+// profileServiceFixtures holds all test dependencies for profile service tests.
+type profileServiceFixtures struct {
+	service   usecase.ProfileUsecase
+	txManager *mockRepo.MockTransactionManager
+}
+
+func createTestProfileService(t *testing.T) profileServiceFixtures {
 	txManager := mockRepo.NewMockTransactionManager(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := NewProfileService(txManager, logger)
+
+	return profileServiceFixtures{
+		service:   service,
+		txManager: txManager,
+	}
+}
+
+func TestProfileService_GetProfile_Success(t *testing.T) {
+	fx := createTestProfileService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -32,7 +47,7 @@ func TestProfileService_GetProfile_Success(t *testing.T) {
 		Name:  "Test User",
 	}
 
-	txManager.EXPECT().
+	fx.txManager.EXPECT().
 		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
 		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
 			mockFactory := mockRepo.NewMockRepositoryFactory(t)
@@ -45,16 +60,14 @@ func TestProfileService_GetProfile_Success(t *testing.T) {
 		}).
 		Return(nil)
 
-	user, err := service.GetProfile(ctx, userID)
+	user, err := fx.service.GetProfile(ctx, userID)
 
 	require.NoError(t, err)
 	assert.Equal(t, expectedUser, user)
 }
 
 func TestProfileService_UpdateUserProfile_Success(t *testing.T) {
-	txManager := mockRepo.NewMockTransactionManager(t)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	service := NewProfileService(txManager, logger)
+	fx := createTestProfileService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -71,7 +84,7 @@ func TestProfileService_UpdateUserProfile_Success(t *testing.T) {
 		},
 	}
 
-	txManager.EXPECT().
+	fx.txManager.EXPECT().
 		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
 		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
 			mockFactory := mockRepo.NewMockRepositoryFactory(t)
@@ -85,16 +98,14 @@ func TestProfileService_UpdateUserProfile_Success(t *testing.T) {
 		}).
 		Return(nil)
 
-	err := service.UpdateUserProfile(ctx, userID, input)
+	err := fx.service.UpdateUserProfile(ctx, userID, input)
 
 	require.NoError(t, err)
 	assert.Equal(t, points, existingUser.UserProfile.LoyaltyPoints)
 }
 
 func TestProfileService_SwitchToMerchant_Success(t *testing.T) {
-	txManager := mockRepo.NewMockTransactionManager(t)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	service := NewProfileService(txManager, logger)
+	fx := createTestProfileService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -107,7 +118,7 @@ func TestProfileService_SwitchToMerchant_Success(t *testing.T) {
 		ID: userID,
 	}
 
-	txManager.EXPECT().
+	fx.txManager.EXPECT().
 		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
 		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
 			mockFactory := mockRepo.NewMockRepositoryFactory(t)
@@ -121,7 +132,7 @@ func TestProfileService_SwitchToMerchant_Success(t *testing.T) {
 		}).
 		Return(nil)
 
-	err := service.SwitchToMerchant(ctx, userID, input)
+	err := fx.service.SwitchToMerchant(ctx, userID, input)
 
 	require.NoError(t, err)
 	assert.NotNil(t, existingUser.MerchantProfile)
@@ -129,9 +140,7 @@ func TestProfileService_SwitchToMerchant_Success(t *testing.T) {
 }
 
 func TestProfileService_GetUserRole(t *testing.T) {
-	txManager := mockRepo.NewMockTransactionManager(t)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	service := NewProfileService(txManager, logger)
+	fx := createTestProfileService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -141,7 +150,7 @@ func TestProfileService_GetUserRole(t *testing.T) {
 		MerchantProfile: &entity.MerchantProfile{},
 	}
 
-	txManager.EXPECT().
+	fx.txManager.EXPECT().
 		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
 		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
 			mockFactory := mockRepo.NewMockRepositoryFactory(t)
@@ -154,7 +163,7 @@ func TestProfileService_GetUserRole(t *testing.T) {
 		}).
 		Return(nil)
 
-	roles, err := service.GetUserRole(ctx, userID)
+	roles, err := fx.service.GetUserRole(ctx, userID)
 
 	require.NoError(t, err)
 	assert.Len(t, roles, 2)
@@ -163,9 +172,7 @@ func TestProfileService_GetUserRole(t *testing.T) {
 }
 
 func TestProfileService_UpdateMerchantProfile_NoProfile(t *testing.T) {
-	txManager := mockRepo.NewMockTransactionManager(t)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	service := NewProfileService(txManager, logger)
+	fx := createTestProfileService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -179,7 +186,7 @@ func TestProfileService_UpdateMerchantProfile_NoProfile(t *testing.T) {
 		// MerchantProfile intentionally nil to trigger validation
 	}
 
-	txManager.EXPECT().
+	fx.txManager.EXPECT().
 		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
 		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
 			mockFactory := mockRepo.NewMockRepositoryFactory(t)
@@ -192,21 +199,19 @@ func TestProfileService_UpdateMerchantProfile_NoProfile(t *testing.T) {
 		}).
 		Return(errors.Wrap(domainerrors.ErrValidationFailed, "user does not have a merchant profile"))
 
-	err := service.UpdateMerchantProfile(ctx, userID, input)
+	err := fx.service.UpdateMerchantProfile(ctx, userID, input)
 
 	assert.Error(t, err)
 	assert.True(t, errors.Is(err, domainerrors.ErrValidationFailed))
 }
 
 func TestProfileService_GetProfile_NotFound(t *testing.T) {
-	txManager := mockRepo.NewMockTransactionManager(t)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	service := NewProfileService(txManager, logger)
+	fx := createTestProfileService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
 
-	txManager.EXPECT().
+	fx.txManager.EXPECT().
 		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
 		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
 			mockFactory := mockRepo.NewMockRepositoryFactory(t)
@@ -219,7 +224,7 @@ func TestProfileService_GetProfile_NotFound(t *testing.T) {
 		}).
 		Return(repository.ErrUserNotFound)
 
-	_, err := service.GetProfile(ctx, userID)
+	_, err := fx.service.GetProfile(ctx, userID)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "user not found")
