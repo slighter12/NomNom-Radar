@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -303,17 +304,17 @@ func BenchmarkEngine_OneToMany(b *testing.B) {
 }
 
 func formatVertex(id int, lat, lng float64) string {
-	return string([]byte{}) + string(rune(id+'0')) + "," +
+	return strconv.Itoa(id) + "," +
 		floatToString(lat) + "," + floatToString(lng) + ",0,1"
 }
 
 func formatEdge(from, to int, weight int) string {
-	return string([]byte{}) + string(rune(from+'0')) + "," +
-		string(rune(to+'0')) + "," + string(rune(weight+'0'))
+	return strconv.Itoa(from) + "," +
+		strconv.Itoa(to) + "," + strconv.Itoa(weight)
 }
 
 func floatToString(f float64) string {
-	return string(append([]byte{}, []byte("")...)) + "24.0" // Simplified for benchmark
+	return strconv.FormatFloat(f, 'f', -1, 64)
 }
 
 func writeLines(b *testing.B, path string, lines []string) {
