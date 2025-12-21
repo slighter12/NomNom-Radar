@@ -3,6 +3,8 @@ package util
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestFormatBytes(t *testing.T) {
@@ -25,9 +27,7 @@ func TestFormatBytes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := FormatBytes(tt.bytes); got != tt.expected {
-				t.Fatalf("FormatBytes(%d) = %s, want %s", tt.bytes, got, tt.expected)
-			}
+			assert.Equal(t, tt.expected, FormatBytes(tt.bytes))
 		})
 	}
 }
@@ -50,9 +50,7 @@ func TestFormatDuration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := FormatDuration(tt.duration); got != tt.expected {
-				t.Fatalf("FormatDuration(%s) = %s, want %s", tt.duration, got, tt.expected)
-			}
+			assert.Equal(t, tt.expected, FormatDuration(tt.duration))
 		})
 	}
 }
