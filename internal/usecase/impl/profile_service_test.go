@@ -21,19 +21,33 @@ import (
 
 // profileServiceFixtures holds all test dependencies for profile service tests.
 type profileServiceFixtures struct {
+	t         *testing.T
 	service   usecase.ProfileUsecase
 	txManager *mockRepo.MockTransactionManager
 }
 
-func createTestProfileService(t *testing.T) profileServiceFixtures {
+func createTestProfileService(t *testing.T) *profileServiceFixtures {
 	txManager := mockRepo.NewMockTransactionManager(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := NewProfileService(txManager, logger)
 
-	return profileServiceFixtures{
+	return &profileServiceFixtures{
+		t:         t,
 		service:   service,
 		txManager: txManager,
 	}
+}
+
+// onExecute is a helper method to reduce boilerplate for mocking txManager.Execute.
+func (fx *profileServiceFixtures) onExecute(ctx context.Context, returnErr error, setupMocks func(factory *mockRepo.MockRepositoryFactory)) {
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
+			mockFactory := mockRepo.NewMockRepositoryFactory(fx.t)
+			setupMocks(mockFactory)
+			_ = fn(mockFactory)
+		}).
+		Return(returnErr)
 }
 
 func TestProfileService_GetProfile_Success(t *testing.T) {
@@ -47,18 +61,11 @@ func TestProfileService_GetProfile_Success(t *testing.T) {
 		Name:  "Test User",
 	}
 
-	fx.txManager.EXPECT().
-		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
-		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
-			mockFactory := mockRepo.NewMockRepositoryFactory(t)
-			mockUserRepo := mockRepo.NewMockUserRepository(t)
-
-			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
-			mockUserRepo.EXPECT().FindByID(ctx, userID).Return(expectedUser, nil)
-
-			_ = fn(mockFactory)
-		}).
-		Return(nil)
+	fx.onExecute(ctx, nil, func(factory *mockRepo.MockRepositoryFactory) {
+		mockUserRepo := mockRepo.NewMockUserRepository(t)
+		factory.EXPECT().UserRepo().Return(mockUserRepo)
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(expectedUser, nil)
+	})
 
 	user, err := fx.service.GetProfile(ctx, userID)
 
@@ -84,19 +91,12 @@ func TestProfileService_UpdateUserProfile_Success(t *testing.T) {
 		},
 	}
 
-	fx.txManager.EXPECT().
-		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
-		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
-			mockFactory := mockRepo.NewMockRepositoryFactory(t)
-			mockUserRepo := mockRepo.NewMockUserRepository(t)
-
-			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
-			mockUserRepo.EXPECT().FindByID(ctx, userID).Return(existingUser, nil)
-			mockUserRepo.EXPECT().Update(ctx, mock.AnythingOfType("*entity.User")).Return(nil)
-
-			_ = fn(mockFactory)
-		}).
-		Return(nil)
+	fx.onExecute(ctx, nil, func(factory *mockRepo.MockRepositoryFactory) {
+		mockUserRepo := mockRepo.NewMockUserRepository(t)
+		factory.EXPECT().UserRepo().Return(mockUserRepo)
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(existingUser, nil)
+		mockUserRepo.EXPECT().Update(ctx, mock.AnythingOfType("*entity.User")).Return(nil)
+	})
 
 	err := fx.service.UpdateUserProfile(ctx, userID, input)
 
@@ -118,19 +118,12 @@ func TestProfileService_SwitchToMerchant_Success(t *testing.T) {
 		ID: userID,
 	}
 
-	fx.txManager.EXPECT().
-		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
-		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
-			mockFactory := mockRepo.NewMockRepositoryFactory(t)
-			mockUserRepo := mockRepo.NewMockUserRepository(t)
-
-			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
-			mockUserRepo.EXPECT().FindByID(ctx, userID).Return(existingUser, nil)
-			mockUserRepo.EXPECT().Update(ctx, mock.AnythingOfType("*entity.User")).Return(nil)
-
-			_ = fn(mockFactory)
-		}).
-		Return(nil)
+	fx.onExecute(ctx, nil, func(factory *mockRepo.MockRepositoryFactory) {
+		mockUserRepo := mockRepo.NewMockUserRepository(t)
+		factory.EXPECT().UserRepo().Return(mockUserRepo)
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(existingUser, nil)
+		mockUserRepo.EXPECT().Update(ctx, mock.AnythingOfType("*entity.User")).Return(nil)
+	})
 
 	err := fx.service.SwitchToMerchant(ctx, userID, input)
 
@@ -150,18 +143,11 @@ func TestProfileService_GetUserRole(t *testing.T) {
 		MerchantProfile: &entity.MerchantProfile{},
 	}
 
-	fx.txManager.EXPECT().
-		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
-		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
-			mockFactory := mockRepo.NewMockRepositoryFactory(t)
-			mockUserRepo := mockRepo.NewMockUserRepository(t)
-
-			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
-			mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
-
-			_ = fn(mockFactory)
-		}).
-		Return(nil)
+	fx.onExecute(ctx, nil, func(factory *mockRepo.MockRepositoryFactory) {
+		mockUserRepo := mockRepo.NewMockUserRepository(t)
+		factory.EXPECT().UserRepo().Return(mockUserRepo)
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
+	})
 
 	roles, err := fx.service.GetUserRole(ctx, userID)
 
@@ -186,18 +172,11 @@ func TestProfileService_UpdateMerchantProfile_NoProfile(t *testing.T) {
 		// MerchantProfile intentionally nil to trigger validation
 	}
 
-	fx.txManager.EXPECT().
-		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
-		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
-			mockFactory := mockRepo.NewMockRepositoryFactory(t)
-			mockUserRepo := mockRepo.NewMockUserRepository(t)
-
-			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
-			mockUserRepo.EXPECT().FindByID(ctx, userID).Return(existingUser, nil)
-
-			_ = fn(mockFactory)
-		}).
-		Return(errors.Wrap(domainerrors.ErrValidationFailed, "user does not have a merchant profile"))
+	fx.onExecute(ctx, errors.Wrap(domainerrors.ErrValidationFailed, "user does not have a merchant profile"), func(factory *mockRepo.MockRepositoryFactory) {
+		mockUserRepo := mockRepo.NewMockUserRepository(t)
+		factory.EXPECT().UserRepo().Return(mockUserRepo)
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(existingUser, nil)
+	})
 
 	err := fx.service.UpdateMerchantProfile(ctx, userID, input)
 
@@ -211,18 +190,11 @@ func TestProfileService_GetProfile_NotFound(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 
-	fx.txManager.EXPECT().
-		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
-		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
-			mockFactory := mockRepo.NewMockRepositoryFactory(t)
-			mockUserRepo := mockRepo.NewMockUserRepository(t)
-
-			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
-			mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, repository.ErrUserNotFound)
-
-			_ = fn(mockFactory)
-		}).
-		Return(repository.ErrUserNotFound)
+	fx.onExecute(ctx, repository.ErrUserNotFound, func(factory *mockRepo.MockRepositoryFactory) {
+		mockUserRepo := mockRepo.NewMockUserRepository(t)
+		factory.EXPECT().UserRepo().Return(mockUserRepo)
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, repository.ErrUserNotFound)
+	})
 
 	_, err := fx.service.GetProfile(ctx, userID)
 

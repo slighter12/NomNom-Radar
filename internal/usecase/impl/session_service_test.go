@@ -21,19 +21,33 @@ import (
 
 // sessionServiceFixtures holds all test dependencies for session service tests.
 type sessionServiceFixtures struct {
+	t         *testing.T
 	service   *sessionService
 	txManager *mockRepo.MockTransactionManager
 }
 
-func createTestSessionService(t *testing.T) sessionServiceFixtures {
+func createTestSessionService(t *testing.T) *sessionServiceFixtures {
 	txManager := mockRepo.NewMockTransactionManager(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := NewSessionService(txManager, logger).(*sessionService)
 
-	return sessionServiceFixtures{
+	return &sessionServiceFixtures{
+		t:         t,
 		service:   service,
 		txManager: txManager,
 	}
+}
+
+// onExecute is a helper method to reduce boilerplate for mocking txManager.Execute.
+func (fx *sessionServiceFixtures) onExecute(ctx context.Context, returnErr error, setupMocks func(factory *mockRepo.MockRepositoryFactory)) {
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
+			mockFactory := mockRepo.NewMockRepositoryFactory(fx.t)
+			setupMocks(mockFactory)
+			_ = fn(mockFactory)
+		}).
+		Return(returnErr)
 }
 
 func TestSessionService_GetActiveSessions_Success(t *testing.T) {
@@ -46,22 +60,16 @@ func TestSessionService_GetActiveSessions_Success(t *testing.T) {
 		{ID: uuid.New(), UserID: userID, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour)},
 	}
 
-	fx.txManager.EXPECT().
-		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
-		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
-			mockFactory := mockRepo.NewMockRepositoryFactory(t)
-			mockUserRepo := mockRepo.NewMockUserRepository(t)
-			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
+	fx.onExecute(ctx, nil, func(factory *mockRepo.MockRepositoryFactory) {
+		mockUserRepo := mockRepo.NewMockUserRepository(t)
+		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 
-			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
-			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+		factory.EXPECT().UserRepo().Return(mockUserRepo)
+		factory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
 
-			mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
-			mockRefreshRepo.EXPECT().FindRefreshTokensByUserID(ctx, userID).Return(tokens, nil)
-
-			_ = fn(mockFactory)
-		}).
-		Return(nil)
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
+		mockRefreshRepo.EXPECT().FindRefreshTokensByUserID(ctx, userID).Return(tokens, nil)
+	})
 
 	sessions, err := fx.service.GetActiveSessions(ctx, userID)
 
@@ -79,23 +87,17 @@ func TestSessionService_RevokeSession_Success(t *testing.T) {
 	user := &entity.User{ID: userID}
 	token := &entity.RefreshToken{ID: sessionID, UserID: userID}
 
-	fx.txManager.EXPECT().
-		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
-		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
-			mockFactory := mockRepo.NewMockRepositoryFactory(t)
-			mockUserRepo := mockRepo.NewMockUserRepository(t)
-			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
+	fx.onExecute(ctx, nil, func(factory *mockRepo.MockRepositoryFactory) {
+		mockUserRepo := mockRepo.NewMockUserRepository(t)
+		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 
-			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
-			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+		factory.EXPECT().UserRepo().Return(mockUserRepo)
+		factory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
 
-			mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
-			mockRefreshRepo.EXPECT().FindRefreshTokenByID(ctx, sessionID).Return(token, nil)
-			mockRefreshRepo.EXPECT().DeleteRefreshToken(ctx, sessionID).Return(nil)
-
-			_ = fn(mockFactory)
-		}).
-		Return(nil)
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
+		mockRefreshRepo.EXPECT().FindRefreshTokenByID(ctx, sessionID).Return(token, nil)
+		mockRefreshRepo.EXPECT().DeleteRefreshToken(ctx, sessionID).Return(nil)
+	})
 
 	err := fx.service.RevokeSession(ctx, userID, sessionID)
 
@@ -109,22 +111,16 @@ func TestSessionService_RevokeAllSessions_Success(t *testing.T) {
 	userID := uuid.New()
 	user := &entity.User{ID: userID}
 
-	fx.txManager.EXPECT().
-		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
-		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
-			mockFactory := mockRepo.NewMockRepositoryFactory(t)
-			mockUserRepo := mockRepo.NewMockUserRepository(t)
-			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
+	fx.onExecute(ctx, nil, func(factory *mockRepo.MockRepositoryFactory) {
+		mockUserRepo := mockRepo.NewMockUserRepository(t)
+		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 
-			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
-			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+		factory.EXPECT().UserRepo().Return(mockUserRepo)
+		factory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
 
-			mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
-			mockRefreshRepo.EXPECT().DeleteRefreshTokensByUserID(ctx, userID).Return(nil)
-
-			_ = fn(mockFactory)
-		}).
-		Return(nil)
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
+		mockRefreshRepo.EXPECT().DeleteRefreshTokensByUserID(ctx, userID).Return(nil)
+	})
 
 	err := fx.service.RevokeAllSessions(ctx, userID)
 
@@ -143,22 +139,16 @@ func TestSessionService_GetSessionStatistics(t *testing.T) {
 		{ID: uuid.New(), UserID: userID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
 	}
 
-	fx.txManager.EXPECT().
-		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
-		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
-			mockFactory := mockRepo.NewMockRepositoryFactory(t)
-			mockUserRepo := mockRepo.NewMockUserRepository(t)
-			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
+	fx.onExecute(ctx, nil, func(factory *mockRepo.MockRepositoryFactory) {
+		mockUserRepo := mockRepo.NewMockUserRepository(t)
+		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 
-			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
-			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+		factory.EXPECT().UserRepo().Return(mockUserRepo)
+		factory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
 
-			mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
-			mockRefreshRepo.EXPECT().FindRefreshTokensByUserID(ctx, userID).Return(tokens, nil)
-
-			_ = fn(mockFactory)
-		}).
-		Return(nil)
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
+		mockRefreshRepo.EXPECT().FindRefreshTokensByUserID(ctx, userID).Return(tokens, nil)
+	})
 
 	stats, err := fx.service.GetSessionStatistics(ctx, userID)
 
@@ -175,18 +165,11 @@ func TestSessionService_CleanupExpiredSessions_Error(t *testing.T) {
 	ctx := context.Background()
 	dbError := errors.New("database connection failed")
 
-	fx.txManager.EXPECT().
-		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
-		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
-			mockFactory := mockRepo.NewMockRepositoryFactory(t)
-			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
-
-			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
-			mockRefreshRepo.EXPECT().DeleteExpiredRefreshTokens(ctx).Return(dbError)
-
-			_ = fn(mockFactory)
-		}).
-		Return(errors.Wrap(dbError, "failed to delete expired sessions"))
+	fx.onExecute(ctx, errors.Wrap(dbError, "failed to delete expired sessions"), func(factory *mockRepo.MockRepositoryFactory) {
+		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
+		factory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+		mockRefreshRepo.EXPECT().DeleteExpiredRefreshTokens(ctx).Return(dbError)
+	})
 
 	_, err := fx.service.CleanupExpiredSessions(ctx)
 
@@ -204,22 +187,16 @@ func TestSessionService_GetSessionInfo_OwnerMismatch(t *testing.T) {
 	user := &entity.User{ID: userID}
 	token := &entity.RefreshToken{ID: sessionID, UserID: tokenOwner}
 
-	fx.txManager.EXPECT().
-		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
-		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
-			mockFactory := mockRepo.NewMockRepositoryFactory(t)
-			mockUserRepo := mockRepo.NewMockUserRepository(t)
-			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
+	fx.onExecute(ctx, errors.Wrap(domainerrors.ErrForbidden, "session does not belong to user"), func(factory *mockRepo.MockRepositoryFactory) {
+		mockUserRepo := mockRepo.NewMockUserRepository(t)
+		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 
-			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
-			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+		factory.EXPECT().UserRepo().Return(mockUserRepo)
+		factory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
 
-			mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
-			mockRefreshRepo.EXPECT().FindRefreshTokenByID(ctx, sessionID).Return(token, nil)
-
-			_ = fn(mockFactory)
-		}).
-		Return(errors.Wrap(domainerrors.ErrForbidden, "session does not belong to user"))
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
+		mockRefreshRepo.EXPECT().FindRefreshTokenByID(ctx, sessionID).Return(token, nil)
+	})
 
 	info, err := fx.service.GetSessionInfo(ctx, userID, sessionID)
 

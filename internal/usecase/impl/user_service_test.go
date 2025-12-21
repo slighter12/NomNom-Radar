@@ -22,6 +22,7 @@ import (
 
 // userServiceFixtures holds all test dependencies for user service tests.
 type userServiceFixtures struct {
+	t                 *testing.T
 	service           usecase.UserUsecase
 	txManager         *mockRepo.MockTransactionManager
 	userRepo          *mockRepo.MockUserRepository
@@ -32,7 +33,7 @@ type userServiceFixtures struct {
 	googleAuthService *mockSvc.MockOAuthAuthService
 }
 
-func createTestUserService(t *testing.T) userServiceFixtures {
+func createTestUserService(t *testing.T) *userServiceFixtures {
 	txManager := mockRepo.NewMockTransactionManager(t)
 	userRepo := mockRepo.NewMockUserRepository(t)
 	authRepo := mockRepo.NewMockAuthRepository(t)
@@ -53,7 +54,8 @@ func createTestUserService(t *testing.T) userServiceFixtures {
 		logger,
 	)
 
-	return userServiceFixtures{
+	return &userServiceFixtures{
+		t:                 t,
 		service:           service,
 		txManager:         txManager,
 		userRepo:          userRepo,
@@ -63,6 +65,18 @@ func createTestUserService(t *testing.T) userServiceFixtures {
 		tokenService:      tokenService,
 		googleAuthService: googleAuthService,
 	}
+}
+
+// onExecute is a helper method to reduce boilerplate for mocking txManager.Execute.
+func (fx *userServiceFixtures) onExecute(ctx context.Context, returnErr error, setupMocks func(factory *mockRepo.MockRepositoryFactory)) {
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
+			mockFactory := mockRepo.NewMockRepositoryFactory(fx.t)
+			setupMocks(mockFactory)
+			_ = fn(mockFactory)
+		}).
+		Return(returnErr)
 }
 
 func TestUserService_RegisterUser_Success(t *testing.T) {
@@ -75,37 +89,31 @@ func TestUserService_RegisterUser_Success(t *testing.T) {
 		Password: "Password123!",
 	}
 
-	fx.txManager.EXPECT().
-		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
-		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
-			mockFactory := mockRepo.NewMockRepositoryFactory(t)
-			mockUserRepo := mockRepo.NewMockUserRepository(t)
-			mockAuthRepo := mockRepo.NewMockAuthRepository(t)
+	fx.onExecute(ctx, nil, func(factory *mockRepo.MockRepositoryFactory) {
+		mockUserRepo := mockRepo.NewMockUserRepository(t)
+		mockAuthRepo := mockRepo.NewMockAuthRepository(t)
 
-			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
-			mockFactory.EXPECT().AuthRepo().Return(mockAuthRepo)
+		factory.EXPECT().UserRepo().Return(mockUserRepo)
+		factory.EXPECT().AuthRepo().Return(mockAuthRepo)
 
-			mockAuthRepo.EXPECT().
-				FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email).
-				Return(nil, repository.ErrAuthNotFound)
+		mockAuthRepo.EXPECT().
+			FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email).
+			Return(nil, repository.ErrAuthNotFound)
 
-			fx.hasher.EXPECT().ValidatePasswordStrength(input.Password).Return(nil)
-			fx.hasher.EXPECT().Hash(input.Password).Return("hashed_password", nil)
+		fx.hasher.EXPECT().ValidatePasswordStrength(input.Password).Return(nil)
+		fx.hasher.EXPECT().Hash(input.Password).Return("hashed_password", nil)
 
-			mockUserRepo.EXPECT().
-				Create(ctx, mock.AnythingOfType("*entity.User")).
-				Run(func(ctx context.Context, user *entity.User) {
-					user.ID = uuid.New()
-				}).
-				Return(nil)
+		mockUserRepo.EXPECT().
+			Create(ctx, mock.AnythingOfType("*entity.User")).
+			Run(func(ctx context.Context, user *entity.User) {
+				user.ID = uuid.New()
+			}).
+			Return(nil)
 
-			mockAuthRepo.EXPECT().
-				CreateAuthentication(ctx, mock.AnythingOfType("*entity.Authentication")).
-				Return(nil)
-
-			_ = fn(mockFactory)
-		}).
-		Return(nil)
+		mockAuthRepo.EXPECT().
+			CreateAuthentication(ctx, mock.AnythingOfType("*entity.Authentication")).
+			Return(nil)
+	})
 
 	output, err := fx.service.RegisterUser(ctx, input)
 
@@ -130,25 +138,19 @@ func TestUserService_RegisterUser_InvalidCredentials(t *testing.T) {
 		Provider:     entity.ProviderTypeEmail,
 	}
 
-	fx.txManager.EXPECT().
-		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
-		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
-			mockFactory := mockRepo.NewMockRepositoryFactory(t)
-			mockUserRepo := mockRepo.NewMockUserRepository(t)
-			mockAuthRepo := mockRepo.NewMockAuthRepository(t)
+	fx.onExecute(ctx, errors.Wrap(domainerrors.ErrInvalidCredentials, "password mismatch during registration"), func(factory *mockRepo.MockRepositoryFactory) {
+		mockUserRepo := mockRepo.NewMockUserRepository(t)
+		mockAuthRepo := mockRepo.NewMockAuthRepository(t)
 
-			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
-			mockFactory.EXPECT().AuthRepo().Return(mockAuthRepo)
+		factory.EXPECT().UserRepo().Return(mockUserRepo)
+		factory.EXPECT().AuthRepo().Return(mockAuthRepo)
 
-			mockAuthRepo.EXPECT().
-				FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email).
-				Return(authRecord, nil)
+		mockAuthRepo.EXPECT().
+			FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email).
+			Return(authRecord, nil)
 
-			fx.hasher.EXPECT().Check(input.Password, authRecord.PasswordHash).Return(false)
-
-			_ = fn(mockFactory)
-		}).
-		Return(errors.Wrap(domainerrors.ErrInvalidCredentials, "password mismatch during registration"))
+		fx.hasher.EXPECT().Check(input.Password, authRecord.PasswordHash).Return(false)
+	})
 
 	output, err := fx.service.RegisterUser(ctx, input)
 
