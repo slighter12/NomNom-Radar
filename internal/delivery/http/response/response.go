@@ -3,7 +3,10 @@ package response
 import (
 	"net/http"
 
+	domainerrors "radar/internal/domain/errors"
+
 	"github.com/labstack/echo/v4"
+	"github.com/pkg/errors"
 )
 
 // Response unified API response structure
@@ -85,4 +88,16 @@ func Conflict(c echo.Context, errorCode string, message string) error {
 // InternalServerError 500 error
 func InternalServerError(c echo.Context, errorCode string, message string) error {
 	return Error(c, http.StatusInternalServerError, errorCode, message, "")
+}
+
+// HandleAppError handles application errors by converting domain errors
+// into appropriate HTTP responses. Returns the original error with stack
+// trace if it's not an AppError.
+func HandleAppError(c echo.Context, err error) error {
+	var appErr domainerrors.AppError
+	if errors.As(err, &appErr) {
+		return Error(c, appErr.HTTPCode(), appErr.ErrorCode(), appErr.Message(), appErr.Details())
+	}
+
+	return errors.WithStack(err)
 }

@@ -6,12 +6,10 @@ import (
 	"strconv"
 
 	"radar/internal/delivery/http/response"
-	domainerrors "radar/internal/domain/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/pkg/errors"
 	"go.uber.org/fx"
 )
 
@@ -69,7 +67,7 @@ func (h *NotificationHandler) PublishLocationNotification(c echo.Context) error 
 		req.HintMessage,
 	)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusCreated, notification, "Location notification published successfully")
@@ -142,7 +140,7 @@ func (h *NotificationHandler) GetMerchantNotificationHistory(c echo.Context) err
 
 	notifications, err := h.notificationUC.GetMerchantNotificationHistory(c.Request().Context(), merchantID, limit, offset)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, notifications, "Notification history retrieved successfully")
@@ -178,14 +176,4 @@ func (h *NotificationHandler) getMerchantID(c echo.Context) (uuid.UUID, error) {
 	}
 
 	return merchantID, nil
-}
-
-// handleAppError handles application errors
-func (h *NotificationHandler) handleAppError(c echo.Context, err error) error {
-	var appErr domainerrors.AppError
-	if errors.As(err, &appErr) {
-		return response.Error(c, appErr.HTTPCode(), appErr.ErrorCode(), appErr.Message(), appErr.Details())
-	}
-
-	return errors.WithStack(err)
 }

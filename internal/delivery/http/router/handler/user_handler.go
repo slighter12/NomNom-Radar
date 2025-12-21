@@ -6,13 +6,11 @@ import (
 	"net/http"
 
 	"radar/internal/delivery/http/response"
-	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/service"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/pkg/errors"
 	"go.uber.org/fx"
 )
 
@@ -53,7 +51,7 @@ func (h *UserHandler) RegisterUser(c echo.Context) error {
 
 	output, err := h.userUC.RegisterUser(c.Request().Context(), input)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	// Do not return sensitive data in the response.
@@ -70,19 +68,10 @@ func (h *UserHandler) RegisterMerchant(c echo.Context) error {
 
 	output, err := h.userUC.RegisterMerchant(c.Request().Context(), input)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusCreated, output.User, "Merchant registered successfully")
-}
-
-func (h *UserHandler) handleAppError(c echo.Context, err error) error {
-	var appErr domainerrors.AppError
-	if errors.As(err, &appErr) {
-		return response.Error(c, appErr.HTTPCode(), appErr.ErrorCode(), appErr.Message(), appErr.Details())
-	}
-
-	return errors.WithStack(err)
 }
 
 // Login handles the user login request.
@@ -94,7 +83,7 @@ func (h *UserHandler) Login(c echo.Context) error {
 
 	output, err := h.userUC.Login(c.Request().Context(), input)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, output, "Login successful")
@@ -109,7 +98,7 @@ func (h *UserHandler) RefreshToken(c echo.Context) error {
 
 	output, err := h.userUC.RefreshToken(c.Request().Context(), input)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, output, "Token refreshed successfully")
@@ -123,7 +112,7 @@ func (h *UserHandler) Logout(c echo.Context) error {
 	}
 
 	if err := h.userUC.Logout(c.Request().Context(), input); err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, map[string]string{"message": "Successfully logged out"}, "Logout successful")
@@ -145,7 +134,7 @@ func (h *UserHandler) GoogleCallback(c echo.Context) error {
 	// Process the callback
 	output, err := h.userUC.GoogleCallback(c.Request().Context(), input)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, output, "Google OAuth authentication successful")
@@ -206,7 +195,7 @@ func (h *UserHandler) GetProfile(c echo.Context) error {
 
 	user, err := h.profileUC.GetProfile(c.Request().Context(), userID)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, user, "Profile retrieved successfully")

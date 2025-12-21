@@ -5,12 +5,10 @@ import (
 	"net/http"
 
 	"radar/internal/delivery/http/response"
-	domainerrors "radar/internal/domain/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/pkg/errors"
 	"go.uber.org/fx"
 )
 
@@ -66,7 +64,7 @@ func (h *SubscriptionHandler) SubscribeToMerchant(c echo.Context) error {
 
 	subscription, err := h.subscriptionUC.SubscribeToMerchant(c.Request().Context(), userID, req.MerchantID, req.DeviceInfo)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusCreated, subscription, "Subscribed to merchant successfully")
@@ -85,7 +83,7 @@ func (h *SubscriptionHandler) UnsubscribeFromMerchant(c echo.Context) error {
 	}
 
 	if err := h.subscriptionUC.UnsubscribeFromMerchant(c.Request().Context(), userID, merchantID); err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, map[string]string{"message": "Unsubscribed successfully"}, "Unsubscribed from merchant successfully")
@@ -100,7 +98,7 @@ func (h *SubscriptionHandler) GetUserSubscriptions(c echo.Context) error {
 
 	subscriptions, err := h.subscriptionUC.GetUserSubscriptions(c.Request().Context(), userID)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, subscriptions, "User subscriptions retrieved successfully")
@@ -115,7 +113,7 @@ func (h *SubscriptionHandler) GenerateSubscriptionQR(c echo.Context) error {
 
 	qrCode, err := h.subscriptionUC.GenerateSubscriptionQR(c.Request().Context(), merchantID)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	// Return QR code as PNG image
@@ -143,7 +141,7 @@ func (h *SubscriptionHandler) ProcessQRSubscription(c echo.Context) error {
 
 	subscription, err := h.subscriptionUC.ProcessQRSubscription(c.Request().Context(), userID, req.QRData, req.DeviceInfo)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusCreated, subscription, "Subscribed via QR code successfully")
@@ -190,14 +188,4 @@ func (h *SubscriptionHandler) getMerchantID(c echo.Context) (uuid.UUID, error) {
 	}
 
 	return merchantID, nil
-}
-
-// handleAppError handles application errors
-func (h *SubscriptionHandler) handleAppError(c echo.Context, err error) error {
-	var appErr domainerrors.AppError
-	if errors.As(err, &appErr) {
-		return response.Error(c, appErr.HTTPCode(), appErr.ErrorCode(), appErr.Message(), appErr.Details())
-	}
-
-	return errors.WithStack(err)
 }
