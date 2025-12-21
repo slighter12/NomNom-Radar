@@ -2,11 +2,13 @@ package impl
 
 import (
 	"context"
+	"log/slog"
 	"math"
 	"sync"
 	"time"
 
 	"radar/config"
+	"radar/internal/infra/routing/ch"
 	"radar/internal/usecase"
 
 	"github.com/pkg/errors"
@@ -24,33 +26,66 @@ type routingService struct {
 	maxSnapDistanceKm float64 // Maximum distance for GPS coordinate snapping
 	defaultSpeedKmh   float64 // Default speed for duration estimation
 
-	// Engine state
-	isReady bool
-	mu      sync.RWMutex
+	// CH Engine (infrastructure layer)
+	engine *ch.Engine
+	logger *slog.Logger
 
-	// CH graph and query pool integrations will be added once dependencies are available
-	// chGraph    *routing.CHGraph
-	// queryPool  *routing.QueryPool
-	// spatialIdx *routing.SpatialIndex
+	// Engine state
+	mu sync.RWMutex
 }
 
 // NewRoutingService creates a new routing service instance
-func NewRoutingService(config *config.RoutingConfig) usecase.RoutingUsecase {
-	snapDistance := config.MaxSnapDistanceKm
+func NewRoutingService(cfg *config.RoutingConfig, logger *slog.Logger) usecase.RoutingUsecase {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	snapDistance := cfg.MaxSnapDistanceKm
 	if snapDistance <= 0 {
 		snapDistance = defaultSnapDistanceKm
 	}
 
-	speedKmh := config.DefaultSpeedKmh
+	speedKmh := cfg.DefaultSpeedKmh
 	if speedKmh <= 0 {
 		speedKmh = defaultSpeedKmh
 	}
 
-	return &routingService{
+	svc := &routingService{
 		maxSnapDistanceKm: snapDistance,
 		defaultSpeedKmh:   speedKmh,
-		isReady:           false, // Will be set to true when CH data is loaded
+		logger:            logger,
 	}
+
+	// Initialize CH engine if enabled and data path is configured
+	if cfg.Enabled && cfg.DataPath != "" {
+		engineConfig := ch.EngineConfig{
+			MaxSnapDistanceMeters:     snapDistance * 1000, // Convert km to meters
+			DefaultSpeedKmH:           speedKmh,
+			MaxQueryRadiusMeters:      10000, // 10 km default
+			OneToManyWorkers:          20,
+			PreFilterRadiusMultiplier: 1.3,
+			GridCellSizeKm:            1.0,
+		}
+
+		svc.engine = ch.NewEngine(engineConfig, logger)
+
+		// Try to load routing data
+		if err := svc.engine.LoadData(cfg.DataPath); err != nil {
+			logger.Warn("Failed to load CH routing data, using Haversine fallback",
+				"dataPath", cfg.DataPath,
+				"error", err,
+			)
+			svc.engine = nil
+		} else {
+			logger.Info("CH routing engine loaded successfully",
+				"dataPath", cfg.DataPath,
+			)
+		}
+	} else {
+		logger.Info("Routing engine disabled or no data path configured, using Haversine fallback")
+	}
+
+	return svc
 }
 
 // OneToMany calculates routes from one source coordinate to multiple target coordinates
@@ -66,17 +101,15 @@ func (s *routingService) OneToMany(ctx context.Context, source usecase.Coordinat
 		}, nil
 	}
 
-	// Check if CH engine is ready, otherwise use Haversine fallback
 	var (
 		result *usecase.OneToManyResult
 		err    error
 	)
 
+	// Use CH engine if ready, otherwise fallback to Haversine
 	if s.IsReady() {
-		// CH-based OneToMany routing will be wired when the engine is available; fallback for now
-		result, err = s.oneToManyHaversine(ctx, source, targets)
+		result, err = s.oneToManyCH(ctx, source, targets)
 	} else {
-		// Use Haversine fallback
 		result, err = s.oneToManyHaversine(ctx, source, targets)
 	}
 
@@ -92,6 +125,43 @@ func (s *routingService) OneToMany(ctx context.Context, source usecase.Coordinat
 	}
 
 	return result, nil
+}
+
+// oneToManyCH implements OneToMany using CH routing engine
+func (s *routingService) oneToManyCH(ctx context.Context, source usecase.Coordinate, targets []usecase.Coordinate) (*usecase.OneToManyResult, error) {
+	// Convert usecase coordinates to CH coordinates
+	chSource := ch.Coordinate{Lat: source.Lat, Lng: source.Lng}
+	chTargets := make([]ch.Coordinate, len(targets))
+	for idx, target := range targets {
+		chTargets[idx] = ch.Coordinate{Lat: target.Lat, Lng: target.Lng}
+	}
+
+	// Call CH engine
+	chResults, err := s.engine.OneToMany(ctx, chSource, chTargets)
+	if err != nil {
+		// Fallback to Haversine on CH engine error
+		s.logger.Warn("CH engine OneToMany failed, falling back to Haversine", "error", err)
+
+		return s.oneToManyHaversine(ctx, source, targets)
+	}
+
+	// Convert CH results to usecase results
+	results := make([]usecase.RouteResult, len(chResults))
+	for idx, chResult := range chResults {
+		results[idx] = usecase.RouteResult{
+			Source:      source,
+			Target:      targets[chResult.TargetIdx],
+			DistanceKm:  chResult.Distance / 1000, // Convert meters to km
+			DurationMin: chResult.Duration.Minutes(),
+			IsReachable: chResult.IsReachable,
+		}
+	}
+
+	return &usecase.OneToManyResult{
+		Source:  source,
+		Targets: targets,
+		Results: results,
+	}, nil
 }
 
 // oneToManyHaversine implements OneToMany using Haversine distance (straight-line)
@@ -121,34 +191,67 @@ func (s *routingService) oneToManyHaversine(ctx context.Context, source usecase.
 
 // FindNearestNode finds the nearest road network node to a given GPS coordinate
 func (s *routingService) FindNearestNode(ctx context.Context, coord usecase.Coordinate) (*usecase.NodeInfo, bool, error) {
-	// For now, return a mock node within maxSnapDistance
-	// Spatial index lookup will be added when the routing engine is integrated
-
 	if s.maxSnapDistanceKm <= 0 {
 		return nil, false, errors.New("invalid max snap distance configuration")
 	}
 
-	// Check if coordinate is within reasonable bounds (Taiwan)
+	// Check if coordinate is within reasonable bounds
 	if !s.isValidCoordinate(coord) {
 		return nil, false, errors.New("coordinate is outside valid bounds")
 	}
 
-	// Mock implementation: return the input coordinate as a node
-	// In real implementation, this would query the spatial index
+	// Use CH engine if ready
+	if s.IsReady() {
+		chCoord := ch.Coordinate{Lat: coord.Lat, Lng: coord.Lng}
+		result, findErr := s.engine.FindNearestNode(ctx, chCoord)
+		if findErr != nil {
+			// Return mock on error (GPS too far from road)
+			return nil, false, errors.Wrap(findErr, "failed to find nearest node")
+		}
+
+		nodeInfo := &usecase.NodeInfo{
+			ID:       usecase.NodeID(result.NodeID),
+			Location: usecase.Coordinate{Lat: result.NodeLat, Lng: result.NodeLng},
+		}
+
+		return nodeInfo, result.IsValid, nil
+	}
+
+	// Fallback: return the input coordinate as a mock node
 	nodeInfo := &usecase.NodeInfo{
-		ID:       usecase.NodeID(1), // Mock ID
+		ID:       usecase.NodeID(1),
 		Location: coord,
 	}
 
-	// For Haversine fallback, distance is always 0 (exact match)
-	distance := 0.0
-	withinRange := distance <= s.maxSnapDistanceKm
-
-	return nodeInfo, withinRange, nil
+	return nodeInfo, true, nil
 }
 
 // CalculateDistance calculates the road network distance between two coordinates
 func (s *routingService) CalculateDistance(ctx context.Context, source, target usecase.Coordinate) (*usecase.RouteResult, error) {
+	// Use CH engine if ready
+	if s.IsReady() {
+		chSource := ch.Coordinate{Lat: source.Lat, Lng: source.Lng}
+		chTarget := ch.Coordinate{Lat: target.Lat, Lng: target.Lng}
+
+		chResult, chErr := s.engine.ShortestPath(ctx, chSource, chTarget)
+		if chErr != nil {
+			// Fallback to Haversine on error (log but don't fail)
+			s.logger.Debug("CH ShortestPath failed, using Haversine fallback", "error", chErr)
+			result := s.calculateHaversineDistance(source, target)
+
+			return &result, nil
+		}
+
+		return &usecase.RouteResult{
+			Source:      source,
+			Target:      target,
+			DistanceKm:  chResult.Distance / 1000,
+			DurationMin: chResult.Duration.Minutes(),
+			IsReachable: chResult.IsReachable,
+		}, nil
+	}
+
+	// Fallback to Haversine
 	result := s.calculateHaversineDistance(source, target)
 
 	return &result, nil
@@ -216,14 +319,7 @@ func (s *routingService) IsReady() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return s.isReady
-}
-
-// setReady sets the ready state of the routing engine (internal method)
-func (s *routingService) setReady(ready bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.isReady = ready
+	return s.engine != nil && s.engine.IsReady()
 }
 
 func (s *routingService) workerCount(targetCount int) int {
