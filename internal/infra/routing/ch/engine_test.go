@@ -58,7 +58,8 @@ func setupTestDataDir(t *testing.T) string {
 			ShortcutsCount: 0,
 		},
 	}
-	metaBytes, _ := json.Marshal(metadata)
+	metaBytes, err := json.Marshal(metadata)
+	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "metadata.json"), metaBytes, 0644))
 
 	return tmpDir
