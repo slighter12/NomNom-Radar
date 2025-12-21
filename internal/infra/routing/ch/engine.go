@@ -1,6 +1,7 @@
 package ch
 
 import (
+	"container/heap"
 	"context"
 	"log/slog"
 	"math"
@@ -440,7 +441,8 @@ func (e *Engine) calculateDuration(distanceMeters float64) time.Duration {
 	return time.Duration(seconds * float64(time.Second))
 }
 
-// dijkstra performs Dijkstra's shortest path algorithm
+// dijkstra performs Dijkstra's shortest path algorithm using a heap-based priority queue.
+// Time complexity: O(E log V) where E is edges and V is vertices.
 // Returns (distance in meters, reachable)
 func (e *Engine) dijkstra(source, target int) (float64, bool) {
 	if !e.isValidVertexRange(source, target) {
@@ -453,9 +455,31 @@ func (e *Engine) dijkstra(source, target int) (float64, bool) {
 	}
 
 	distances := e.initializeDistances(source)
-	priorityQueue := []pqItem{{node: source, dist: 0}}
 
-	return e.runDijkstraSearch(target, distances, priorityQueue)
+	prioQueue := make(priorityQueue, 0, len(e.vertices))
+	heap.Push(&prioQueue, &pqItem{node: source, dist: 0})
+
+	for prioQueue.Len() > 0 {
+		current := heap.Pop(&prioQueue).(*pqItem)
+
+		if current.node == target {
+			return distances[target], true
+		}
+
+		if current.dist > distances[current.node] {
+			continue
+		}
+
+		for _, edge := range e.adjList[current.node] {
+			newDist := distances[current.node] + edge.weight
+			if newDist < distances[edge.to] {
+				distances[edge.to] = newDist
+				heap.Push(&prioQueue, &pqItem{node: edge.to, dist: newDist})
+			}
+		}
+	}
+
+	return 0, false
 }
 
 func (e *Engine) initializeDistances(source int) []float64 {
@@ -469,54 +493,38 @@ func (e *Engine) initializeDistances(source int) []float64 {
 	return distances
 }
 
+// pqItem represents an item in the priority queue.
 type pqItem struct {
 	node int
 	dist float64
 }
 
-func (e *Engine) runDijkstraSearch(target int, distances []float64, priorityQueue []pqItem) (float64, bool) {
-	for len(priorityQueue) > 0 {
-		// Find minimum
-		minIdx := e.findMinInQueue(priorityQueue)
-		current := priorityQueue[minIdx]
-		priorityQueue[minIdx] = priorityQueue[len(priorityQueue)-1]
-		priorityQueue = priorityQueue[:len(priorityQueue)-1]
+// priorityQueue implements heap.Interface for a min-heap of pqItems.
+type priorityQueue []*pqItem
 
-		if current.node == target {
-			return distances[target], true
-		}
+func (pq priorityQueue) Len() int { return len(pq) }
 
-		if current.dist > distances[current.node] {
-			continue
-		}
-
-		priorityQueue = e.relaxEdges(current.node, distances, priorityQueue)
-	}
-
-	return 0, false
+func (pq priorityQueue) Less(i, j int) bool {
+	return pq[i].dist < pq[j].dist
 }
 
-func (e *Engine) findMinInQueue(priorityQueue []pqItem) int {
-	minIdx := 0
-	for idx := 1; idx < len(priorityQueue); idx++ {
-		if priorityQueue[idx].dist < priorityQueue[minIdx].dist {
-			minIdx = idx
-		}
-	}
-
-	return minIdx
+func (pq priorityQueue) Swap(i, j int) {
+	pq[i], pq[j] = pq[j], pq[i]
 }
 
-func (e *Engine) relaxEdges(currentNode int, distances []float64, priorityQueue []pqItem) []pqItem {
-	for _, edge := range e.adjList[currentNode] {
-		newDist := distances[currentNode] + edge.weight
-		if newDist < distances[edge.to] {
-			distances[edge.to] = newDist
-			priorityQueue = append(priorityQueue, pqItem{node: edge.to, dist: newDist})
-		}
-	}
+func (pq *priorityQueue) Push(x any) {
+	item := x.(*pqItem)
+	*pq = append(*pq, item)
+}
 
-	return priorityQueue
+func (pq *priorityQueue) Pop() any {
+	old := *pq
+	n := len(old)
+	item := old[n-1]
+	old[n-1] = nil // avoid memory leak
+	*pq = old[0 : n-1]
+
+	return item
 }
 
 // haversineMeters calculates the great circle distance between two points in meters
