@@ -561,9 +561,10 @@ func TestNotificationService_GetMerchantNotificationHistory_Error(t *testing.T) 
 	assert.Contains(t, err.Error(), "failed to find notifications by merchant")
 }
 
-// TestNotificationService_RoutingDistanceFiltering verifies that subscribers
-// outside the notification radius are correctly filtered out using road network distance.
-func TestNotificationService_RoutingDistanceFiltering(t *testing.T) {
+// TestNotificationService_HaversineDistanceFiltering verifies that subscribers
+// outside the notification radius are correctly filtered out using Haversine (straight-line) distance.
+// Note: This test uses Haversine fallback since routing engine is disabled in the test fixture.
+func TestNotificationService_HaversineDistanceFiltering(t *testing.T) {
 	fx := createTestNotificationService(t)
 
 	ctx := context.Background()
