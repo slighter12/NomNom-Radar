@@ -27,6 +27,7 @@ const (
 )
 
 type notificationService struct {
+	logger           *slog.Logger
 	notificationRepo repository.NotificationRepository
 	subscriptionRepo repository.SubscriptionRepository
 	deviceRepo       repository.DeviceRepository
@@ -37,6 +38,7 @@ type notificationService struct {
 
 // NewNotificationService creates a new notification service instance
 func NewNotificationService(
+	logger *slog.Logger,
 	notificationRepo repository.NotificationRepository,
 	subscriptionRepo repository.SubscriptionRepository,
 	deviceRepo repository.DeviceRepository,
@@ -45,6 +47,7 @@ func NewNotificationService(
 	routingSvc usecase.RoutingUsecase,
 ) usecase.NotificationUsecase {
 	return &notificationService{
+		logger:           logger,
 		notificationRepo: notificationRepo,
 		subscriptionRepo: subscriptionRepo,
 		deviceRepo:       deviceRepo,
@@ -381,7 +384,7 @@ func (s *notificationService) sendAndProcessNotifications(
 	if len(notificationLogs) > 0 {
 		if err := s.notificationRepo.BatchCreateNotificationLogs(ctx, notificationLogs); err != nil {
 			// Log error but don't fail the entire operation
-			fmt.Printf("failed to create notification logs: %v\n", err)
+			s.logger.Error("failed to create notification logs", slog.Any("error", err))
 		}
 	}
 

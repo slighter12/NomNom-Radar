@@ -128,6 +128,26 @@ func TestSubscriptionService_SubscribeToMerchant_WithDevice(t *testing.T) {
 	assert.NotNil(t, subscription)
 }
 
+func TestSubscriptionService_SubscribeToMerchant_FindError(t *testing.T) {
+	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
+	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
+	mockQRService := mockSvc.NewMockQRCodeService(t)
+	cfg := &config.Config{}
+	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	merchantID := uuid.New()
+
+	mockSubRepo.EXPECT().
+		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
+		Return(nil, errors.New("db error"))
+
+	subscription, err := service.SubscribeToMerchant(ctx, userID, merchantID, nil)
+	assert.Error(t, err)
+	assert.Nil(t, subscription)
+}
+
 func TestSubscriptionService_UnsubscribeFromMerchant_Success(t *testing.T) {
 	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
 	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
