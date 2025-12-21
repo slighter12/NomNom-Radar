@@ -16,9 +16,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// deviceServiceFixtures holds all test dependencies for device service tests.
+type deviceServiceFixtures struct {
+	service    usecase.DeviceUsecase
+	deviceRepo *mockRepo.MockDeviceRepository
+}
+
+func createTestDeviceService(t *testing.T) deviceServiceFixtures {
+	deviceRepo := mockRepo.NewMockDeviceRepository(t)
+	service := NewDeviceService(deviceRepo)
+
+	return deviceServiceFixtures{
+		service:    service,
+		deviceRepo: deviceRepo,
+	}
+}
+
 func TestDeviceService_RegisterDevice_NewDevice(t *testing.T) {
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	service := NewDeviceService(mockDeviceRepo)
+	fx := createTestDeviceService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -28,15 +43,15 @@ func TestDeviceService_RegisterDevice_NewDevice(t *testing.T) {
 		Platform: "ios",
 	}
 
-	mockDeviceRepo.EXPECT().
+	fx.deviceRepo.EXPECT().
 		FindDevicesByUser(ctx, userID).
 		Return([]*entity.UserDevice{}, nil)
 
-	mockDeviceRepo.EXPECT().
+	fx.deviceRepo.EXPECT().
 		CreateDevice(ctx, mock.AnythingOfType("*entity.UserDevice")).
 		Return(nil)
 
-	device, err := service.RegisterDevice(ctx, userID, deviceInfo)
+	device, err := fx.service.RegisterDevice(ctx, userID, deviceInfo)
 	require.NoError(t, err)
 	assert.NotNil(t, device)
 	assert.Equal(t, userID, device.UserID)
@@ -47,8 +62,7 @@ func TestDeviceService_RegisterDevice_NewDevice(t *testing.T) {
 }
 
 func TestDeviceService_RegisterDevice_UpdateExisting(t *testing.T) {
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	service := NewDeviceService(mockDeviceRepo)
+	fx := createTestDeviceService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -77,27 +91,26 @@ func TestDeviceService_RegisterDevice_UpdateExisting(t *testing.T) {
 		IsActive: true,
 	}
 
-	mockDeviceRepo.EXPECT().
+	fx.deviceRepo.EXPECT().
 		FindDevicesByUser(ctx, userID).
 		Return([]*entity.UserDevice{existingDevice}, nil)
 
-	mockDeviceRepo.EXPECT().
+	fx.deviceRepo.EXPECT().
 		UpdateFCMToken(ctx, deviceID, "new-fcm-token").
 		Return(nil)
 
-	mockDeviceRepo.EXPECT().
+	fx.deviceRepo.EXPECT().
 		FindDeviceByID(ctx, deviceID).
 		Return(updatedDevice, nil)
 
-	device, err := service.RegisterDevice(ctx, userID, deviceInfo)
+	device, err := fx.service.RegisterDevice(ctx, userID, deviceInfo)
 	require.NoError(t, err)
 	assert.NotNil(t, device)
 	assert.Equal(t, "new-fcm-token", device.FCMToken)
 }
 
 func TestDeviceService_UpdateFCMToken_Success(t *testing.T) {
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	service := NewDeviceService(mockDeviceRepo)
+	fx := createTestDeviceService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -111,39 +124,37 @@ func TestDeviceService_UpdateFCMToken_Success(t *testing.T) {
 		DeviceID: "device-123",
 	}
 
-	mockDeviceRepo.EXPECT().
+	fx.deviceRepo.EXPECT().
 		FindDeviceByID(ctx, deviceID).
 		Return(existingDevice, nil)
 
-	mockDeviceRepo.EXPECT().
+	fx.deviceRepo.EXPECT().
 		UpdateFCMToken(ctx, deviceID, newToken).
 		Return(nil)
 
-	err := service.UpdateFCMToken(ctx, userID, deviceID, newToken)
+	err := fx.service.UpdateFCMToken(ctx, userID, deviceID, newToken)
 	require.NoError(t, err)
 }
 
 func TestDeviceService_UpdateFCMToken_NotFound(t *testing.T) {
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	service := NewDeviceService(mockDeviceRepo)
+	fx := createTestDeviceService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
 	deviceID := uuid.New()
 	newToken := "new-fcm-token"
 
-	mockDeviceRepo.EXPECT().
+	fx.deviceRepo.EXPECT().
 		FindDeviceByID(ctx, deviceID).
 		Return(nil, repository.ErrDeviceNotFound)
 
-	err := service.UpdateFCMToken(ctx, userID, deviceID, newToken)
+	err := fx.service.UpdateFCMToken(ctx, userID, deviceID, newToken)
 	assert.Error(t, err)
 	assert.Equal(t, ErrDeviceNotFound, err)
 }
 
 func TestDeviceService_UpdateFCMToken_Unauthorized(t *testing.T) {
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	service := NewDeviceService(mockDeviceRepo)
+	fx := createTestDeviceService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -157,18 +168,17 @@ func TestDeviceService_UpdateFCMToken_Unauthorized(t *testing.T) {
 		FCMToken: "old-token",
 	}
 
-	mockDeviceRepo.EXPECT().
+	fx.deviceRepo.EXPECT().
 		FindDeviceByID(ctx, deviceID).
 		Return(existingDevice, nil)
 
-	err := service.UpdateFCMToken(ctx, userID, deviceID, newToken)
+	err := fx.service.UpdateFCMToken(ctx, userID, deviceID, newToken)
 	assert.Error(t, err)
 	assert.Equal(t, ErrDeviceUnauthorized, err)
 }
 
 func TestDeviceService_GetUserDevices(t *testing.T) {
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	service := NewDeviceService(mockDeviceRepo)
+	fx := createTestDeviceService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -177,18 +187,17 @@ func TestDeviceService_GetUserDevices(t *testing.T) {
 		{ID: uuid.New(), UserID: userID, IsActive: true},
 	}
 
-	mockDeviceRepo.EXPECT().
+	fx.deviceRepo.EXPECT().
 		FindActiveDevicesByUser(ctx, userID).
 		Return(expectedDevices, nil)
 
-	devices, err := service.GetUserDevices(ctx, userID)
+	devices, err := fx.service.GetUserDevices(ctx, userID)
 	require.NoError(t, err)
 	assert.Equal(t, expectedDevices, devices)
 }
 
 func TestDeviceService_DeactivateDevice_Success(t *testing.T) {
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	service := NewDeviceService(mockDeviceRepo)
+	fx := createTestDeviceService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -200,21 +209,20 @@ func TestDeviceService_DeactivateDevice_Success(t *testing.T) {
 		IsActive: true,
 	}
 
-	mockDeviceRepo.EXPECT().
+	fx.deviceRepo.EXPECT().
 		FindDeviceByID(ctx, deviceID).
 		Return(existingDevice, nil)
 
-	mockDeviceRepo.EXPECT().
+	fx.deviceRepo.EXPECT().
 		DeleteDevice(ctx, deviceID).
 		Return(nil)
 
-	err := service.DeactivateDevice(ctx, userID, deviceID)
+	err := fx.service.DeactivateDevice(ctx, userID, deviceID)
 	require.NoError(t, err)
 }
 
 func TestDeviceService_DeactivateDevice_Unauthorized(t *testing.T) {
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	service := NewDeviceService(mockDeviceRepo)
+	fx := createTestDeviceService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -227,18 +235,17 @@ func TestDeviceService_DeactivateDevice_Unauthorized(t *testing.T) {
 		IsActive: true,
 	}
 
-	mockDeviceRepo.EXPECT().
+	fx.deviceRepo.EXPECT().
 		FindDeviceByID(ctx, deviceID).
 		Return(existingDevice, nil)
 
-	err := service.DeactivateDevice(ctx, userID, deviceID)
+	err := fx.service.DeactivateDevice(ctx, userID, deviceID)
 	assert.Error(t, err)
 	assert.Equal(t, ErrDeviceUnauthorized, err)
 }
 
 func TestDeviceService_RegisterDevice_FindError(t *testing.T) {
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	service := NewDeviceService(mockDeviceRepo)
+	fx := createTestDeviceService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -249,11 +256,11 @@ func TestDeviceService_RegisterDevice_FindError(t *testing.T) {
 	}
 
 	expectedErr := errors.New("database error")
-	mockDeviceRepo.EXPECT().
+	fx.deviceRepo.EXPECT().
 		FindDevicesByUser(ctx, userID).
 		Return(nil, expectedErr)
 
-	device, err := service.RegisterDevice(ctx, userID, deviceInfo)
+	device, err := fx.service.RegisterDevice(ctx, userID, deviceInfo)
 	assert.Error(t, err)
 	assert.Nil(t, device)
 	assert.Contains(t, err.Error(), "failed to find devices by user")
