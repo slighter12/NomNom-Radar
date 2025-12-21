@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -318,11 +319,12 @@ func floatToString(f float64) string {
 }
 
 func writeLines(b *testing.B, path string, lines []string) {
-	content := ""
+	var sb strings.Builder
 	for _, line := range lines {
-		content += line + "\n"
+		sb.WriteString(line)
+		sb.WriteString("\n")
 	}
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(sb.String()), 0644); err != nil {
 		b.Fatalf("Failed to write %s: %v", path, err)
 	}
 }
