@@ -132,7 +132,11 @@ func TestSubscriptionService_SubscribeToMerchant_FindError(t *testing.T) {
 	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
 	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
 	mockQRService := mockSvc.NewMockQRCodeService(t)
-	cfg := &config.Config{}
+	cfg := &config.Config{
+		LocationNotification: &config.LocationNotificationConfig{
+			DefaultRadius: 1000.0,
+		},
+	}
 	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
 
 	ctx := context.Background()
@@ -152,7 +156,11 @@ func TestSubscriptionService_UnsubscribeFromMerchant_Success(t *testing.T) {
 	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
 	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
 	mockQRService := mockSvc.NewMockQRCodeService(t)
-	cfg := &config.Config{}
+	cfg := &config.Config{
+		LocationNotification: &config.LocationNotificationConfig{
+			DefaultRadius: 1000.0,
+		},
+	}
 	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
 
 	ctx := context.Background()
@@ -183,7 +191,11 @@ func TestSubscriptionService_UnsubscribeFromMerchant_NotFound(t *testing.T) {
 	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
 	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
 	mockQRService := mockSvc.NewMockQRCodeService(t)
-	cfg := &config.Config{}
+	cfg := &config.Config{
+		LocationNotification: &config.LocationNotificationConfig{
+			DefaultRadius: 1000.0,
+		},
+	}
 	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
 
 	ctx := context.Background()
@@ -203,7 +215,11 @@ func TestSubscriptionService_GetUserSubscriptions(t *testing.T) {
 	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
 	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
 	mockQRService := mockSvc.NewMockQRCodeService(t)
-	cfg := &config.Config{}
+	cfg := &config.Config{
+		LocationNotification: &config.LocationNotificationConfig{
+			DefaultRadius: 1000.0,
+		},
+	}
 	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
 
 	ctx := context.Background()
@@ -225,7 +241,11 @@ func TestSubscriptionService_GetMerchantSubscribers(t *testing.T) {
 	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
 	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
 	mockQRService := mockSvc.NewMockQRCodeService(t)
-	cfg := &config.Config{}
+	cfg := &config.Config{
+		LocationNotification: &config.LocationNotificationConfig{
+			DefaultRadius: 1000.0,
+		},
+	}
 	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
 
 	ctx := context.Background()
@@ -247,7 +267,11 @@ func TestSubscriptionService_GenerateSubscriptionQR(t *testing.T) {
 	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
 	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
 	mockQRService := mockSvc.NewMockQRCodeService(t)
-	cfg := &config.Config{}
+	cfg := &config.Config{
+		LocationNotification: &config.LocationNotificationConfig{
+			DefaultRadius: 1000.0,
+		},
+	}
 	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
 
 	ctx := context.Background()
@@ -301,7 +325,11 @@ func TestSubscriptionService_ProcessQRSubscription_InvalidQR(t *testing.T) {
 	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
 	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
 	mockQRService := mockSvc.NewMockQRCodeService(t)
-	cfg := &config.Config{}
+	cfg := &config.Config{
+		LocationNotification: &config.LocationNotificationConfig{
+			DefaultRadius: 1000.0,
+		},
+	}
 	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
 
 	ctx := context.Background()

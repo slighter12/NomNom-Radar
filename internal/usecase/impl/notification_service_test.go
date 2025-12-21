@@ -19,14 +19,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func createTestNotificationService(t *testing.T) (
-	usecase.NotificationUsecase,
-	*mockRepo.MockNotificationRepository,
-	*mockRepo.MockSubscriptionRepository,
-	*mockRepo.MockDeviceRepository,
-	*mockRepo.MockAddressRepository,
-	*mockSvc.MockNotificationService,
-) {
+// notificationServiceFixtures holds all test dependencies for notification service tests.
+type notificationServiceFixtures struct {
+	service          usecase.NotificationUsecase
+	notificationRepo *mockRepo.MockNotificationRepository
+	subscriptionRepo *mockRepo.MockSubscriptionRepository
+	deviceRepo       *mockRepo.MockDeviceRepository
+	addressRepo      *mockRepo.MockAddressRepository
+	notificationSvc  *mockSvc.MockNotificationService
+}
+
+func createTestNotificationService(t *testing.T) notificationServiceFixtures {
 	notificationRepo := mockRepo.NewMockNotificationRepository(t)
 	subscriptionRepo := mockRepo.NewMockSubscriptionRepository(t)
 	deviceRepo := mockRepo.NewMockDeviceRepository(t)
@@ -49,11 +52,18 @@ func createTestNotificationService(t *testing.T) (
 		}),
 	)
 
-	return service, notificationRepo, subscriptionRepo, deviceRepo, addressRepo, notificationSvc
+	return notificationServiceFixtures{
+		service:          service,
+		notificationRepo: notificationRepo,
+		subscriptionRepo: subscriptionRepo,
+		deviceRepo:       deviceRepo,
+		addressRepo:      addressRepo,
+		notificationSvc:  notificationSvc,
+	}
 }
 
 func TestNotificationService_PublishLocationNotification_Success(t *testing.T) {
-	service, notificationRepo, subscriptionRepo, _, _, notificationSvc := createTestNotificationService(t)
+	fx := createTestNotificationService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
@@ -65,27 +75,27 @@ func TestNotificationService_PublishLocationNotification_Success(t *testing.T) {
 	}
 	subscriberOwnerID := uuid.New()
 
-	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
+	fx.notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
 
-	subscriptionRepo.EXPECT().
+	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
 			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
 		}, nil)
 
 	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberOwnerID, FCMToken: "test-fcm-token"}
-	subscriptionRepo.EXPECT().
+	fx.subscriptionRepo.EXPECT().
 		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
 		Return([]*entity.UserDevice{userDevice}, nil)
 
-	notificationSvc.EXPECT().
+	fx.notificationSvc.EXPECT().
 		SendBatchNotification(ctx, []string{"test-fcm-token"}, "商戶位置通知", mock.Anything, mock.Anything).
 		Return(1, 0, nil, nil)
 
-	notificationRepo.EXPECT().BatchCreateNotificationLogs(ctx, mock.Anything).Return(nil)
-	notificationRepo.EXPECT().UpdateNotificationStatus(ctx, mock.Anything, 1, 0).Return(nil)
+	fx.notificationRepo.EXPECT().BatchCreateNotificationLogs(ctx, mock.Anything).Return(nil)
+	fx.notificationRepo.EXPECT().UpdateNotificationStatus(ctx, mock.Anything, 1, 0).Return(nil)
 
-	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "hint")
+	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, locationData, "hint")
 
 	require.NoError(t, err)
 	assert.NotNil(t, notification)
@@ -93,7 +103,7 @@ func TestNotificationService_PublishLocationNotification_Success(t *testing.T) {
 }
 
 func TestNotificationService_PublishLocationNotification_NoSubscribers(t *testing.T) {
-	service, notificationRepo, subscriptionRepo, _, _, _ := createTestNotificationService(t)
+	fx := createTestNotificationService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
@@ -103,19 +113,19 @@ func TestNotificationService_PublishLocationNotification_NoSubscribers(t *testin
 		Longitude:    121.0,
 	}
 
-	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
-	subscriptionRepo.EXPECT().
+	fx.notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
+	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{}, nil)
 
-	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
+	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
 
 	require.NoError(t, err)
 	assert.Equal(t, 0, notification.TotalSent)
 }
 
 func TestNotificationService_PublishLocationNotification_RoutingFailure(t *testing.T) {
-	service, notificationRepo, subscriptionRepo, _, _, _ := createTestNotificationService(t)
+	fx := createTestNotificationService(t)
 
 	// Use a canceled context to trigger routing failure
 	ctx, cancel := context.WithCancel(context.Background())
@@ -125,49 +135,49 @@ func TestNotificationService_PublishLocationNotification_RoutingFailure(t *testi
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
 	subscriberOwnerID := uuid.New()
 
-	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
-	subscriptionRepo.EXPECT().
+	fx.notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
+	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
 			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
 		}, nil)
 
-	_, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
+	_, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "routing service failed")
 }
 
 func TestNotificationService_PublishLocationNotification_PartialDeliveryFailure(t *testing.T) {
-	service, notificationRepo, subscriptionRepo, deviceRepo, _, notificationSvc := createTestNotificationService(t)
+	fx := createTestNotificationService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
 	subscriberOwnerID := uuid.New()
 
-	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
-	subscriptionRepo.EXPECT().
+	fx.notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
+	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
 			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
 		}, nil)
 
 	deviceID := uuid.New()
-	subscriptionRepo.EXPECT().
+	fx.subscriptionRepo.EXPECT().
 		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
 		Return([]*entity.UserDevice{{ID: deviceID, UserID: subscriberOwnerID, FCMToken: "bad-token"}}, nil)
 
 	// Simulate: 0 success, 1 failure with an invalid token that should be cleaned up
-	notificationSvc.EXPECT().
+	fx.notificationSvc.EXPECT().
 		SendBatchNotification(ctx, []string{"bad-token"}, "商戶位置通知", mock.Anything, mock.Anything).
 		Return(0, 1, []string{"bad-token"}, nil)
 
-	notificationRepo.EXPECT().BatchCreateNotificationLogs(ctx, mock.Anything).Return(nil)
-	deviceRepo.EXPECT().DeleteDevice(ctx, deviceID).Return(nil)
-	notificationRepo.EXPECT().UpdateNotificationStatus(ctx, mock.Anything, 0, 1).Return(nil)
+	fx.notificationRepo.EXPECT().BatchCreateNotificationLogs(ctx, mock.Anything).Return(nil)
+	fx.deviceRepo.EXPECT().DeleteDevice(ctx, deviceID).Return(nil)
+	fx.notificationRepo.EXPECT().UpdateNotificationStatus(ctx, mock.Anything, 0, 1).Return(nil)
 
-	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
+	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
 
 	require.NoError(t, err)
 	assert.Equal(t, 0, notification.TotalSent)
@@ -175,26 +185,26 @@ func TestNotificationService_PublishLocationNotification_PartialDeliveryFailure(
 }
 
 func TestNotificationService_PublishLocationNotification_InvalidInput(t *testing.T) {
-	service, _, _, _, _, _ := createTestNotificationService(t)
+	fx := createTestNotificationService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
 
-	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, nil, "")
+	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, nil, "")
 
 	assert.ErrorIs(t, err, ErrInvalidNotificationData)
 	assert.Nil(t, notification)
 }
 
 func TestNotificationService_PublishLocationNotification_UnauthorizedAddress(t *testing.T) {
-	service, _, _, _, addressRepo, _ := createTestNotificationService(t)
+	fx := createTestNotificationService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
 	otherMerchant := uuid.New()
 	addressID := uuid.New()
 
-	addressRepo.EXPECT().
+	fx.addressRepo.EXPECT().
 		FindAddressByID(ctx, addressID).
 		Return(&entity.Address{
 			ID:        addressID,
@@ -203,7 +213,7 @@ func TestNotificationService_PublishLocationNotification_UnauthorizedAddress(t *
 			Label:     "Not owned",
 		}, nil)
 
-	notification, err := service.PublishLocationNotification(ctx, merchantID, &addressID, nil, "")
+	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, &addressID, nil, "")
 
 	assert.Error(t, err)
 	assert.Nil(t, notification)
@@ -211,18 +221,18 @@ func TestNotificationService_PublishLocationNotification_UnauthorizedAddress(t *
 }
 
 func TestNotificationService_PublishLocationNotification_SubscriptionError(t *testing.T) {
-	service, notificationRepo, subscriptionRepo, _, _, _ := createTestNotificationService(t)
+	fx := createTestNotificationService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
 
-	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
-	subscriptionRepo.EXPECT().
+	fx.notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
+	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return(nil, errors.New("db error"))
 
-	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
+	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
 
 	assert.Error(t, err)
 	assert.Nil(t, notification)
@@ -230,20 +240,20 @@ func TestNotificationService_PublishLocationNotification_SubscriptionError(t *te
 }
 
 func TestNotificationService_PublishLocationNotification_UnreachableTargets(t *testing.T) {
-	service, notificationRepo, subscriptionRepo, _, _, _ := createTestNotificationService(t)
+	fx := createTestNotificationService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
 
-	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
-	subscriptionRepo.EXPECT().
+	fx.notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
+	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
 			{Address: entity.Address{OwnerID: uuid.New(), Latitude: 25.1, Longitude: 121.1}, NotificationRadius: 0.5},
 		}, nil)
 
-	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
+	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
 
 	require.NoError(t, err)
 	assert.NotNil(t, notification)
@@ -251,7 +261,7 @@ func TestNotificationService_PublishLocationNotification_UnreachableTargets(t *t
 }
 
 func TestNotificationService_GetMerchantNotificationHistory(t *testing.T) {
-	service, notificationRepo, _, _, _, _ := createTestNotificationService(t)
+	fx := createTestNotificationService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
@@ -259,18 +269,18 @@ func TestNotificationService_GetMerchantNotificationHistory(t *testing.T) {
 		{ID: uuid.New(), MerchantID: merchantID},
 	}
 
-	notificationRepo.EXPECT().
+	fx.notificationRepo.EXPECT().
 		FindNotificationsByMerchant(ctx, merchantID, 10, 0).
 		Return(expected, nil)
 
-	got, err := service.GetMerchantNotificationHistory(ctx, merchantID, 10, 0)
+	got, err := fx.service.GetMerchantNotificationHistory(ctx, merchantID, 10, 0)
 
 	require.NoError(t, err)
 	assert.Equal(t, expected, got)
 }
 
 func TestNotificationService_PublishLocationNotification_WithAddressID(t *testing.T) {
-	service, notificationRepo, subscriptionRepo, _, addressRepo, notificationSvc := createTestNotificationService(t)
+	fx := createTestNotificationService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
@@ -287,31 +297,31 @@ func TestNotificationService_PublishLocationNotification_WithAddressID(t *testin
 		Longitude:   121.05,
 	}
 
-	addressRepo.EXPECT().
+	fx.addressRepo.EXPECT().
 		FindAddressByID(ctx, addressID).
 		Return(address, nil)
 
-	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
+	fx.notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
 
-	subscriptionRepo.EXPECT().
+	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, address.Latitude, address.Longitude).
 		Return([]*entity.SubscriberAddress{
 			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.051, Longitude: 121.051}, NotificationRadius: 1.0},
 		}, nil)
 
 	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberOwnerID, FCMToken: "token-123"}
-	subscriptionRepo.EXPECT().
+	fx.subscriptionRepo.EXPECT().
 		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
 		Return([]*entity.UserDevice{userDevice}, nil)
 
-	notificationSvc.EXPECT().
+	fx.notificationSvc.EXPECT().
 		SendBatchNotification(ctx, []string{"token-123"}, "商戶位置通知", mock.Anything, mock.Anything).
 		Return(1, 0, nil, nil)
 
-	notificationRepo.EXPECT().BatchCreateNotificationLogs(ctx, mock.Anything).Return(nil)
-	notificationRepo.EXPECT().UpdateNotificationStatus(ctx, mock.Anything, 1, 0).Return(nil)
+	fx.notificationRepo.EXPECT().BatchCreateNotificationLogs(ctx, mock.Anything).Return(nil)
+	fx.notificationRepo.EXPECT().UpdateNotificationStatus(ctx, mock.Anything, 1, 0).Return(nil)
 
-	notification, err := service.PublishLocationNotification(ctx, merchantID, &addressID, nil, "")
+	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, &addressID, nil, "")
 
 	require.NoError(t, err)
 	assert.NotNil(t, notification)
@@ -321,17 +331,17 @@ func TestNotificationService_PublishLocationNotification_WithAddressID(t *testin
 }
 
 func TestNotificationService_PublishLocationNotification_AddressNotFound(t *testing.T) {
-	service, _, _, _, addressRepo, _ := createTestNotificationService(t)
+	fx := createTestNotificationService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
 	addressID := uuid.New()
 
-	addressRepo.EXPECT().
+	fx.addressRepo.EXPECT().
 		FindAddressByID(ctx, addressID).
 		Return(nil, errors.New("address not found"))
 
-	notification, err := service.PublishLocationNotification(ctx, merchantID, &addressID, nil, "")
+	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, &addressID, nil, "")
 
 	assert.Error(t, err)
 	assert.Nil(t, notification)
@@ -339,17 +349,17 @@ func TestNotificationService_PublishLocationNotification_AddressNotFound(t *test
 }
 
 func TestNotificationService_PublishLocationNotification_CreateNotificationError(t *testing.T) {
-	service, notificationRepo, _, _, _, _ := createTestNotificationService(t)
+	fx := createTestNotificationService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
 
-	notificationRepo.EXPECT().
+	fx.notificationRepo.EXPECT().
 		CreateNotification(ctx, mock.Anything).
 		Return(errors.New("db connection failed"))
 
-	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
+	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
 
 	assert.Error(t, err)
 	assert.Nil(t, notification)
@@ -357,26 +367,26 @@ func TestNotificationService_PublishLocationNotification_CreateNotificationError
 }
 
 func TestNotificationService_PublishLocationNotification_FindDevicesError(t *testing.T) {
-	service, notificationRepo, subscriptionRepo, _, _, _ := createTestNotificationService(t)
+	fx := createTestNotificationService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
 	subscriberOwnerID := uuid.New()
 
-	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
+	fx.notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
 
-	subscriptionRepo.EXPECT().
+	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
 			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
 		}, nil)
 
-	subscriptionRepo.EXPECT().
+	fx.subscriptionRepo.EXPECT().
 		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
 		Return(nil, errors.New("device query failed"))
 
-	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
+	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
 
 	assert.Error(t, err)
 	assert.Nil(t, notification)
@@ -384,35 +394,35 @@ func TestNotificationService_PublishLocationNotification_FindDevicesError(t *tes
 }
 
 func TestNotificationService_PublishLocationNotification_SendBatchError(t *testing.T) {
-	service, notificationRepo, subscriptionRepo, _, _, notificationSvc := createTestNotificationService(t)
+	fx := createTestNotificationService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
 	subscriberOwnerID := uuid.New()
 
-	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
+	fx.notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
 
-	subscriptionRepo.EXPECT().
+	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
 			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
 		}, nil)
 
 	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberOwnerID, FCMToken: "token-xyz"}
-	subscriptionRepo.EXPECT().
+	fx.subscriptionRepo.EXPECT().
 		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
 		Return([]*entity.UserDevice{userDevice}, nil)
 
 	// SendBatchNotification returns an error (e.g., Firebase service unavailable)
-	notificationSvc.EXPECT().
+	fx.notificationSvc.EXPECT().
 		SendBatchNotification(ctx, []string{"token-xyz"}, "商戶位置通知", mock.Anything, mock.Anything).
 		Return(0, 0, nil, errors.New("firebase unavailable"))
 
 	// Even with error, the flow continues and updates status with all failures
-	notificationRepo.EXPECT().UpdateNotificationStatus(ctx, mock.Anything, 0, 1).Return(nil)
+	fx.notificationRepo.EXPECT().UpdateNotificationStatus(ctx, mock.Anything, 0, 1).Return(nil)
 
-	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
+	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
 
 	require.NoError(t, err)
 	assert.NotNil(t, notification)
@@ -421,36 +431,36 @@ func TestNotificationService_PublishLocationNotification_SendBatchError(t *testi
 }
 
 func TestNotificationService_PublishLocationNotification_UpdateStatusError(t *testing.T) {
-	service, notificationRepo, subscriptionRepo, _, _, notificationSvc := createTestNotificationService(t)
+	fx := createTestNotificationService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
 	subscriberOwnerID := uuid.New()
 
-	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
+	fx.notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
 
-	subscriptionRepo.EXPECT().
+	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
 			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
 		}, nil)
 
 	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberOwnerID, FCMToken: "token-abc"}
-	subscriptionRepo.EXPECT().
+	fx.subscriptionRepo.EXPECT().
 		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
 		Return([]*entity.UserDevice{userDevice}, nil)
 
-	notificationSvc.EXPECT().
+	fx.notificationSvc.EXPECT().
 		SendBatchNotification(ctx, []string{"token-abc"}, "商戶位置通知", mock.Anything, mock.Anything).
 		Return(1, 0, nil, nil)
 
-	notificationRepo.EXPECT().BatchCreateNotificationLogs(ctx, mock.Anything).Return(nil)
-	notificationRepo.EXPECT().
+	fx.notificationRepo.EXPECT().BatchCreateNotificationLogs(ctx, mock.Anything).Return(nil)
+	fx.notificationRepo.EXPECT().
 		UpdateNotificationStatus(ctx, mock.Anything, 1, 0).
 		Return(errors.New("status update failed"))
 
-	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
+	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
 
 	assert.Error(t, err)
 	assert.Nil(t, notification)
@@ -458,20 +468,20 @@ func TestNotificationService_PublishLocationNotification_UpdateStatusError(t *te
 }
 
 func TestNotificationService_PublishLocationNotification_MultipleSubscribers(t *testing.T) {
-	service, notificationRepo, subscriptionRepo, _, _, notificationSvc := createTestNotificationService(t)
+	fx := createTestNotificationService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
 
-	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
+	fx.notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
 
 	user1ID := uuid.New()
 	user2ID := uuid.New()
 	user3ID := uuid.New()
 
 	// 3 subscribers: 2 reachable (within radius), 1 unreachable (outside radius)
-	subscriptionRepo.EXPECT().
+	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
 			{Address: entity.Address{OwnerID: user1ID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0}, // reachable
@@ -480,7 +490,7 @@ func TestNotificationService_PublishLocationNotification_MultipleSubscribers(t *
 		}, nil)
 
 	// Only 2 users are reachable - use assert.ElementsMatch for unordered slice comparison
-	subscriptionRepo.EXPECT().
+	fx.subscriptionRepo.EXPECT().
 		FindDevicesForUsers(ctx, mock.MatchedBy(func(ids []uuid.UUID) bool {
 			return assert.ElementsMatch(t, []uuid.UUID{user1ID, user2ID}, ids)
 		})).
@@ -489,16 +499,16 @@ func TestNotificationService_PublishLocationNotification_MultipleSubscribers(t *
 			{ID: uuid.New(), UserID: user2ID, FCMToken: "token-2"},
 		}, nil)
 
-	notificationSvc.EXPECT().
+	fx.notificationSvc.EXPECT().
 		SendBatchNotification(ctx, mock.MatchedBy(func(tokens []string) bool {
 			return assert.ElementsMatch(t, []string{"token-1", "token-2"}, tokens)
 		}), "商戶位置通知", mock.Anything, mock.Anything).
 		Return(2, 0, nil, nil)
 
-	notificationRepo.EXPECT().BatchCreateNotificationLogs(ctx, mock.Anything).Return(nil)
-	notificationRepo.EXPECT().UpdateNotificationStatus(ctx, mock.Anything, 2, 0).Return(nil)
+	fx.notificationRepo.EXPECT().BatchCreateNotificationLogs(ctx, mock.Anything).Return(nil)
+	fx.notificationRepo.EXPECT().UpdateNotificationStatus(ctx, mock.Anything, 2, 0).Return(nil)
 
-	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
+	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
 
 	require.NoError(t, err)
 	assert.Equal(t, 2, notification.TotalSent)
@@ -506,27 +516,27 @@ func TestNotificationService_PublishLocationNotification_MultipleSubscribers(t *
 }
 
 func TestNotificationService_PublishLocationNotification_NoDevicesForSubscribers(t *testing.T) {
-	service, notificationRepo, subscriptionRepo, _, _, _ := createTestNotificationService(t)
+	fx := createTestNotificationService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
 	subscriberOwnerID := uuid.New()
 
-	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
+	fx.notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
 
-	subscriptionRepo.EXPECT().
+	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
 			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
 		}, nil)
 
 	// Subscriber exists but has no registered devices
-	subscriptionRepo.EXPECT().
+	fx.subscriptionRepo.EXPECT().
 		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
 		Return([]*entity.UserDevice{}, nil)
 
-	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
+	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
 
 	require.NoError(t, err)
 	assert.NotNil(t, notification)
@@ -535,16 +545,16 @@ func TestNotificationService_PublishLocationNotification_NoDevicesForSubscribers
 }
 
 func TestNotificationService_GetMerchantNotificationHistory_Error(t *testing.T) {
-	service, notificationRepo, _, _, _, _ := createTestNotificationService(t)
+	fx := createTestNotificationService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
 
-	notificationRepo.EXPECT().
+	fx.notificationRepo.EXPECT().
 		FindNotificationsByMerchant(ctx, merchantID, 10, 0).
 		Return(nil, errors.New("database error"))
 
-	notifications, err := service.GetMerchantNotificationHistory(ctx, merchantID, 10, 0)
+	notifications, err := fx.service.GetMerchantNotificationHistory(ctx, merchantID, 10, 0)
 
 	assert.Error(t, err)
 	assert.Nil(t, notifications)
