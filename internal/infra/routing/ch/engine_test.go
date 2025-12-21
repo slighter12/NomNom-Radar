@@ -285,7 +285,7 @@ func TestEngine_OneToMany_Concurrent(t *testing.T) {
 				return
 			}
 			if len(results) != numTargets {
-				errCh <- errors.New("unexpected result count")
+				errCh <- errors.Errorf("unexpected result count: got %d, want %d", len(results), numTargets)
 
 				return
 			}
