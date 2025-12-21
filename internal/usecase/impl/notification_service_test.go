@@ -63,28 +63,27 @@ func TestNotificationService_PublishLocationNotification_Success(t *testing.T) {
 		Latitude:     25.0,
 		Longitude:    121.0,
 	}
+	subscriberOwnerID := uuid.New()
 
-	notificationRepo.EXPECT().CreateNotification(mock.Anything, mock.Anything).Return(nil)
+	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
 
-	subscriberAddress := &entity.SubscriberAddress{
-		Address:            entity.Address{OwnerID: uuid.New(), Latitude: 25.001, Longitude: 121.001},
-		NotificationRadius: 1.0,
-	}
 	subscriptionRepo.EXPECT().
-		FindSubscriberAddressesWithinRadius(mock.Anything, merchantID, 25.0, 121.0).
-		Return([]*entity.SubscriberAddress{subscriberAddress}, nil)
+		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
+		Return([]*entity.SubscriberAddress{
+			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
+		}, nil)
 
-	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberAddress.OwnerID, FCMToken: "test-fcm-token"}
+	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberOwnerID, FCMToken: "test-fcm-token"}
 	subscriptionRepo.EXPECT().
-		FindDevicesForUsers(mock.Anything, []uuid.UUID{subscriberAddress.OwnerID}).
+		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
 		Return([]*entity.UserDevice{userDevice}, nil)
 
 	notificationSvc.EXPECT().
-		SendBatchNotification(mock.Anything, []string{"test-fcm-token"}, mock.Anything, mock.Anything, mock.Anything).
+		SendBatchNotification(ctx, []string{"test-fcm-token"}, "商戶位置通知", mock.Anything, mock.Anything).
 		Return(1, 0, nil, nil)
 
-	notificationRepo.EXPECT().BatchCreateNotificationLogs(mock.Anything, mock.Anything).Return(nil)
-	notificationRepo.EXPECT().UpdateNotificationStatus(mock.Anything, mock.Anything, 1, 0).Return(nil)
+	notificationRepo.EXPECT().BatchCreateNotificationLogs(ctx, mock.Anything).Return(nil)
+	notificationRepo.EXPECT().UpdateNotificationStatus(ctx, mock.Anything, 1, 0).Return(nil)
 
 	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "hint")
 
@@ -104,9 +103,9 @@ func TestNotificationService_PublishLocationNotification_NoSubscribers(t *testin
 		Longitude:    121.0,
 	}
 
-	notificationRepo.EXPECT().CreateNotification(mock.Anything, mock.Anything).Return(nil)
+	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
 	subscriptionRepo.EXPECT().
-		FindSubscriberAddressesWithinRadius(mock.Anything, merchantID, 25.0, 121.0).
+		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{}, nil)
 
 	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
@@ -124,11 +123,14 @@ func TestNotificationService_PublishLocationNotification_RoutingFailure(t *testi
 
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
+	subscriberOwnerID := uuid.New()
 
-	notificationRepo.EXPECT().CreateNotification(mock.Anything, mock.Anything).Return(nil)
+	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
 	subscriptionRepo.EXPECT().
-		FindSubscriberAddressesWithinRadius(mock.Anything, merchantID, 25.0, 121.0).
-		Return([]*entity.SubscriberAddress{{Address: entity.Address{OwnerID: uuid.New(), Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0}}, nil)
+		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
+		Return([]*entity.SubscriberAddress{
+			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
+		}, nil)
 
 	_, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
 
@@ -142,22 +144,28 @@ func TestNotificationService_PublishLocationNotification_PartialDeliveryFailure(
 	ctx := context.Background()
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
+	subscriberOwnerID := uuid.New()
 
-	notificationRepo.EXPECT().CreateNotification(mock.Anything, mock.Anything).Return(nil)
-	subscriptionRepo.EXPECT().FindSubscriberAddressesWithinRadius(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return([]*entity.SubscriberAddress{{Address: entity.Address{OwnerID: uuid.New(), Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0}}, nil)
+	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
+	subscriptionRepo.EXPECT().
+		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
+		Return([]*entity.SubscriberAddress{
+			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
+		}, nil)
 
 	deviceID := uuid.New()
-	subscriptionRepo.EXPECT().FindDevicesForUsers(mock.Anything, mock.Anything).
-		Return([]*entity.UserDevice{{ID: deviceID, FCMToken: "bad-token"}}, nil)
+	subscriptionRepo.EXPECT().
+		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
+		Return([]*entity.UserDevice{{ID: deviceID, UserID: subscriberOwnerID, FCMToken: "bad-token"}}, nil)
 
 	// Simulate: 0 success, 1 failure with an invalid token that should be cleaned up
-	notificationSvc.EXPECT().SendBatchNotification(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	notificationSvc.EXPECT().
+		SendBatchNotification(ctx, []string{"bad-token"}, "商戶位置通知", mock.Anything, mock.Anything).
 		Return(0, 1, []string{"bad-token"}, nil)
 
-	notificationRepo.EXPECT().BatchCreateNotificationLogs(mock.Anything, mock.Anything).Return(nil)
-	deviceRepo.EXPECT().DeleteDevice(mock.Anything, deviceID).Return(nil)
-	notificationRepo.EXPECT().UpdateNotificationStatus(mock.Anything, mock.Anything, 0, 1).Return(nil)
+	notificationRepo.EXPECT().BatchCreateNotificationLogs(ctx, mock.Anything).Return(nil)
+	deviceRepo.EXPECT().DeleteDevice(ctx, deviceID).Return(nil)
+	notificationRepo.EXPECT().UpdateNotificationStatus(ctx, mock.Anything, 0, 1).Return(nil)
 
 	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
 
@@ -187,7 +195,7 @@ func TestNotificationService_PublishLocationNotification_UnauthorizedAddress(t *
 	addressID := uuid.New()
 
 	addressRepo.EXPECT().
-		FindAddressByID(mock.Anything, addressID).
+		FindAddressByID(ctx, addressID).
 		Return(&entity.Address{
 			ID:        addressID,
 			OwnerID:   otherMerchant,
@@ -209,9 +217,9 @@ func TestNotificationService_PublishLocationNotification_SubscriptionError(t *te
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
 
-	notificationRepo.EXPECT().CreateNotification(mock.Anything, mock.Anything).Return(nil)
+	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
 	subscriptionRepo.EXPECT().
-		FindSubscriberAddressesWithinRadius(mock.Anything, merchantID, 25.0, 121.0).
+		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return(nil, errors.New("db error"))
 
 	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
@@ -228,9 +236,9 @@ func TestNotificationService_PublishLocationNotification_UnreachableTargets(t *t
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
 
-	notificationRepo.EXPECT().CreateNotification(mock.Anything, mock.Anything).Return(nil)
+	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
 	subscriptionRepo.EXPECT().
-		FindSubscriberAddressesWithinRadius(mock.Anything, merchantID, 25.0, 121.0).
+		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
 			{Address: entity.Address{OwnerID: uuid.New(), Latitude: 25.1, Longitude: 121.1}, NotificationRadius: 0.5},
 		}, nil)
@@ -267,41 +275,41 @@ func TestNotificationService_PublishLocationNotification_WithAddressID(t *testin
 	ctx := context.Background()
 	merchantID := uuid.New()
 	addressID := uuid.New()
+	subscriberOwnerID := uuid.New()
 
-	// Mock address lookup
+	address := &entity.Address{
+		ID:          addressID,
+		OwnerID:     merchantID,
+		OwnerType:   entity.OwnerTypeMerchantProfile,
+		Label:       "My Store",
+		FullAddress: "456 Store Ave",
+		Latitude:    25.05,
+		Longitude:   121.05,
+	}
+
 	addressRepo.EXPECT().
-		FindAddressByID(mock.Anything, addressID).
-		Return(&entity.Address{
-			ID:          addressID,
-			OwnerID:     merchantID,
-			OwnerType:   entity.OwnerTypeMerchantProfile,
-			Label:       "My Store",
-			FullAddress: "456 Store Ave",
-			Latitude:    25.05,
-			Longitude:   121.05,
+		FindAddressByID(ctx, addressID).
+		Return(address, nil)
+
+	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
+
+	subscriptionRepo.EXPECT().
+		FindSubscriberAddressesWithinRadius(ctx, merchantID, address.Latitude, address.Longitude).
+		Return([]*entity.SubscriberAddress{
+			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.051, Longitude: 121.051}, NotificationRadius: 1.0},
 		}, nil)
 
-	notificationRepo.EXPECT().CreateNotification(mock.Anything, mock.Anything).Return(nil)
-
-	subscriberAddress := &entity.SubscriberAddress{
-		Address:            entity.Address{OwnerID: uuid.New(), Latitude: 25.051, Longitude: 121.051},
-		NotificationRadius: 1.0,
-	}
+	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberOwnerID, FCMToken: "token-123"}
 	subscriptionRepo.EXPECT().
-		FindSubscriberAddressesWithinRadius(mock.Anything, merchantID, 25.05, 121.05).
-		Return([]*entity.SubscriberAddress{subscriberAddress}, nil)
-
-	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberAddress.OwnerID, FCMToken: "token-123"}
-	subscriptionRepo.EXPECT().
-		FindDevicesForUsers(mock.Anything, []uuid.UUID{subscriberAddress.OwnerID}).
+		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
 		Return([]*entity.UserDevice{userDevice}, nil)
 
 	notificationSvc.EXPECT().
-		SendBatchNotification(mock.Anything, []string{"token-123"}, mock.Anything, mock.Anything, mock.Anything).
+		SendBatchNotification(ctx, []string{"token-123"}, "商戶位置通知", mock.Anything, mock.Anything).
 		Return(1, 0, nil, nil)
 
-	notificationRepo.EXPECT().BatchCreateNotificationLogs(mock.Anything, mock.Anything).Return(nil)
-	notificationRepo.EXPECT().UpdateNotificationStatus(mock.Anything, mock.Anything, 1, 0).Return(nil)
+	notificationRepo.EXPECT().BatchCreateNotificationLogs(ctx, mock.Anything).Return(nil)
+	notificationRepo.EXPECT().UpdateNotificationStatus(ctx, mock.Anything, 1, 0).Return(nil)
 
 	notification, err := service.PublishLocationNotification(ctx, merchantID, &addressID, nil, "")
 
@@ -320,7 +328,7 @@ func TestNotificationService_PublishLocationNotification_AddressNotFound(t *test
 	addressID := uuid.New()
 
 	addressRepo.EXPECT().
-		FindAddressByID(mock.Anything, addressID).
+		FindAddressByID(ctx, addressID).
 		Return(nil, errors.New("address not found"))
 
 	notification, err := service.PublishLocationNotification(ctx, merchantID, &addressID, nil, "")
@@ -338,7 +346,7 @@ func TestNotificationService_PublishLocationNotification_CreateNotificationError
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
 
 	notificationRepo.EXPECT().
-		CreateNotification(mock.Anything, mock.Anything).
+		CreateNotification(ctx, mock.Anything).
 		Return(errors.New("db connection failed"))
 
 	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
@@ -354,19 +362,18 @@ func TestNotificationService_PublishLocationNotification_FindDevicesError(t *tes
 	ctx := context.Background()
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
+	subscriberOwnerID := uuid.New()
 
-	notificationRepo.EXPECT().CreateNotification(mock.Anything, mock.Anything).Return(nil)
-
-	subscriberAddress := &entity.SubscriberAddress{
-		Address:            entity.Address{OwnerID: uuid.New(), Latitude: 25.001, Longitude: 121.001},
-		NotificationRadius: 1.0,
-	}
-	subscriptionRepo.EXPECT().
-		FindSubscriberAddressesWithinRadius(mock.Anything, merchantID, 25.0, 121.0).
-		Return([]*entity.SubscriberAddress{subscriberAddress}, nil)
+	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
 
 	subscriptionRepo.EXPECT().
-		FindDevicesForUsers(mock.Anything, []uuid.UUID{subscriberAddress.OwnerID}).
+		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
+		Return([]*entity.SubscriberAddress{
+			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
+		}, nil)
+
+	subscriptionRepo.EXPECT().
+		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
 		Return(nil, errors.New("device query failed"))
 
 	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
@@ -382,29 +389,28 @@ func TestNotificationService_PublishLocationNotification_SendBatchError(t *testi
 	ctx := context.Background()
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
+	subscriberOwnerID := uuid.New()
 
-	notificationRepo.EXPECT().CreateNotification(mock.Anything, mock.Anything).Return(nil)
+	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
 
-	subscriberAddress := &entity.SubscriberAddress{
-		Address:            entity.Address{OwnerID: uuid.New(), Latitude: 25.001, Longitude: 121.001},
-		NotificationRadius: 1.0,
-	}
 	subscriptionRepo.EXPECT().
-		FindSubscriberAddressesWithinRadius(mock.Anything, merchantID, 25.0, 121.0).
-		Return([]*entity.SubscriberAddress{subscriberAddress}, nil)
+		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
+		Return([]*entity.SubscriberAddress{
+			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
+		}, nil)
 
-	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberAddress.OwnerID, FCMToken: "token-xyz"}
+	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberOwnerID, FCMToken: "token-xyz"}
 	subscriptionRepo.EXPECT().
-		FindDevicesForUsers(mock.Anything, []uuid.UUID{subscriberAddress.OwnerID}).
+		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
 		Return([]*entity.UserDevice{userDevice}, nil)
 
 	// SendBatchNotification returns an error (e.g., Firebase service unavailable)
 	notificationSvc.EXPECT().
-		SendBatchNotification(mock.Anything, []string{"token-xyz"}, mock.Anything, mock.Anything, mock.Anything).
+		SendBatchNotification(ctx, []string{"token-xyz"}, "商戶位置通知", mock.Anything, mock.Anything).
 		Return(0, 0, nil, errors.New("firebase unavailable"))
 
 	// Even with error, the flow continues and updates status with all failures
-	notificationRepo.EXPECT().UpdateNotificationStatus(mock.Anything, mock.Anything, 0, 1).Return(nil)
+	notificationRepo.EXPECT().UpdateNotificationStatus(ctx, mock.Anything, 0, 1).Return(nil)
 
 	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
 
@@ -420,29 +426,28 @@ func TestNotificationService_PublishLocationNotification_UpdateStatusError(t *te
 	ctx := context.Background()
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
+	subscriberOwnerID := uuid.New()
 
-	notificationRepo.EXPECT().CreateNotification(mock.Anything, mock.Anything).Return(nil)
+	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
 
-	subscriberAddress := &entity.SubscriberAddress{
-		Address:            entity.Address{OwnerID: uuid.New(), Latitude: 25.001, Longitude: 121.001},
-		NotificationRadius: 1.0,
-	}
 	subscriptionRepo.EXPECT().
-		FindSubscriberAddressesWithinRadius(mock.Anything, merchantID, 25.0, 121.0).
-		Return([]*entity.SubscriberAddress{subscriberAddress}, nil)
+		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
+		Return([]*entity.SubscriberAddress{
+			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
+		}, nil)
 
-	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberAddress.OwnerID, FCMToken: "token-abc"}
+	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberOwnerID, FCMToken: "token-abc"}
 	subscriptionRepo.EXPECT().
-		FindDevicesForUsers(mock.Anything, []uuid.UUID{subscriberAddress.OwnerID}).
+		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
 		Return([]*entity.UserDevice{userDevice}, nil)
 
 	notificationSvc.EXPECT().
-		SendBatchNotification(mock.Anything, []string{"token-abc"}, mock.Anything, mock.Anything, mock.Anything).
+		SendBatchNotification(ctx, []string{"token-abc"}, "商戶位置通知", mock.Anything, mock.Anything).
 		Return(1, 0, nil, nil)
 
-	notificationRepo.EXPECT().BatchCreateNotificationLogs(mock.Anything, mock.Anything).Return(nil)
+	notificationRepo.EXPECT().BatchCreateNotificationLogs(ctx, mock.Anything).Return(nil)
 	notificationRepo.EXPECT().
-		UpdateNotificationStatus(mock.Anything, mock.Anything, 1, 0).
+		UpdateNotificationStatus(ctx, mock.Anything, 1, 0).
 		Return(errors.New("status update failed"))
 
 	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
@@ -459,7 +464,7 @@ func TestNotificationService_PublishLocationNotification_MultipleSubscribers(t *
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
 
-	notificationRepo.EXPECT().CreateNotification(mock.Anything, mock.Anything).Return(nil)
+	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
 
 	user1ID := uuid.New()
 	user2ID := uuid.New()
@@ -467,17 +472,23 @@ func TestNotificationService_PublishLocationNotification_MultipleSubscribers(t *
 
 	// 3 subscribers: 2 reachable (within radius), 1 unreachable (outside radius)
 	subscriptionRepo.EXPECT().
-		FindSubscriberAddressesWithinRadius(mock.Anything, merchantID, 25.0, 121.0).
+		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
 			{Address: entity.Address{OwnerID: user1ID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0}, // reachable
 			{Address: entity.Address{OwnerID: user2ID, Latitude: 25.002, Longitude: 121.002}, NotificationRadius: 1.0}, // reachable
 			{Address: entity.Address{OwnerID: user3ID, Latitude: 25.5, Longitude: 121.5}, NotificationRadius: 0.1},     // unreachable (too far)
 		}, nil)
 
-	// Only 2 users are reachable
+	// Only 2 users are reachable - use MatchedBy for unordered slice comparison
 	subscriptionRepo.EXPECT().
-		FindDevicesForUsers(mock.Anything, mock.MatchedBy(func(ids []uuid.UUID) bool {
-			return len(ids) == 2
+		FindDevicesForUsers(ctx, mock.MatchedBy(func(ids []uuid.UUID) bool {
+			if len(ids) != 2 {
+				return false
+			}
+			// Check both user IDs are present (order may vary)
+			hasUser1 := ids[0] == user1ID || ids[1] == user1ID
+			hasUser2 := ids[0] == user2ID || ids[1] == user2ID
+			return hasUser1 && hasUser2
 		})).
 		Return([]*entity.UserDevice{
 			{ID: uuid.New(), UserID: user1ID, FCMToken: "token-1"},
@@ -485,13 +496,19 @@ func TestNotificationService_PublishLocationNotification_MultipleSubscribers(t *
 		}, nil)
 
 	notificationSvc.EXPECT().
-		SendBatchNotification(mock.Anything, mock.MatchedBy(func(tokens []string) bool {
-			return len(tokens) == 2
-		}), mock.Anything, mock.Anything, mock.Anything).
+		SendBatchNotification(ctx, mock.MatchedBy(func(tokens []string) bool {
+			if len(tokens) != 2 {
+				return false
+			}
+			// Check both tokens are present
+			hasToken1 := tokens[0] == "token-1" || tokens[1] == "token-1"
+			hasToken2 := tokens[0] == "token-2" || tokens[1] == "token-2"
+			return hasToken1 && hasToken2
+		}), "商戶位置通知", mock.Anything, mock.Anything).
 		Return(2, 0, nil, nil)
 
-	notificationRepo.EXPECT().BatchCreateNotificationLogs(mock.Anything, mock.Anything).Return(nil)
-	notificationRepo.EXPECT().UpdateNotificationStatus(mock.Anything, mock.Anything, 2, 0).Return(nil)
+	notificationRepo.EXPECT().BatchCreateNotificationLogs(ctx, mock.Anything).Return(nil)
+	notificationRepo.EXPECT().UpdateNotificationStatus(ctx, mock.Anything, 2, 0).Return(nil)
 
 	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
 
@@ -506,20 +523,19 @@ func TestNotificationService_PublishLocationNotification_NoDevicesForSubscribers
 	ctx := context.Background()
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
+	subscriberOwnerID := uuid.New()
 
-	notificationRepo.EXPECT().CreateNotification(mock.Anything, mock.Anything).Return(nil)
+	notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
 
-	subscriberAddress := &entity.SubscriberAddress{
-		Address:            entity.Address{OwnerID: uuid.New(), Latitude: 25.001, Longitude: 121.001},
-		NotificationRadius: 1.0,
-	}
 	subscriptionRepo.EXPECT().
-		FindSubscriberAddressesWithinRadius(mock.Anything, merchantID, 25.0, 121.0).
-		Return([]*entity.SubscriberAddress{subscriberAddress}, nil)
+		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
+		Return([]*entity.SubscriberAddress{
+			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
+		}, nil)
 
 	// Subscriber exists but has no registered devices
 	subscriptionRepo.EXPECT().
-		FindDevicesForUsers(mock.Anything, []uuid.UUID{subscriberAddress.OwnerID}).
+		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
 		Return([]*entity.UserDevice{}, nil)
 
 	notification, err := service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
