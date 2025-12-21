@@ -3,6 +3,7 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"slices"
 
 	"radar/internal/delivery/http/response"
 	"radar/internal/usecase"
@@ -289,14 +290,7 @@ func (h *LocationHandler) getMerchantID(c echo.Context) (uuid.UUID, error) {
 		return uuid.Nil, response.Forbidden(c, "FORBIDDEN", "Role information missing")
 	}
 
-	hasMerchantRole := false
-	for _, role := range roles {
-		if role == roleMerchant {
-			hasMerchantRole = true
-
-			break
-		}
-	}
+	hasMerchantRole := slices.Contains(roles, roleMerchant)
 
 	if !hasMerchantRole {
 		return uuid.Nil, response.Forbidden(c, "FORBIDDEN", "Merchant role required")

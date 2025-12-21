@@ -26,7 +26,7 @@ type SourceInfo struct {
 	SizeBytes    int64     `json:"size_bytes"`
 	MD5          string    `json:"md5,omitempty"`
 	SHA256       string    `json:"sha256,omitempty"`
-	OSMTimestamp time.Time `json:"osm_timestamp,omitempty"`
+	OSMTimestamp time.Time `json:"osm_timestamp,omitzero"`
 }
 
 // ProcessingInfo contains information about the preprocessing run

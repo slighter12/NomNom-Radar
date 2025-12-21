@@ -183,10 +183,7 @@ func (s *notificationService) sendNotificationBatches(
 	notificationID uuid.UUID,
 ) (totalSent, totalFailed int, notificationLogs []*entity.NotificationLog, invalidTokens []string) {
 	for i := 0; i < len(tokens); i += firebaseBatchSize {
-		end := i + firebaseBatchSize
-		if end > len(tokens) {
-			end = len(tokens)
-		}
+		end := min(i+firebaseBatchSize, len(tokens))
 		batch := tokens[i:end]
 
 		// Send batch notification

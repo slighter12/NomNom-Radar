@@ -23,7 +23,7 @@ func (h *TestHandler) TestAuthMiddleware(c echo.Context) error {
 	userID := c.Get("userID")
 	roles := c.Get("roles")
 
-	return response.Success(c, http.StatusOK, map[string]interface{}{
+	return response.Success(c, http.StatusOK, map[string]any{
 		"message": "Authentication middleware test successful",
 		"userID":  userID,
 		"roles":   roles,
@@ -33,7 +33,7 @@ func (h *TestHandler) TestAuthMiddleware(c echo.Context) error {
 
 // TestPublicEndpoint tests a public endpoint (no authentication required)
 func (h *TestHandler) TestPublicEndpoint(c echo.Context) error {
-	return response.Success(c, http.StatusOK, map[string]interface{}{
+	return response.Success(c, http.StatusOK, map[string]any{
 		"message": "Public endpoint test successful",
 		"status":  "public",
 	}, "Public endpoint test successful")

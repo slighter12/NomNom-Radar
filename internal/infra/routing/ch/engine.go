@@ -362,9 +362,10 @@ func (e *Engine) routeWithWorkerPool(ctx context.Context, srcNodeID int, snapped
 
 	// Start workers
 	var waitGroup sync.WaitGroup
-	for workerIdx := 0; workerIdx < workerCount; workerIdx++ {
-		waitGroup.Add(1)
-		go e.routingWorker(ctx, &waitGroup, srcNodeID, jobs, resultsCh)
+	for range workerCount {
+		waitGroup.Go(func() {
+			e.routingWorker(ctx, srcNodeID, jobs, resultsCh)
+		})
 	}
 
 	// Send jobs
@@ -393,9 +394,7 @@ type routingResult struct {
 	result RouteResult
 }
 
-func (e *Engine) routingWorker(ctx context.Context, waitGroup *sync.WaitGroup, srcNodeID int, jobs <-chan snapResult, resultsCh chan<- routingResult) {
-	defer waitGroup.Done()
-
+func (e *Engine) routingWorker(ctx context.Context, srcNodeID int, jobs <-chan snapResult, resultsCh chan<- routingResult) {
 	for job := range jobs {
 		if ctx.Err() != nil {
 			return

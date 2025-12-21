@@ -79,7 +79,7 @@ func (s *jwtService) ValidateToken(tokenString string) (*service.Claims, error) 
 	}
 
 	// Now parse and verify the token with the correct secret
-	token, err := jwt.ParseWithClaims(tokenString, &service.Claims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &service.Claims{}, func(token *jwt.Token) (any, error) {
 		// Check the signing method
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
