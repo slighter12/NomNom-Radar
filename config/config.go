@@ -131,6 +131,18 @@ type RoutingConfig struct {
 
 	// Enable routing engine (set to false to use Haversine fallback only)
 	Enabled bool `json:"enabled" yaml:"enabled"`
+
+	// Maximum query radius in kilometers for One-to-Many queries
+	MaxQueryRadiusKm float64 `json:"maxQueryRadiusKm" yaml:"maxQueryRadiusKm"`
+
+	// Number of concurrent workers for One-to-Many queries
+	OneToManyWorkers int `json:"oneToManyWorkers" yaml:"oneToManyWorkers"`
+
+	// Haversine pre-filter radius multiplier (e.g., 1.3 = filter targets beyond 1.3x max radius)
+	PreFilterRadiusMultiplier float64 `json:"preFilterRadiusMultiplier" yaml:"preFilterRadiusMultiplier"`
+
+	// Grid cell size in kilometers for spatial index
+	GridCellSizeKm float64 `json:"gridCellSizeKm" yaml:"gridCellSizeKm"`
 }
 
 // LoadWithEnv loads .yaml files through koanf.

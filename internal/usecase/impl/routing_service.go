@@ -58,15 +58,7 @@ func NewRoutingService(cfg *config.RoutingConfig, logger *slog.Logger) usecase.R
 
 	// Initialize CH engine if enabled and data path is configured
 	if cfg.Enabled && cfg.DataPath != "" {
-		engineConfig := ch.EngineConfig{
-			MaxSnapDistanceMeters:     snapDistance * 1000, // Convert km to meters
-			DefaultSpeedKmH:           speedKmh,
-			MaxQueryRadiusMeters:      10000, // 10 km default
-			OneToManyWorkers:          20,
-			PreFilterRadiusMultiplier: 1.3,
-			GridCellSizeKm:            1.0,
-		}
-
+		engineConfig := buildEngineConfig(cfg, snapDistance, speedKmh)
 		svc.engine = ch.NewEngine(engineConfig, logger)
 
 		// Try to load routing data
@@ -86,6 +78,34 @@ func NewRoutingService(cfg *config.RoutingConfig, logger *slog.Logger) usecase.R
 	}
 
 	return svc
+}
+
+// buildEngineConfig creates a CH engine config with sensible defaults
+func buildEngineConfig(cfg *config.RoutingConfig, snapDistance, speedKmh float64) ch.EngineConfig {
+	return ch.EngineConfig{
+		MaxSnapDistanceMeters:     snapDistance * 1000, // Convert km to meters
+		DefaultSpeedKmH:           speedKmh,
+		MaxQueryRadiusMeters:      getFloatWithDefault(cfg.MaxQueryRadiusKm*1000, 10000),
+		OneToManyWorkers:          getIntWithDefault(cfg.OneToManyWorkers, 20),
+		PreFilterRadiusMultiplier: getFloatWithDefault(cfg.PreFilterRadiusMultiplier, 1.3),
+		GridCellSizeKm:            getFloatWithDefault(cfg.GridCellSizeKm, 1.0),
+	}
+}
+
+func getFloatWithDefault(value, defaultValue float64) float64 {
+	if value <= 0 {
+		return defaultValue
+	}
+
+	return value
+}
+
+func getIntWithDefault(value, defaultValue int) int {
+	if value <= 0 {
+		return defaultValue
+	}
+
+	return value
 }
 
 // OneToMany calculates routes from one source coordinate to multiple target coordinates
