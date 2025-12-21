@@ -479,17 +479,10 @@ func TestNotificationService_PublishLocationNotification_MultipleSubscribers(t *
 			{Address: entity.Address{OwnerID: user3ID, Latitude: 25.5, Longitude: 121.5}, NotificationRadius: 0.1},     // unreachable (too far)
 		}, nil)
 
-	// Only 2 users are reachable - use MatchedBy for unordered slice comparison
+	// Only 2 users are reachable - use assert.ElementsMatch for unordered slice comparison
 	subscriptionRepo.EXPECT().
 		FindDevicesForUsers(ctx, mock.MatchedBy(func(ids []uuid.UUID) bool {
-			if len(ids) != 2 {
-				return false
-			}
-			// Check both user IDs are present (order may vary)
-			hasUser1 := ids[0] == user1ID || ids[1] == user1ID
-			hasUser2 := ids[0] == user2ID || ids[1] == user2ID
-
-			return hasUser1 && hasUser2
+			return assert.ElementsMatch(t, []uuid.UUID{user1ID, user2ID}, ids)
 		})).
 		Return([]*entity.UserDevice{
 			{ID: uuid.New(), UserID: user1ID, FCMToken: "token-1"},
@@ -498,14 +491,7 @@ func TestNotificationService_PublishLocationNotification_MultipleSubscribers(t *
 
 	notificationSvc.EXPECT().
 		SendBatchNotification(ctx, mock.MatchedBy(func(tokens []string) bool {
-			if len(tokens) != 2 {
-				return false
-			}
-			// Check both tokens are present
-			hasToken1 := tokens[0] == "token-1" || tokens[1] == "token-1"
-			hasToken2 := tokens[0] == "token-2" || tokens[1] == "token-2"
-
-			return hasToken1 && hasToken2
+			return assert.ElementsMatch(t, []string{"token-1", "token-2"}, tokens)
 		}), "商戶位置通知", mock.Anything, mock.Anything).
 		Return(2, 0, nil, nil)
 
