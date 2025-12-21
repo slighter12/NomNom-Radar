@@ -263,14 +263,10 @@ func BenchmarkEngine_OneToMany(b *testing.B) {
 	id := 0
 	for lat := 22.0; lat <= 25.5; lat += 0.05 {
 		for lng := 120.0; lng <= 122.0; lng += 0.05 {
-			verticesLines = append(verticesLines,
-				string(append([]byte{}, []byte(
-					formatVertex(id, lat, lng))...)))
+			verticesLines = append(verticesLines, formatVertex(id, lat, lng))
 			// Connect to neighbors
 			if id > 0 {
-				edgesLines = append(edgesLines,
-					string(append([]byte{}, []byte(
-						formatEdge(id-1, id, 1000))...)))
+				edgesLines = append(edgesLines, formatEdge(id-1, id, 1000))
 			}
 			id++
 		}
