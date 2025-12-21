@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"go.uber.org/fx"
 )
 
 var (
@@ -30,18 +31,23 @@ type subscriptionService struct {
 	config           *config.Config
 }
 
+// SubscriptionServiceParams holds dependencies for SubscriptionService, injected by Fx.
+type SubscriptionServiceParams struct {
+	fx.In
+
+	SubscriptionRepo repository.SubscriptionRepository
+	DeviceRepo       repository.DeviceRepository
+	QRCodeService    service.QRCodeService
+	Config           *config.Config
+}
+
 // NewSubscriptionService creates a new subscription service instance
-func NewSubscriptionService(
-	subscriptionRepo repository.SubscriptionRepository,
-	deviceRepo repository.DeviceRepository,
-	qrcodeService service.QRCodeService,
-	cfg *config.Config,
-) usecase.SubscriptionUsecase {
+func NewSubscriptionService(params SubscriptionServiceParams) usecase.SubscriptionUsecase {
 	return &subscriptionService{
-		subscriptionRepo: subscriptionRepo,
-		deviceRepo:       deviceRepo,
-		qrcodeService:    qrcodeService,
-		config:           cfg,
+		subscriptionRepo: params.SubscriptionRepo,
+		deviceRepo:       params.DeviceRepo,
+		qrcodeService:    params.QRCodeService,
+		config:           params.Config,
 	}
 }
 

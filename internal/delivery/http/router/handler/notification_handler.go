@@ -6,25 +6,32 @@ import (
 	"strconv"
 
 	"radar/internal/delivery/http/response"
-	domainerrors "radar/internal/domain/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/pkg/errors"
+	"go.uber.org/fx"
 )
+
+// NotificationHandlerParams holds dependencies for NotificationHandler, injected by Fx.
+type NotificationHandlerParams struct {
+	fx.In
+
+	NotificationUC usecase.NotificationUsecase
+	Logger         *slog.Logger
+}
 
 // NotificationHandler holds dependencies for notification-related handlers
 type NotificationHandler struct {
-	uc     usecase.NotificationUsecase
-	logger *slog.Logger
+	notificationUC usecase.NotificationUsecase
+	logger         *slog.Logger
 }
 
 // NewNotificationHandler is the constructor for NotificationHandler
-func NewNotificationHandler(uc usecase.NotificationUsecase, logger *slog.Logger) *NotificationHandler {
+func NewNotificationHandler(params NotificationHandlerParams) *NotificationHandler {
 	return &NotificationHandler{
-		uc:     uc,
-		logger: logger,
+		notificationUC: params.NotificationUC,
+		logger:         params.Logger,
 	}
 }
 
@@ -52,7 +59,7 @@ func (h *NotificationHandler) PublishLocationNotification(c echo.Context) error 
 		return err
 	}
 
-	notification, err := h.uc.PublishLocationNotification(
+	notification, err := h.notificationUC.PublishLocationNotification(
 		c.Request().Context(),
 		merchantID,
 		req.AddressID,
@@ -60,7 +67,7 @@ func (h *NotificationHandler) PublishLocationNotification(c echo.Context) error 
 		req.HintMessage,
 	)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusCreated, notification, "Location notification published successfully")
@@ -112,12 +119,16 @@ func (h *NotificationHandler) GetMerchantNotificationHistory(c echo.Context) err
 	}
 
 	// Parse pagination parameters
-	limit := 20 // default limit
+	const (
+		defaultLimit = 20
+		maxLimit     = 100
+	)
+	limit := defaultLimit
 	offset := 0 // default offset
 
 	if limitStr := c.QueryParam("limit"); limitStr != "" {
 		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
-			limit = parsedLimit
+			limit = min(parsedLimit, maxLimit)
 		}
 	}
 
@@ -127,9 +138,9 @@ func (h *NotificationHandler) GetMerchantNotificationHistory(c echo.Context) err
 		}
 	}
 
-	notifications, err := h.uc.GetMerchantNotificationHistory(c.Request().Context(), merchantID, limit, offset)
+	notifications, err := h.notificationUC.GetMerchantNotificationHistory(c.Request().Context(), merchantID, limit, offset)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, notifications, "Notification history retrieved successfully")
@@ -165,14 +176,4 @@ func (h *NotificationHandler) getMerchantID(c echo.Context) (uuid.UUID, error) {
 	}
 
 	return merchantID, nil
-}
-
-// handleAppError handles application errors
-func (h *NotificationHandler) handleAppError(c echo.Context, err error) error {
-	var appErr domainerrors.AppError
-	if errors.As(err, &appErr) {
-		return response.Error(c, appErr.HTTPCode(), appErr.ErrorCode(), appErr.Message(), appErr.Details())
-	}
-
-	return errors.WithStack(err)
 }

@@ -19,10 +19,7 @@ import (
 
 // userService implements the UserUsecase interface.
 type userService struct {
-	fx.In
-
-	txManager repository.TransactionManager
-	// Direct repository instances for non-transactional operations
+	txManager         repository.TransactionManager
 	userRepo          repository.UserRepository
 	authRepo          repository.AuthRepository
 	refreshTokenRepo  repository.RefreshTokenRepository
@@ -43,26 +40,31 @@ type registrationConfig struct {
 	ProfileExistsError func() error
 }
 
+// UserServiceParams holds dependencies for UserService, injected by Fx.
+type UserServiceParams struct {
+	fx.In
+
+	TxManager         repository.TransactionManager
+	UserRepo          repository.UserRepository
+	AuthRepo          repository.AuthRepository
+	RefreshTokenRepo  repository.RefreshTokenRepository
+	Hasher            service.PasswordHasher
+	TokenService      service.TokenService
+	GoogleAuthService service.OAuthAuthService
+	Logger            *slog.Logger
+}
+
 // NewUserService is the constructor for userService. It receives all dependencies as interfaces.
-func NewUserService(
-	txManager repository.TransactionManager,
-	userRepo repository.UserRepository,
-	authRepo repository.AuthRepository,
-	refreshTokenRepo repository.RefreshTokenRepository,
-	hasher service.PasswordHasher,
-	tokenService service.TokenService,
-	googleAuthService service.OAuthAuthService,
-	logger *slog.Logger,
-) usecase.UserUsecase {
+func NewUserService(params UserServiceParams) usecase.UserUsecase {
 	return &userService{
-		txManager:         txManager,
-		userRepo:          userRepo,
-		authRepo:          authRepo,
-		refreshTokenRepo:  refreshTokenRepo,
-		hasher:            hasher,
-		tokenService:      tokenService,
-		googleAuthService: googleAuthService,
-		logger:            logger,
+		txManager:         params.TxManager,
+		userRepo:          params.UserRepo,
+		authRepo:          params.AuthRepo,
+		refreshTokenRepo:  params.RefreshTokenRepo,
+		hasher:            params.Hasher,
+		tokenService:      params.TokenService,
+		googleAuthService: params.GoogleAuthService,
+		logger:            params.Logger,
 	}
 }
 

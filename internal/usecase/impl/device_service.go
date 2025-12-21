@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"go.uber.org/fx"
 )
 
 var (
@@ -23,10 +24,17 @@ type deviceService struct {
 	deviceRepo repository.DeviceRepository
 }
 
+// DeviceServiceParams holds dependencies for DeviceService, injected by Fx.
+type DeviceServiceParams struct {
+	fx.In
+
+	DeviceRepo repository.DeviceRepository
+}
+
 // NewDeviceService creates a new device service instance
-func NewDeviceService(deviceRepo repository.DeviceRepository) usecase.DeviceUsecase {
+func NewDeviceService(params DeviceServiceParams) usecase.DeviceUsecase {
 	return &deviceService{
-		deviceRepo: deviceRepo,
+		deviceRepo: params.DeviceRepo,
 	}
 }
 

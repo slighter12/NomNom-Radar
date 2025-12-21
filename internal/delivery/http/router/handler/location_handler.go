@@ -5,29 +5,36 @@ import (
 	"net/http"
 
 	"radar/internal/delivery/http/response"
-	domainerrors "radar/internal/domain/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/pkg/errors"
+	"go.uber.org/fx"
 )
 
 const (
 	roleMerchant = "merchant"
 )
 
+// LocationHandlerParams holds dependencies for LocationHandler, injected by Fx.
+type LocationHandlerParams struct {
+	fx.In
+
+	LocationUC usecase.LocationUsecase
+	Logger     *slog.Logger
+}
+
 // LocationHandler holds dependencies for location-related handlers
 type LocationHandler struct {
-	uc     usecase.LocationUsecase
-	logger *slog.Logger
+	locationUC usecase.LocationUsecase
+	logger     *slog.Logger
 }
 
 // NewLocationHandler is the constructor for LocationHandler
-func NewLocationHandler(uc usecase.LocationUsecase, logger *slog.Logger) *LocationHandler {
+func NewLocationHandler(params LocationHandlerParams) *LocationHandler {
 	return &LocationHandler{
-		uc:     uc,
-		logger: logger,
+		locationUC: params.LocationUC,
+		logger:     params.Logger,
 	}
 }
 
@@ -76,9 +83,9 @@ func (h *LocationHandler) CreateUserLocation(c echo.Context) error {
 		IsActive:    req.IsActive,
 	}
 
-	location, err := h.uc.AddUserLocation(c.Request().Context(), userID, input)
+	location, err := h.locationUC.AddUserLocation(c.Request().Context(), userID, input)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusCreated, location, "User location created successfully")
@@ -91,9 +98,9 @@ func (h *LocationHandler) GetUserLocations(c echo.Context) error {
 		return err
 	}
 
-	locations, err := h.uc.GetUserLocations(c.Request().Context(), userID)
+	locations, err := h.locationUC.GetUserLocations(c.Request().Context(), userID)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, locations, "User locations retrieved successfully")
@@ -129,9 +136,9 @@ func (h *LocationHandler) UpdateUserLocation(c echo.Context) error {
 		IsActive:    req.IsActive,
 	}
 
-	location, err := h.uc.UpdateUserLocation(c.Request().Context(), userID, locationID, input)
+	location, err := h.locationUC.UpdateUserLocation(c.Request().Context(), userID, locationID, input)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, location, "User location updated successfully")
@@ -149,8 +156,8 @@ func (h *LocationHandler) DeleteUserLocation(c echo.Context) error {
 		return response.BadRequest(c, "INVALID_ID", "Invalid location ID")
 	}
 
-	if err := h.uc.DeleteUserLocation(c.Request().Context(), userID, locationID); err != nil {
-		return h.handleAppError(c, err)
+	if err := h.locationUC.DeleteUserLocation(c.Request().Context(), userID, locationID); err != nil {
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, map[string]string{"message": "Location deleted successfully"}, "User location deleted successfully")
@@ -181,9 +188,9 @@ func (h *LocationHandler) CreateMerchantLocation(c echo.Context) error {
 		IsActive:    req.IsActive,
 	}
 
-	location, err := h.uc.AddMerchantLocation(c.Request().Context(), merchantID, input)
+	location, err := h.locationUC.AddMerchantLocation(c.Request().Context(), merchantID, input)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusCreated, location, "Merchant location created successfully")
@@ -196,9 +203,9 @@ func (h *LocationHandler) GetMerchantLocations(c echo.Context) error {
 		return err
 	}
 
-	locations, err := h.uc.GetMerchantLocations(c.Request().Context(), merchantID)
+	locations, err := h.locationUC.GetMerchantLocations(c.Request().Context(), merchantID)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, locations, "Merchant locations retrieved successfully")
@@ -234,9 +241,9 @@ func (h *LocationHandler) UpdateMerchantLocation(c echo.Context) error {
 		IsActive:    req.IsActive,
 	}
 
-	location, err := h.uc.UpdateMerchantLocation(c.Request().Context(), merchantID, locationID, input)
+	location, err := h.locationUC.UpdateMerchantLocation(c.Request().Context(), merchantID, locationID, input)
 	if err != nil {
-		return h.handleAppError(c, err)
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, location, "Merchant location updated successfully")
@@ -254,8 +261,8 @@ func (h *LocationHandler) DeleteMerchantLocation(c echo.Context) error {
 		return response.BadRequest(c, "INVALID_ID", "Invalid location ID")
 	}
 
-	if err := h.uc.DeleteMerchantLocation(c.Request().Context(), merchantID, locationID); err != nil {
-		return h.handleAppError(c, err)
+	if err := h.locationUC.DeleteMerchantLocation(c.Request().Context(), merchantID, locationID); err != nil {
+		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, map[string]string{"message": "Location deleted successfully"}, "Merchant location deleted successfully")
@@ -303,14 +310,4 @@ func (h *LocationHandler) getMerchantID(c echo.Context) (uuid.UUID, error) {
 	}
 
 	return merchantID, nil
-}
-
-// handleAppError handles application errors
-func (h *LocationHandler) handleAppError(c echo.Context, err error) error {
-	var appErr domainerrors.AppError
-	if errors.As(err, &appErr) {
-		return response.Error(c, appErr.HTTPCode(), appErr.ErrorCode(), appErr.Message(), appErr.Details())
-	}
-
-	return errors.WithStack(err)
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"go.uber.org/fx"
 )
 
 var (
@@ -36,24 +37,29 @@ type notificationService struct {
 	routingSvc       usecase.RoutingUsecase
 }
 
+// NotificationServiceParams holds dependencies for NotificationService, injected by Fx.
+type NotificationServiceParams struct {
+	fx.In
+
+	Logger           *slog.Logger
+	NotificationRepo repository.NotificationRepository
+	SubscriptionRepo repository.SubscriptionRepository
+	DeviceRepo       repository.DeviceRepository
+	AddressRepo      repository.AddressRepository
+	NotificationSvc  service.NotificationService
+	RoutingSvc       usecase.RoutingUsecase
+}
+
 // NewNotificationService creates a new notification service instance
-func NewNotificationService(
-	logger *slog.Logger,
-	notificationRepo repository.NotificationRepository,
-	subscriptionRepo repository.SubscriptionRepository,
-	deviceRepo repository.DeviceRepository,
-	addressRepo repository.AddressRepository,
-	notificationSvc service.NotificationService,
-	routingSvc usecase.RoutingUsecase,
-) usecase.NotificationUsecase {
+func NewNotificationService(params NotificationServiceParams) usecase.NotificationUsecase {
 	return &notificationService{
-		logger:           logger,
-		notificationRepo: notificationRepo,
-		subscriptionRepo: subscriptionRepo,
-		deviceRepo:       deviceRepo,
-		addressRepo:      addressRepo,
-		notificationSvc:  notificationSvc,
-		routingSvc:       routingSvc,
+		logger:           params.Logger,
+		notificationRepo: params.NotificationRepo,
+		subscriptionRepo: params.SubscriptionRepo,
+		deviceRepo:       params.DeviceRepo,
+		addressRepo:      params.AddressRepo,
+		notificationSvc:  params.NotificationSvc,
+		routingSvc:       params.RoutingSvc,
 	}
 }
 

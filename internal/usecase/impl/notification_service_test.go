@@ -37,20 +37,25 @@ func createTestNotificationService(t *testing.T) notificationServiceFixtures {
 	notificationSvc := mockSvc.NewMockNotificationService(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	service := NewNotificationService(
-		logger,
-		notificationRepo,
-		subscriptionRepo,
-		deviceRepo,
-		addressRepo,
-		notificationSvc,
-		NewRoutingService(&config.RoutingConfig{
+	routingSvc := NewRoutingService(RoutingServiceParams{
+		Config: &config.RoutingConfig{
 			MaxSnapDistanceKm: 1.0,
 			DefaultSpeedKmh:   10.0,
 			DataPath:          "./data/routing",
 			Enabled:           false, // Disabled to use Haversine fallback
-		}, nil),
-	)
+		},
+		Logger: nil,
+	})
+
+	service := NewNotificationService(NotificationServiceParams{
+		Logger:           logger,
+		NotificationRepo: notificationRepo,
+		SubscriptionRepo: subscriptionRepo,
+		DeviceRepo:       deviceRepo,
+		AddressRepo:      addressRepo,
+		NotificationSvc:  notificationSvc,
+		RoutingSvc:       routingSvc,
+	})
 
 	return notificationServiceFixtures{
 		service:          service,
