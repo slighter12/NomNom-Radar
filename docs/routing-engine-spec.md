@@ -81,7 +81,7 @@ flowchart TB
 
 ### 2.2 Directory Structure
 
-```
+```text
 cmd/
 └── routing/                        # NEW: Routing data preprocessing CLI tool
     └── main.go                     # Go CLI entry point
@@ -130,7 +130,7 @@ flowchart LR
 
 **Data Directory Structure** (not in Git, provided by deployment):
 
-```
+```text
 /data/routing/              # Mount point (configurable)
 ├── edges.csv               # Edge data (~50-100MB)
 ├── vertices.csv            # Vertex data (~20-50MB)
@@ -549,7 +549,7 @@ routing_engine_ready          // Gauge: 1 if ready, 0 if not
 
 If frontend needs direct distance/ETA queries:
 
-```
+```text
 GET /api/v1/routing/distance?from_lat=...&from_lng=...&to_lat=...&to_lng=...
 GET /api/v1/routing/eta?merchant_id=...&address_id=...
 ```
@@ -739,7 +739,7 @@ routing:
 
 Add to `go.mod`:
 
-```
+```go
 github.com/LdDl/ch v1.7.6          # CH routing engine core
 ```
 
@@ -986,7 +986,7 @@ This is the **most important edge case** that demonstrates CH algorithm's advant
 
 **Scenario**: Merchant on Taiwan main island, user in Penghu (澎湖)
 
-```
+```text
 Taipei (台北):     25.0330, 121.5654
 Penghu (澎湖馬公): 23.5711, 119.5793
 
