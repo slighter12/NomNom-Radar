@@ -52,16 +52,14 @@ func NewRoutingService(params RoutingServiceParams) usecase.RoutingUsecase {
 		logger = slog.Default()
 	}
 
-	var snapDistance, speedKmh float64
-	if cfg != nil {
+	snapDistance := defaultSnapDistanceKm
+	if cfg != nil && cfg.MaxSnapDistanceKm > 0 {
 		snapDistance = cfg.MaxSnapDistanceKm
+	}
+
+	speedKmh := defaultSpeedKmh
+	if cfg != nil && cfg.DefaultSpeedKmh > 0 {
 		speedKmh = cfg.DefaultSpeedKmh
-	}
-	if snapDistance <= 0 {
-		snapDistance = defaultSnapDistanceKm
-	}
-	if speedKmh <= 0 {
-		speedKmh = defaultSpeedKmh
 	}
 
 	svc := &routingService{
