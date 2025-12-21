@@ -374,7 +374,9 @@ func setupBenchmarkData(b *testing.B, latStep, lngStep float64) string {
 
 	writeLines(b, filepath.Join(tmpDir, "vertices.csv"), verticesLines)
 	writeLines(b, filepath.Join(tmpDir, "edges.csv"), edgesLines)
-	_ = os.WriteFile(filepath.Join(tmpDir, "shortcuts.csv"), []byte("from,to,weight,via_node\n"), 0644)
+	if err := os.WriteFile(filepath.Join(tmpDir, "shortcuts.csv"), []byte("from,to,weight,via_node\n"), 0644); err != nil {
+		b.Fatalf("Failed to write shortcuts.csv: %v", err)
+	}
 
 	return tmpDir
 }
