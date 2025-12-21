@@ -256,7 +256,7 @@ func (s *routingService) CalculateDistance(ctx context.Context, source, target u
 		chResult, chErr := s.engine.ShortestPath(ctx, chSource, chTarget)
 		if chErr != nil {
 			// Fallback to Haversine on error (log but don't fail)
-			s.logger.Debug("CH ShortestPath failed, using Haversine fallback", "error", chErr)
+			s.logger.Warn("CH ShortestPath failed, using Haversine fallback", "error", chErr)
 			result := s.calculateHaversineDistance(source, target)
 
 			return &result, nil
