@@ -560,3 +560,59 @@ func TestNotificationService_GetMerchantNotificationHistory_Error(t *testing.T) 
 	assert.Nil(t, notifications)
 	assert.Contains(t, err.Error(), "failed to find notifications by merchant")
 }
+
+// TestNotificationService_RoutingDistanceFiltering verifies that subscribers
+// outside the notification radius are correctly filtered out using road network distance.
+func TestNotificationService_RoutingDistanceFiltering(t *testing.T) {
+	fx := createTestNotificationService(t)
+
+	ctx := context.Background()
+	merchantID := uuid.New()
+	// Merchant at Taipei
+	locationData := &usecase.LocationData{
+		LocationName: "Taipei Store",
+		FullAddress:  "123 Taipei St",
+		Latitude:     25.0330,
+		Longitude:    121.5654,
+	}
+
+	nearbyOwner := uuid.New()
+	farOwner := uuid.New()
+
+	fx.notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
+
+	// Two subscribers: one nearby (within 1km), one far (beyond 5km radius)
+	fx.subscriptionRepo.EXPECT().
+		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
+		Return([]*entity.SubscriberAddress{
+			{
+				Address:            entity.Address{OwnerID: nearbyOwner, Latitude: 25.0335, Longitude: 121.5660},
+				NotificationRadius: 1.0, // 1km radius - should match
+			},
+			{
+				Address:            entity.Address{OwnerID: farOwner, Latitude: 25.1, Longitude: 121.7},
+				NotificationRadius: 0.5, // 0.5km radius - too far away
+			},
+		}, nil)
+
+	// Only the nearby subscriber should have their device queried
+	nearbyDevice := &entity.UserDevice{ID: uuid.New(), UserID: nearbyOwner, FCMToken: "nearby-token"}
+	fx.subscriptionRepo.EXPECT().
+		FindDevicesForUsers(ctx, []uuid.UUID{nearbyOwner}).
+		Return([]*entity.UserDevice{nearbyDevice}, nil)
+
+	fx.notificationSvc.EXPECT().
+		SendBatchNotification(ctx, []string{"nearby-token"}, "商戶位置通知", mock.Anything, mock.Anything).
+		Return(1, 0, nil, nil)
+
+	fx.notificationRepo.EXPECT().BatchCreateNotificationLogs(ctx, mock.Anything).Return(nil)
+	fx.notificationRepo.EXPECT().UpdateNotificationStatus(ctx, mock.Anything, 1, 0).Return(nil)
+
+	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
+
+	require.NoError(t, err)
+	assert.NotNil(t, notification)
+	// Only 1 notification sent (to nearby subscriber), far subscriber was filtered out
+	assert.Equal(t, 1, notification.TotalSent)
+	assert.Equal(t, 0, notification.TotalFailed)
+}
