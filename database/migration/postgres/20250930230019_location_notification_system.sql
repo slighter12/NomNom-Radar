@@ -71,10 +71,10 @@ CREATE UNIQUE INDEX idx_user_devices_user_device_unique
     ON user_devices(user_id, device_id) 
     WHERE deleted_at IS NULL;
 
--- Regular indexes for queries
-CREATE INDEX idx_user_devices_user_id ON user_devices(user_id);
-CREATE INDEX idx_user_devices_active ON user_devices(is_active) WHERE is_active = true;
-CREATE INDEX idx_user_devices_deleted_at ON user_devices(deleted_at);
+-- Composite index for FindDevicesByUser and FindActiveDevicesByUser queries
+CREATE INDEX idx_user_devices_user_active 
+    ON user_devices(user_id, is_active) 
+    WHERE deleted_at IS NULL;
 
 -- Create updated_at trigger
 CREATE TRIGGER update_user_devices_updated_at
@@ -97,15 +97,18 @@ CREATE TABLE user_merchant_subscriptions (
     deleted_at TIMESTAMPTZ
 );
 
+-- Index for FindSubscriptionsByUser
 CREATE INDEX idx_subscriptions_user_id ON user_merchant_subscriptions(user_id);
-CREATE INDEX idx_subscriptions_merchant_id ON user_merchant_subscriptions(merchant_id);
-CREATE INDEX idx_subscriptions_active ON user_merchant_subscriptions(is_active);
-CREATE INDEX idx_subscriptions_deleted_at ON user_merchant_subscriptions(deleted_at);
 
--- Adjust unique constraint for soft delete: only applies to non-deleted records
+-- Composite index for FindSubscribersWithinRadius (filters merchant_id + is_active)
+CREATE INDEX idx_subscriptions_merchant_active 
+    ON user_merchant_subscriptions(merchant_id, is_active) 
+    WHERE deleted_at IS NULL;
+
+-- Unique constraint for soft delete: only applies to non-deleted records
 CREATE UNIQUE INDEX idx_subscriptions_unique_active 
-ON user_merchant_subscriptions(user_id, merchant_id) 
-WHERE deleted_at IS NULL;
+    ON user_merchant_subscriptions(user_id, merchant_id) 
+    WHERE deleted_at IS NULL;
 
 -- Create updated_at trigger
 CREATE TRIGGER update_user_merchant_subscriptions_updated_at
@@ -150,9 +153,13 @@ CREATE TABLE merchant_location_notifications (
     CHECK (longitude BETWEEN -180 AND 180)
 );
 
-CREATE INDEX idx_merchant_notifications_merchant_id ON merchant_location_notifications(merchant_id);
-CREATE INDEX idx_merchant_notifications_location ON merchant_location_notifications USING GIST(location);
-CREATE INDEX idx_merchant_notifications_published_at ON merchant_location_notifications(published_at);
+-- Composite index for FindNotificationsByMerchant with pagination (ORDER BY published_at DESC)
+CREATE INDEX idx_merchant_notifications_merchant_published 
+    ON merchant_location_notifications(merchant_id, published_at DESC);
+
+-- Spatial index for geolocation queries
+CREATE INDEX idx_merchant_notifications_location 
+    ON merchant_location_notifications USING GIST(location);
 
 -- Create trigger using shared function
 CREATE TRIGGER trigger_update_notification_location
@@ -178,11 +185,8 @@ CREATE TABLE notification_logs (
     sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Index for looking up logs by notification (most likely query path)
 CREATE INDEX idx_notification_logs_notification_id ON notification_logs(notification_id);
-CREATE INDEX idx_notification_logs_user_id ON notification_logs(user_id);
-CREATE INDEX idx_notification_logs_device_id ON notification_logs(device_id);
-CREATE INDEX idx_notification_logs_status ON notification_logs(status);
-CREATE INDEX idx_notification_logs_sent_at ON notification_logs(sent_at);
 
 -- +goose Down
 -- SQL in this section is executed when the migration is rolled back.

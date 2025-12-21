@@ -62,7 +62,7 @@ CREATE TABLE user_authentications (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE UNIQUE INDEX idx_auth_provider_provider_user_id ON user_authentications(provider, provider_user_id);
-CREATE INDEX idx_auth_user_id ON user_authentications(user_id);
+CREATE INDEX idx_auth_user_id_provider ON user_authentications(user_id, provider);
 
 -- Table: refresh_tokens
 CREATE TABLE refresh_tokens (
@@ -73,7 +73,7 @@ CREATE TABLE refresh_tokens (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX idx_refresh_tokens_expires_at ON refresh_tokens(expires_at);
-CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens(user_id);
+CREATE INDEX idx_refresh_tokens_user_id_expires ON refresh_tokens(user_id, expires_at);
 
 -- Table: user_profiles
 CREATE TABLE user_profiles (
