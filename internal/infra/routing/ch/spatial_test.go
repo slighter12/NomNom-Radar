@@ -78,24 +78,6 @@ func TestGridIndex_GetVertex(t *testing.T) {
 	assert.Nil(t, v)
 }
 
-func TestGridIndex_NearestK(t *testing.T) {
-	vertices := []loader.Vertex{
-		{ID: 0, Lat: 25.0330, Lng: 121.5654}, // Taipei
-		{ID: 1, Lat: 25.0340, Lng: 121.5660}, // Very close to 0
-		{ID: 2, Lat: 24.1500, Lng: 120.6800}, // Taichung (far)
-	}
-
-	index := NewGridIndex(1.0)
-	index.Build(vertices)
-
-	// Get 2 nearest to Taipei
-	results := index.NearestK(25.0335, 121.5657, 2)
-	assert.Len(t, results, 2)
-	// The first two should be vertices 0 and 1 (both near Taipei)
-	assert.Contains(t, results, 0)
-	assert.Contains(t, results, 1)
-}
-
 func TestGridIndex_LargeDataset(t *testing.T) {
 	// Create a grid of vertices
 	var vertices []loader.Vertex

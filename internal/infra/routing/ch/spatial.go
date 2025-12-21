@@ -2,23 +2,9 @@ package ch
 
 import (
 	"math"
-	"sort"
 
 	"radar/internal/infra/routing/loader"
 )
-
-// SpatialIndex provides efficient nearest-neighbor lookup for coordinates
-type SpatialIndex interface {
-	// Nearest finds the nearest vertex to the given coordinate
-	// Returns the vertex index and true if found, or -1 and false if the index is empty
-	Nearest(lat, lng float64) (vertexIdx int, ok bool)
-
-	// Build constructs the spatial index from vertices
-	Build(vertices []loader.Vertex)
-
-	// Size returns the number of vertices in the index
-	Size() int
-}
 
 // GridIndex implements a simple grid-based spatial index
 // This is a lightweight alternative to KD-tree with no external dependencies
@@ -109,7 +95,7 @@ func (g *GridIndex) Nearest(lat, lng float64) (vertexIdx int, ok bool) {
 		// If we found a result and the next ring can't possibly contain a closer point,
 		// we can stop early
 		if found && ring > 0 {
-			minPossibleDistSq := g.minDistanceToRingSq(center(key), ring+1)
+			minPossibleDistSq := g.minDistanceToRingSq(key, ring+1)
 			if minPossibleDistSq >= bestDistSq {
 				break
 			}
@@ -193,11 +179,6 @@ func (g *GridIndex) maxSearchRing() int {
 	return max(latCells, lngCells) + 1
 }
 
-// center returns a dummy representation for the grid key (used for distance calculations)
-func center(_ gridKey) gridKey {
-	return gridKey{}
-}
-
 func (g *GridIndex) minDistanceToRingSq(_ gridKey, ring int) float64 {
 	// Calculate the minimum possible squared distance to any point in the ring
 	// Distance to the inner edge of the ring
@@ -236,100 +217,4 @@ func (g *GridIndex) GetVertex(idx int) *loader.Vertex {
 // GetVertices returns all vertices
 func (g *GridIndex) GetVertices() []loader.Vertex {
 	return g.vertices
-}
-
-// distIdx holds a vertex index and its squared distance for sorting.
-type distIdx struct {
-	idx    int
-	distSq float64
-}
-
-// NearestK finds the k nearest vertices to the given coordinate using ring expansion.
-// Returns vertex indices sorted by distance (closest first).
-// Time complexity: O(k log k) in typical cases, O(N) worst case for very sparse data.
-func (g *GridIndex) NearestK(lat, lng float64, count int) []int {
-	if len(g.vertices) == 0 || count <= 0 {
-		return nil
-	}
-
-	key := g.getGridKey(lat, lng)
-	var candidates []distIdx
-
-	// Expand rings until we have enough candidates and next ring can't have closer points
-	for ring := 0; ring <= g.maxSearchRing(); ring++ {
-		// Collect vertices from this ring
-		ringCandidates := g.collectRingVertices(lat, lng, key, ring)
-		candidates = append(candidates, ringCandidates...)
-
-		// Early termination: if we have enough candidates and next ring is too far
-		if len(candidates) >= count && ring > 0 {
-			// Sort current candidates to find k-th distance
-			sort.Slice(candidates, func(i, j int) bool {
-				return candidates[i].distSq < candidates[j].distSq
-			})
-
-			// Check if next ring's minimum distance is greater than k-th candidate
-			kthDistSq := candidates[min(count-1, len(candidates)-1)].distSq
-			minNextRingDistSq := g.minDistanceToRingSq(key, ring+1)
-
-			if minNextRingDistSq >= kthDistSq {
-				break
-			}
-		}
-	}
-
-	// Final sort and return top count
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].distSq < candidates[j].distSq
-	})
-
-	result := make([]int, 0, min(count, len(candidates)))
-	for idx := 0; idx < len(candidates) && idx < count; idx++ {
-		result = append(result, candidates[idx].idx)
-	}
-
-	return result
-}
-
-// collectRingVertices collects all vertices from a specific ring around the center cell.
-func (g *GridIndex) collectRingVertices(lat, lng float64, centerKey gridKey, ring int) []distIdx {
-	var results []distIdx
-
-	if ring == 0 {
-		// Just the center cell
-		if indices, exists := g.grid[centerKey]; exists {
-			for _, idx := range indices {
-				vertex := g.vertices[idx]
-				distSq := squaredDistance(lat, lng, vertex.Lat, vertex.Lng)
-				results = append(results, distIdx{idx: idx, distSq: distSq})
-			}
-		}
-
-		return results
-	}
-
-	// Perimeter of the ring
-	for dLat := -ring; dLat <= ring; dLat++ {
-		for dLng := -ring; dLng <= ring; dLng++ {
-			// Only process cells on the perimeter
-			if abs(dLat) != ring && abs(dLng) != ring {
-				continue
-			}
-
-			cellKey := gridKey{
-				latCell: centerKey.latCell + dLat,
-				lngCell: centerKey.lngCell + dLng,
-			}
-
-			if indices, exists := g.grid[cellKey]; exists {
-				for _, idx := range indices {
-					vertex := g.vertices[idx]
-					distSq := squaredDistance(lat, lng, vertex.Lat, vertex.Lng)
-					results = append(results, distIdx{idx: idx, distSq: distSq})
-				}
-			}
-		}
-	}
-
-	return results
 }
