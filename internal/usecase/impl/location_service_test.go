@@ -17,10 +17,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// locationServiceFixtures holds all test dependencies for location service tests.
+type locationServiceFixtures struct {
+	service     usecase.LocationUsecase
+	addressRepo *mockRepo.MockAddressRepository
+}
+
+func createTestLocationService(t *testing.T, cfg *config.Config) locationServiceFixtures {
+	addressRepo := mockRepo.NewMockAddressRepository(t)
+	if cfg == nil {
+		cfg = &config.Config{
+			LocationNotification: &config.LocationNotificationConfig{
+				UserMaxLocations:     5,
+				MerchantMaxLocations: 10,
+			},
+		}
+	}
+	service := NewLocationService(addressRepo, cfg)
+
+	return locationServiceFixtures{
+		service:     service,
+		addressRepo: addressRepo,
+	}
+}
+
 func TestLocationService_GetUserLocations(t *testing.T) {
-	mockAddressRepo := mockRepo.NewMockAddressRepository(t)
-	cfg := &config.Config{}
-	service := NewLocationService(mockAddressRepo, cfg)
+	fx := createTestLocationService(t, nil)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -28,23 +50,17 @@ func TestLocationService_GetUserLocations(t *testing.T) {
 		{ID: uuid.New(), OwnerID: userID, OwnerType: entity.OwnerTypeUserProfile},
 	}
 
-	mockAddressRepo.EXPECT().
+	fx.addressRepo.EXPECT().
 		FindAddressesByOwner(ctx, userID, entity.OwnerTypeUserProfile).
 		Return(expectedAddresses, nil)
 
-	addresses, err := service.GetUserLocations(ctx, userID)
+	addresses, err := fx.service.GetUserLocations(ctx, userID)
 	require.NoError(t, err)
 	assert.Equal(t, expectedAddresses, addresses)
 }
 
 func TestLocationService_AddUserLocation_Success(t *testing.T) {
-	mockAddressRepo := mockRepo.NewMockAddressRepository(t)
-	cfg := &config.Config{
-		LocationNotification: &config.LocationNotificationConfig{
-			UserMaxLocations: 5,
-		},
-	}
-	service := NewLocationService(mockAddressRepo, cfg)
+	fx := createTestLocationService(t, nil)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -57,15 +73,15 @@ func TestLocationService_AddUserLocation_Success(t *testing.T) {
 		IsActive:    true,
 	}
 
-	mockAddressRepo.EXPECT().
+	fx.addressRepo.EXPECT().
 		CountAddressesByOwner(ctx, userID, entity.OwnerTypeUserProfile).
 		Return(int64(2), nil)
 
-	mockAddressRepo.EXPECT().
+	fx.addressRepo.EXPECT().
 		CreateAddress(ctx, mock.AnythingOfType("*entity.Address")).
 		Return(nil)
 
-	address, err := service.AddUserLocation(ctx, userID, input)
+	address, err := fx.service.AddUserLocation(ctx, userID, input)
 	require.NoError(t, err)
 	assert.NotNil(t, address)
 	assert.Equal(t, userID, address.OwnerID)
@@ -74,13 +90,7 @@ func TestLocationService_AddUserLocation_Success(t *testing.T) {
 }
 
 func TestLocationService_AddUserLocation_LimitReached(t *testing.T) {
-	mockAddressRepo := mockRepo.NewMockAddressRepository(t)
-	cfg := &config.Config{
-		LocationNotification: &config.LocationNotificationConfig{
-			UserMaxLocations: 5,
-		},
-	}
-	service := NewLocationService(mockAddressRepo, cfg)
+	fx := createTestLocationService(t, nil)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -91,20 +101,18 @@ func TestLocationService_AddUserLocation_LimitReached(t *testing.T) {
 		Longitude:   121.0,
 	}
 
-	mockAddressRepo.EXPECT().
+	fx.addressRepo.EXPECT().
 		CountAddressesByOwner(ctx, userID, entity.OwnerTypeUserProfile).
 		Return(int64(5), nil)
 
-	address, err := service.AddUserLocation(ctx, userID, input)
+	address, err := fx.service.AddUserLocation(ctx, userID, input)
 	assert.Error(t, err)
 	assert.Nil(t, address)
 	assert.Equal(t, ErrLocationLimitReached, err)
 }
 
 func TestLocationService_UpdateUserLocation_Success(t *testing.T) {
-	mockAddressRepo := mockRepo.NewMockAddressRepository(t)
-	cfg := &config.Config{}
-	service := NewLocationService(mockAddressRepo, cfg)
+	fx := createTestLocationService(t, nil)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -121,44 +129,40 @@ func TestLocationService_UpdateUserLocation_Success(t *testing.T) {
 		Label:     "Home",
 	}
 
-	mockAddressRepo.EXPECT().
+	fx.addressRepo.EXPECT().
 		FindAddressByID(ctx, locationID).
 		Return(existingAddress, nil)
 
-	mockAddressRepo.EXPECT().
+	fx.addressRepo.EXPECT().
 		UpdateAddress(ctx, mock.AnythingOfType("*entity.Address")).
 		Return(nil)
 
-	address, err := service.UpdateUserLocation(ctx, userID, locationID, input)
+	address, err := fx.service.UpdateUserLocation(ctx, userID, locationID, input)
 	require.NoError(t, err)
 	assert.NotNil(t, address)
 	assert.Equal(t, newLabel, address.Label)
 }
 
 func TestLocationService_UpdateUserLocation_NotFound(t *testing.T) {
-	mockAddressRepo := mockRepo.NewMockAddressRepository(t)
-	cfg := &config.Config{}
-	service := NewLocationService(mockAddressRepo, cfg)
+	fx := createTestLocationService(t, nil)
 
 	ctx := context.Background()
 	userID := uuid.New()
 	locationID := uuid.New()
 	input := &usecase.UpdateLocationInput{}
 
-	mockAddressRepo.EXPECT().
+	fx.addressRepo.EXPECT().
 		FindAddressByID(ctx, locationID).
 		Return(nil, repository.ErrAddressNotFound)
 
-	address, err := service.UpdateUserLocation(ctx, userID, locationID, input)
+	address, err := fx.service.UpdateUserLocation(ctx, userID, locationID, input)
 	assert.Error(t, err)
 	assert.Nil(t, address)
 	assert.Equal(t, ErrLocationNotFound, err)
 }
 
 func TestLocationService_UpdateUserLocation_Unauthorized(t *testing.T) {
-	mockAddressRepo := mockRepo.NewMockAddressRepository(t)
-	cfg := &config.Config{}
-	service := NewLocationService(mockAddressRepo, cfg)
+	fx := createTestLocationService(t, nil)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -172,20 +176,18 @@ func TestLocationService_UpdateUserLocation_Unauthorized(t *testing.T) {
 		OwnerType: entity.OwnerTypeUserProfile,
 	}
 
-	mockAddressRepo.EXPECT().
+	fx.addressRepo.EXPECT().
 		FindAddressByID(ctx, locationID).
 		Return(existingAddress, nil)
 
-	address, err := service.UpdateUserLocation(ctx, userID, locationID, input)
+	address, err := fx.service.UpdateUserLocation(ctx, userID, locationID, input)
 	assert.Error(t, err)
 	assert.Nil(t, address)
 	assert.Equal(t, ErrUnauthorized, err)
 }
 
 func TestLocationService_DeleteUserLocation_Success(t *testing.T) {
-	mockAddressRepo := mockRepo.NewMockAddressRepository(t)
-	cfg := &config.Config{}
-	service := NewLocationService(mockAddressRepo, cfg)
+	fx := createTestLocationService(t, nil)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -197,22 +199,20 @@ func TestLocationService_DeleteUserLocation_Success(t *testing.T) {
 		OwnerType: entity.OwnerTypeUserProfile,
 	}
 
-	mockAddressRepo.EXPECT().
+	fx.addressRepo.EXPECT().
 		FindAddressByID(ctx, locationID).
 		Return(existingAddress, nil)
 
-	mockAddressRepo.EXPECT().
+	fx.addressRepo.EXPECT().
 		DeleteAddress(ctx, locationID).
 		Return(nil)
 
-	err := service.DeleteUserLocation(ctx, userID, locationID)
+	err := fx.service.DeleteUserLocation(ctx, userID, locationID)
 	require.NoError(t, err)
 }
 
 func TestLocationService_DeleteUserLocation_Unauthorized(t *testing.T) {
-	mockAddressRepo := mockRepo.NewMockAddressRepository(t)
-	cfg := &config.Config{}
-	service := NewLocationService(mockAddressRepo, cfg)
+	fx := createTestLocationService(t, nil)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -225,19 +225,17 @@ func TestLocationService_DeleteUserLocation_Unauthorized(t *testing.T) {
 		OwnerType: entity.OwnerTypeUserProfile,
 	}
 
-	mockAddressRepo.EXPECT().
+	fx.addressRepo.EXPECT().
 		FindAddressByID(ctx, locationID).
 		Return(existingAddress, nil)
 
-	err := service.DeleteUserLocation(ctx, userID, locationID)
+	err := fx.service.DeleteUserLocation(ctx, userID, locationID)
 	assert.Error(t, err)
 	assert.Equal(t, ErrUnauthorized, err)
 }
 
 func TestLocationService_GetMerchantLocations(t *testing.T) {
-	mockAddressRepo := mockRepo.NewMockAddressRepository(t)
-	cfg := &config.Config{}
-	service := NewLocationService(mockAddressRepo, cfg)
+	fx := createTestLocationService(t, nil)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
@@ -245,23 +243,17 @@ func TestLocationService_GetMerchantLocations(t *testing.T) {
 		{ID: uuid.New(), OwnerID: merchantID, OwnerType: entity.OwnerTypeMerchantProfile},
 	}
 
-	mockAddressRepo.EXPECT().
+	fx.addressRepo.EXPECT().
 		FindAddressesByOwner(ctx, merchantID, entity.OwnerTypeMerchantProfile).
 		Return(expectedAddresses, nil)
 
-	addresses, err := service.GetMerchantLocations(ctx, merchantID)
+	addresses, err := fx.service.GetMerchantLocations(ctx, merchantID)
 	require.NoError(t, err)
 	assert.Equal(t, expectedAddresses, addresses)
 }
 
 func TestLocationService_AddMerchantLocation_Success(t *testing.T) {
-	mockAddressRepo := mockRepo.NewMockAddressRepository(t)
-	cfg := &config.Config{
-		LocationNotification: &config.LocationNotificationConfig{
-			MerchantMaxLocations: 10,
-		},
-	}
-	service := NewLocationService(mockAddressRepo, cfg)
+	fx := createTestLocationService(t, nil)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
@@ -274,15 +266,15 @@ func TestLocationService_AddMerchantLocation_Success(t *testing.T) {
 		IsActive:    true,
 	}
 
-	mockAddressRepo.EXPECT().
+	fx.addressRepo.EXPECT().
 		CountAddressesByOwner(ctx, merchantID, entity.OwnerTypeMerchantProfile).
 		Return(int64(5), nil)
 
-	mockAddressRepo.EXPECT().
+	fx.addressRepo.EXPECT().
 		CreateAddress(ctx, mock.AnythingOfType("*entity.Address")).
 		Return(nil)
 
-	address, err := service.AddMerchantLocation(ctx, merchantID, input)
+	address, err := fx.service.AddMerchantLocation(ctx, merchantID, input)
 	require.NoError(t, err)
 	assert.NotNil(t, address)
 	assert.Equal(t, merchantID, address.OwnerID)
@@ -290,13 +282,7 @@ func TestLocationService_AddMerchantLocation_Success(t *testing.T) {
 }
 
 func TestLocationService_AddMerchantLocation_LimitReached(t *testing.T) {
-	mockAddressRepo := mockRepo.NewMockAddressRepository(t)
-	cfg := &config.Config{
-		LocationNotification: &config.LocationNotificationConfig{
-			MerchantMaxLocations: 10,
-		},
-	}
-	service := NewLocationService(mockAddressRepo, cfg)
+	fx := createTestLocationService(t, nil)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
@@ -307,24 +293,18 @@ func TestLocationService_AddMerchantLocation_LimitReached(t *testing.T) {
 		Longitude:   121.0,
 	}
 
-	mockAddressRepo.EXPECT().
+	fx.addressRepo.EXPECT().
 		CountAddressesByOwner(ctx, merchantID, entity.OwnerTypeMerchantProfile).
 		Return(int64(10), nil)
 
-	address, err := service.AddMerchantLocation(ctx, merchantID, input)
+	address, err := fx.service.AddMerchantLocation(ctx, merchantID, input)
 	assert.Error(t, err)
 	assert.Nil(t, address)
 	assert.Equal(t, ErrLocationLimitReached, err)
 }
 
 func TestLocationService_CountError(t *testing.T) {
-	mockAddressRepo := mockRepo.NewMockAddressRepository(t)
-	cfg := &config.Config{
-		LocationNotification: &config.LocationNotificationConfig{
-			UserMaxLocations: 5,
-		},
-	}
-	service := NewLocationService(mockAddressRepo, cfg)
+	fx := createTestLocationService(t, nil)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -336,11 +316,11 @@ func TestLocationService_CountError(t *testing.T) {
 	}
 
 	expectedErr := errors.New("database error")
-	mockAddressRepo.EXPECT().
+	fx.addressRepo.EXPECT().
 		CountAddressesByOwner(ctx, userID, entity.OwnerTypeUserProfile).
 		Return(int64(0), expectedErr)
 
-	address, err := service.AddUserLocation(ctx, userID, input)
+	address, err := fx.service.AddUserLocation(ctx, userID, input)
 	assert.Error(t, err)
 	assert.Nil(t, address)
 	assert.Contains(t, err.Error(), "failed to count addresses by owner")

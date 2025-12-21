@@ -13,6 +13,7 @@ linters:
     - durationcheck
     - errcheck
     - errorlint
+    - forbidigo
     - gochecknoglobals
     - gochecknoinits
     - goconst
@@ -41,6 +42,16 @@ linters:
     - whitespace
     - wrapcheck
   settings:
+    forbidigo:
+      forbid:
+        - pattern: ^fmt\.Print(f|ln)?$
+          pkg: ^radar/internal/
+        - pattern: ^log\.Print(f|ln)?$
+          pkg: ^radar/internal/
+        - pattern: ^log\.Fatal(f|ln)?$
+          pkg: ^radar/internal/
+        - pattern: ^log\.Panic(f|ln)?$
+          pkg: ^radar/internal/
     gocognit:
       min-complexity: 20
     gocritic:

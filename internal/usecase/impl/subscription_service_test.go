@@ -18,30 +18,49 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSubscriptionService_SubscribeToMerchant_NewSubscription(t *testing.T) {
-	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	mockQRService := mockSvc.NewMockQRCodeService(t)
+// subscriptionServiceFixtures holds all test dependencies for subscription service tests.
+type subscriptionServiceFixtures struct {
+	service    usecase.SubscriptionUsecase
+	subRepo    *mockRepo.MockSubscriptionRepository
+	deviceRepo *mockRepo.MockDeviceRepository
+	qrService  *mockSvc.MockQRCodeService
+}
+
+func createTestSubscriptionService(t *testing.T) subscriptionServiceFixtures {
+	subRepo := mockRepo.NewMockSubscriptionRepository(t)
+	deviceRepo := mockRepo.NewMockDeviceRepository(t)
+	qrService := mockSvc.NewMockQRCodeService(t)
 	cfg := &config.Config{
 		LocationNotification: &config.LocationNotificationConfig{
 			DefaultRadius: 1000.0,
 		},
 	}
-	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
+	service := NewSubscriptionService(subRepo, deviceRepo, qrService, cfg)
+
+	return subscriptionServiceFixtures{
+		service:    service,
+		subRepo:    subRepo,
+		deviceRepo: deviceRepo,
+		qrService:  qrService,
+	}
+}
+
+func TestSubscriptionService_SubscribeToMerchant_NewSubscription(t *testing.T) {
+	fx := createTestSubscriptionService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
 	merchantID := uuid.New()
 
-	mockSubRepo.EXPECT().
+	fx.subRepo.EXPECT().
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
 		Return(nil, repository.ErrSubscriptionNotFound)
 
-	mockSubRepo.EXPECT().
+	fx.subRepo.EXPECT().
 		CreateSubscription(ctx, mock.AnythingOfType("*entity.UserMerchantSubscription")).
 		Return(nil)
 
-	subscription, err := service.SubscribeToMerchant(ctx, userID, merchantID, nil)
+	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, nil)
 	require.NoError(t, err)
 	assert.NotNil(t, subscription)
 	assert.Equal(t, userID, subscription.UserID)
@@ -51,15 +70,7 @@ func TestSubscriptionService_SubscribeToMerchant_NewSubscription(t *testing.T) {
 }
 
 func TestSubscriptionService_SubscribeToMerchant_ReactivateExisting(t *testing.T) {
-	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	mockQRService := mockSvc.NewMockQRCodeService(t)
-	cfg := &config.Config{
-		LocationNotification: &config.LocationNotificationConfig{
-			DefaultRadius: 1000.0,
-		},
-	}
-	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
+	fx := createTestSubscriptionService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -73,30 +84,22 @@ func TestSubscriptionService_SubscribeToMerchant_ReactivateExisting(t *testing.T
 		IsActive:   false,
 	}
 
-	mockSubRepo.EXPECT().
+	fx.subRepo.EXPECT().
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
 		Return(existingSub, nil)
 
-	mockSubRepo.EXPECT().
+	fx.subRepo.EXPECT().
 		UpdateSubscriptionStatus(ctx, subID, true).
 		Return(nil)
 
-	subscription, err := service.SubscribeToMerchant(ctx, userID, merchantID, nil)
+	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, nil)
 	require.NoError(t, err)
 	assert.NotNil(t, subscription)
 	assert.True(t, subscription.IsActive)
 }
 
 func TestSubscriptionService_SubscribeToMerchant_WithDevice(t *testing.T) {
-	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	mockQRService := mockSvc.NewMockQRCodeService(t)
-	cfg := &config.Config{
-		LocationNotification: &config.LocationNotificationConfig{
-			DefaultRadius: 1000.0,
-		},
-	}
-	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
+	fx := createTestSubscriptionService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -107,33 +110,45 @@ func TestSubscriptionService_SubscribeToMerchant_WithDevice(t *testing.T) {
 		Platform: "ios",
 	}
 
-	mockSubRepo.EXPECT().
+	fx.subRepo.EXPECT().
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
 		Return(nil, repository.ErrSubscriptionNotFound)
 
-	mockSubRepo.EXPECT().
+	fx.subRepo.EXPECT().
 		CreateSubscription(ctx, mock.AnythingOfType("*entity.UserMerchantSubscription")).
 		Return(nil)
 
-	mockDeviceRepo.EXPECT().
+	fx.deviceRepo.EXPECT().
 		FindDevicesByUser(ctx, userID).
 		Return([]*entity.UserDevice{}, nil)
 
-	mockDeviceRepo.EXPECT().
+	fx.deviceRepo.EXPECT().
 		CreateDevice(ctx, mock.AnythingOfType("*entity.UserDevice")).
 		Return(nil)
 
-	subscription, err := service.SubscribeToMerchant(ctx, userID, merchantID, deviceInfo)
+	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, deviceInfo)
 	require.NoError(t, err)
 	assert.NotNil(t, subscription)
 }
 
+func TestSubscriptionService_SubscribeToMerchant_FindError(t *testing.T) {
+	fx := createTestSubscriptionService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	merchantID := uuid.New()
+
+	fx.subRepo.EXPECT().
+		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
+		Return(nil, errors.New("db error"))
+
+	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, nil)
+	assert.Error(t, err)
+	assert.Nil(t, subscription)
+}
+
 func TestSubscriptionService_UnsubscribeFromMerchant_Success(t *testing.T) {
-	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	mockQRService := mockSvc.NewMockQRCodeService(t)
-	cfg := &config.Config{}
-	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
+	fx := createTestSubscriptionService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -147,44 +162,36 @@ func TestSubscriptionService_UnsubscribeFromMerchant_Success(t *testing.T) {
 		IsActive:   true,
 	}
 
-	mockSubRepo.EXPECT().
+	fx.subRepo.EXPECT().
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
 		Return(existingSub, nil)
 
-	mockSubRepo.EXPECT().
+	fx.subRepo.EXPECT().
 		DeleteSubscription(ctx, subID).
 		Return(nil)
 
-	err := service.UnsubscribeFromMerchant(ctx, userID, merchantID)
+	err := fx.service.UnsubscribeFromMerchant(ctx, userID, merchantID)
 	require.NoError(t, err)
 }
 
 func TestSubscriptionService_UnsubscribeFromMerchant_NotFound(t *testing.T) {
-	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	mockQRService := mockSvc.NewMockQRCodeService(t)
-	cfg := &config.Config{}
-	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
+	fx := createTestSubscriptionService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
 	merchantID := uuid.New()
 
-	mockSubRepo.EXPECT().
+	fx.subRepo.EXPECT().
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
 		Return(nil, repository.ErrSubscriptionNotFound)
 
-	err := service.UnsubscribeFromMerchant(ctx, userID, merchantID)
+	err := fx.service.UnsubscribeFromMerchant(ctx, userID, merchantID)
 	assert.Error(t, err)
 	assert.Equal(t, ErrSubscriptionNotFound, err)
 }
 
 func TestSubscriptionService_GetUserSubscriptions(t *testing.T) {
-	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	mockQRService := mockSvc.NewMockQRCodeService(t)
-	cfg := &config.Config{}
-	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
+	fx := createTestSubscriptionService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
@@ -192,21 +199,17 @@ func TestSubscriptionService_GetUserSubscriptions(t *testing.T) {
 		{ID: uuid.New(), UserID: userID, MerchantID: uuid.New()},
 	}
 
-	mockSubRepo.EXPECT().
+	fx.subRepo.EXPECT().
 		FindSubscriptionsByUser(ctx, userID).
 		Return(expectedSubs, nil)
 
-	subs, err := service.GetUserSubscriptions(ctx, userID)
+	subs, err := fx.service.GetUserSubscriptions(ctx, userID)
 	require.NoError(t, err)
 	assert.Equal(t, expectedSubs, subs)
 }
 
 func TestSubscriptionService_GetMerchantSubscribers(t *testing.T) {
-	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	mockQRService := mockSvc.NewMockQRCodeService(t)
-	cfg := &config.Config{}
-	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
+	fx := createTestSubscriptionService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
@@ -214,85 +217,69 @@ func TestSubscriptionService_GetMerchantSubscribers(t *testing.T) {
 		{ID: uuid.New(), UserID: uuid.New(), MerchantID: merchantID},
 	}
 
-	mockSubRepo.EXPECT().
+	fx.subRepo.EXPECT().
 		FindSubscriptionsByMerchant(ctx, merchantID).
 		Return(expectedSubs, nil)
 
-	subs, err := service.GetMerchantSubscribers(ctx, merchantID)
+	subs, err := fx.service.GetMerchantSubscribers(ctx, merchantID)
 	require.NoError(t, err)
 	assert.Equal(t, expectedSubs, subs)
 }
 
 func TestSubscriptionService_GenerateSubscriptionQR(t *testing.T) {
-	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	mockQRService := mockSvc.NewMockQRCodeService(t)
-	cfg := &config.Config{}
-	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
+	fx := createTestSubscriptionService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
 	expectedQR := []byte("qr-code-data")
 
-	mockQRService.EXPECT().
+	fx.qrService.EXPECT().
 		GenerateSubscriptionQR(merchantID).
 		Return(expectedQR, nil)
 
-	qrCode, err := service.GenerateSubscriptionQR(ctx, merchantID)
+	qrCode, err := fx.service.GenerateSubscriptionQR(ctx, merchantID)
 	require.NoError(t, err)
 	assert.Equal(t, expectedQR, qrCode)
 }
 
 func TestSubscriptionService_ProcessQRSubscription_Success(t *testing.T) {
-	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	mockQRService := mockSvc.NewMockQRCodeService(t)
-	cfg := &config.Config{
-		LocationNotification: &config.LocationNotificationConfig{
-			DefaultRadius: 1000.0,
-		},
-	}
-	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
+	fx := createTestSubscriptionService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
 	merchantID := uuid.New()
 	qrData := "qr-data-string"
 
-	mockQRService.EXPECT().
+	fx.qrService.EXPECT().
 		ParseSubscriptionQR(qrData).
 		Return(merchantID, nil)
 
-	mockSubRepo.EXPECT().
+	fx.subRepo.EXPECT().
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
 		Return(nil, repository.ErrSubscriptionNotFound)
 
-	mockSubRepo.EXPECT().
+	fx.subRepo.EXPECT().
 		CreateSubscription(ctx, mock.AnythingOfType("*entity.UserMerchantSubscription")).
 		Return(nil)
 
-	subscription, err := service.ProcessQRSubscription(ctx, userID, qrData, nil)
+	subscription, err := fx.service.ProcessQRSubscription(ctx, userID, qrData, nil)
 	require.NoError(t, err)
 	assert.NotNil(t, subscription)
 	assert.Equal(t, merchantID, subscription.MerchantID)
 }
 
 func TestSubscriptionService_ProcessQRSubscription_InvalidQR(t *testing.T) {
-	mockSubRepo := mockRepo.NewMockSubscriptionRepository(t)
-	mockDeviceRepo := mockRepo.NewMockDeviceRepository(t)
-	mockQRService := mockSvc.NewMockQRCodeService(t)
-	cfg := &config.Config{}
-	service := NewSubscriptionService(mockSubRepo, mockDeviceRepo, mockQRService, cfg)
+	fx := createTestSubscriptionService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
 	qrData := "invalid-qr-data"
 
-	mockQRService.EXPECT().
+	fx.qrService.EXPECT().
 		ParseSubscriptionQR(qrData).
 		Return(uuid.Nil, errors.New("parse error"))
 
-	subscription, err := service.ProcessQRSubscription(ctx, userID, qrData, nil)
+	subscription, err := fx.service.ProcessQRSubscription(ctx, userID, qrData, nil)
 	assert.Error(t, err)
 	assert.Nil(t, subscription)
 	assert.Equal(t, ErrInvalidQRCode, err)
