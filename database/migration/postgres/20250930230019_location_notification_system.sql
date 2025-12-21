@@ -185,8 +185,10 @@ CREATE TABLE notification_logs (
     sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Index for looking up logs by notification (most likely query path)
+-- FK indexes for CASCADE DELETE performance
 CREATE INDEX idx_notification_logs_notification_id ON notification_logs(notification_id);
+CREATE INDEX idx_notification_logs_user_id ON notification_logs(user_id);
+CREATE INDEX idx_notification_logs_device_id ON notification_logs(device_id);
 
 -- +goose Down
 -- SQL in this section is executed when the migration is rolled back.
