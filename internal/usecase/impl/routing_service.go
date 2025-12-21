@@ -12,6 +12,7 @@ import (
 	"radar/internal/usecase"
 
 	"github.com/pkg/errors"
+	"go.uber.org/fx"
 )
 
 // routingService implements the RoutingUsecase interface
@@ -34,18 +35,31 @@ type routingService struct {
 	mu sync.RWMutex
 }
 
+// RoutingServiceParams holds dependencies for RoutingService, injected by Fx.
+type RoutingServiceParams struct {
+	fx.In
+
+	Config *config.RoutingConfig `optional:"true"`
+	Logger *slog.Logger
+}
+
 // NewRoutingService creates a new routing service instance
-func NewRoutingService(cfg *config.RoutingConfig, logger *slog.Logger) usecase.RoutingUsecase {
+func NewRoutingService(params RoutingServiceParams) usecase.RoutingUsecase {
+	cfg := params.Config
+	logger := params.Logger
+
 	if logger == nil {
 		logger = slog.Default()
 	}
 
-	snapDistance := cfg.MaxSnapDistanceKm
+	var snapDistance, speedKmh float64
+	if cfg != nil {
+		snapDistance = cfg.MaxSnapDistanceKm
+		speedKmh = cfg.DefaultSpeedKmh
+	}
 	if snapDistance <= 0 {
 		snapDistance = defaultSnapDistanceKm
 	}
-
-	speedKmh := cfg.DefaultSpeedKmh
 	if speedKmh <= 0 {
 		speedKmh = defaultSpeedKmh
 	}
@@ -57,7 +71,7 @@ func NewRoutingService(cfg *config.RoutingConfig, logger *slog.Logger) usecase.R
 	}
 
 	// Initialize CH engine if enabled and data path is configured
-	if cfg.Enabled && cfg.DataPath != "" {
+	if cfg != nil && cfg.Enabled && cfg.DataPath != "" {
 		engineConfig := buildEngineConfig(cfg, snapDistance, speedKmh)
 		svc.engine = ch.NewEngine(engineConfig, logger)
 

@@ -35,7 +35,12 @@ func createTestSubscriptionService(t *testing.T) subscriptionServiceFixtures {
 			DefaultRadius: 1000.0,
 		},
 	}
-	service := NewSubscriptionService(subRepo, deviceRepo, qrService, cfg)
+	service := NewSubscriptionService(SubscriptionServiceParams{
+		SubscriptionRepo: subRepo,
+		DeviceRepo:       deviceRepo,
+		QRCodeService:    qrService,
+		Config:           cfg,
+	})
 
 	return subscriptionServiceFixtures{
 		service:    service,

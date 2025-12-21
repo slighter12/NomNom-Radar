@@ -11,19 +11,28 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/pkg/errors"
+	"go.uber.org/fx"
 )
+
+// DeviceHandlerParams holds dependencies for DeviceHandler, injected by Fx.
+type DeviceHandlerParams struct {
+	fx.In
+
+	DeviceUC usecase.DeviceUsecase
+	Logger   *slog.Logger
+}
 
 // DeviceHandler holds dependencies for device-related handlers
 type DeviceHandler struct {
-	uc     usecase.DeviceUsecase
-	logger *slog.Logger
+	deviceUC usecase.DeviceUsecase
+	logger   *slog.Logger
 }
 
 // NewDeviceHandler is the constructor for DeviceHandler
-func NewDeviceHandler(uc usecase.DeviceUsecase, logger *slog.Logger) *DeviceHandler {
+func NewDeviceHandler(params DeviceHandlerParams) *DeviceHandler {
 	return &DeviceHandler{
-		uc:     uc,
-		logger: logger,
+		deviceUC: params.DeviceUC,
+		logger:   params.Logger,
 	}
 }
 
@@ -61,7 +70,7 @@ func (h *DeviceHandler) RegisterDevice(c echo.Context) error {
 		Platform: req.Platform,
 	}
 
-	device, err := h.uc.RegisterDevice(c.Request().Context(), userID, deviceInfo)
+	device, err := h.deviceUC.RegisterDevice(c.Request().Context(), userID, deviceInfo)
 	if err != nil {
 		return h.handleAppError(c, err)
 	}
@@ -76,7 +85,7 @@ func (h *DeviceHandler) GetUserDevices(c echo.Context) error {
 		return err
 	}
 
-	devices, err := h.uc.GetUserDevices(c.Request().Context(), userID)
+	devices, err := h.deviceUC.GetUserDevices(c.Request().Context(), userID)
 	if err != nil {
 		return h.handleAppError(c, err)
 	}
@@ -105,7 +114,7 @@ func (h *DeviceHandler) UpdateFCMToken(c echo.Context) error {
 		return response.BadRequest(c, "VALIDATION_ERROR", err.Error())
 	}
 
-	if err := h.uc.UpdateFCMToken(c.Request().Context(), userID, deviceID, req.FCMToken); err != nil {
+	if err := h.deviceUC.UpdateFCMToken(c.Request().Context(), userID, deviceID, req.FCMToken); err != nil {
 		return h.handleAppError(c, err)
 	}
 
@@ -124,7 +133,7 @@ func (h *DeviceHandler) DeactivateDevice(c echo.Context) error {
 		return response.BadRequest(c, "INVALID_ID", "Invalid device ID")
 	}
 
-	if err := h.uc.DeactivateDevice(c.Request().Context(), userID, deviceID); err != nil {
+	if err := h.deviceUC.DeactivateDevice(c.Request().Context(), userID, deviceID); err != nil {
 		return h.handleAppError(c, err)
 	}
 

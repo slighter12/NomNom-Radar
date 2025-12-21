@@ -13,14 +13,16 @@ NomNom-Radar is a real-time notification backend service. It utilizes PostgreSQL
 * **Real-time Vendor Tracking**: Allows food truck owners to update their location instantly via a simple API endpoint.
 * **Dynamic Geofencing**: Users can define a custom notification radius (e.g., 500 meters, 1 km).
 * **High-Performance Geospatial Queries**: Leverages the power of PostGIS (`ST_DWithin`) for efficient, low-latency proximity checks.
+* **Road Network Routing**: Uses Contraction Hierarchies (CH) algorithm for accurate road network distance and ETA calculations, detecting unreachable locations (e.g., Taiwan ↔ Penghu islands).
 * **Push Notification System**: Integrates with services like Firebase Cloud Messaging (FCM) to deliver instant alerts to users' devices.
 * **Open & Share-Alike**: Licensed under AGPL-3.0 to encourage community contribution while protecting the project from being used in proprietary, closed-source commercial services.
 
 ## 🛠️ Tech Stack
 
-* **Backend**: **Go** with a standard library or a framework like **Gin / Echo**
+* **Backend**: **Go** with **Echo** framework
 * **Database**: PostgreSQL + PostGIS extension for geospatial data
-* **Database Driver/ORM**: **GORM / sqlx**
+* **Database Driver/ORM**: **GORM**
+* **Routing Engine**: Custom CH implementation with [LdDl/ch](https://github.com/LdDl/ch) + Grid-based spatial index
 * **Push Notifications**: Firebase Cloud Messaging (FCM)
 * **Containerization**: Docker & Docker Compose
 
@@ -83,6 +85,63 @@ mockery
 3. **Proximity Check Job**: A background Goroutine or scheduled job runs periodically (e.g., every minute).
 4. **Geospatial Query**: The worker queries the database, asking: "For each user, are there any vendors within their specified notification radius?" This is efficiently handled by the PostGIS `ST_DWithin` function.
 5. **Notification Sent**: If a match is found, the service triggers a push notification via FCM to the relevant user's device, letting them know a favorite food truck is nearby.
+
+## 🗺️ Routing Engine
+
+NomNom-Radar includes a high-performance road network routing engine for accurate distance and ETA calculations.
+
+### Features
+
+* **Road Network Distance**: Calculate real driving distances instead of straight-line (Haversine) approximations
+* **Island Detection**: Correctly identifies unreachable locations (e.g., Taiwan ↔ Penghu, Kinmen islands)
+* **One-to-Many Queries**: Efficiently calculate distances from one merchant to thousands of users
+* **GPS Snap Validation**: Detects GPS drift by validating snap distance to road network
+* **Haversine Fallback**: Gracefully degrades to straight-line distance when routing data is unavailable
+
+### CLI Tool
+
+The `cmd/routing` CLI tool handles OSM data preprocessing:
+
+```bash
+# Build the routing CLI
+go build -o bin/routing-cli ./cmd/routing
+
+# Download and prepare Taiwan routing data
+./bin/routing-cli prepare --region taiwan --output ./data/routing
+
+# Or step-by-step:
+./bin/routing-cli download --region taiwan --output /tmp
+./bin/routing-cli convert --input /tmp/taiwan-latest.osm.pbf --output ./data/routing
+
+# Validate data integrity
+./bin/routing-cli validate --dir ./data/routing
+```
+
+### Configuration
+
+```yaml
+routing:
+  enabled: true
+  data_path: "./data/routing"
+  max_snap_distance_km: 0.5        # Max GPS snap distance to road (500m)
+  default_speed_kmh: 30            # Urban scooter speed for ETA
+  query_pool_size: 8               # Concurrent query workers
+  one_to_many_workers: 20          # Batch query workers
+  pre_filter_radius_multiplier: 1.3
+```
+
+### Architecture
+
+```text
+internal/infra/routing/
+├── ch/                     # CH algorithm implementation
+│   ├── engine.go           # Main routing engine (Dijkstra placeholder)
+│   ├── spatial.go          # Grid-based spatial index
+│   └── engine_test.go      # Comprehensive tests
+└── loader/                 # Data loading
+    ├── csv_loader.go       # CSV parsing (vertices, edges, shortcuts)
+    └── metadata.go         # Version tracking
+```
 
 ## 🤝 Contributing
 

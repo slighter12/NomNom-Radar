@@ -108,6 +108,10 @@ linters:
       - std-error-handling
     rules:
       - linters:
+          - gocritic
+        text: "hugeParam"
+        source: "func New[A-Za-z]+\\(params [A-Za-z]+Params\\)"
+      - linters:
           - contextcheck
           - cyclop
           - errcheck

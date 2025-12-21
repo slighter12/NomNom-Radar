@@ -24,7 +24,9 @@ type deviceServiceFixtures struct {
 
 func createTestDeviceService(t *testing.T) deviceServiceFixtures {
 	deviceRepo := mockRepo.NewMockDeviceRepository(t)
-	service := NewDeviceService(deviceRepo)
+	service := NewDeviceService(DeviceServiceParams{
+		DeviceRepo: deviceRepo,
+	})
 
 	return deviceServiceFixtures{
 		service:    service,

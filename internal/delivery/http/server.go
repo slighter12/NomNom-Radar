@@ -25,7 +25,17 @@ type httpServer struct {
 	server *echo.Echo
 }
 
-func NewServer(lc fx.Lifecycle, cfg *config.Config, logger *slog.Logger, routerParams router.RouterParams) (delivery.Delivery, error) {
+// ServerParams holds dependencies for HTTP server, injected by Fx.
+type ServerParams struct {
+	fx.In
+
+	Lc           fx.Lifecycle
+	Cfg          *config.Config
+	Logger       *slog.Logger
+	RouterParams router.RouterParams
+}
+
+func NewServer(params ServerParams) (delivery.Delivery, error) {
 	echoServer := echo.New()
 	echoServer.HideBanner = true
 
@@ -34,34 +44,34 @@ func NewServer(lc fx.Lifecycle, cfg *config.Config, logger *slog.Logger, routerP
 	echoServer.Use(echomiddleware.Recover())
 
 	// 2. Logger middleware
-	loggerMiddleware := middleware.NewLoggerMiddleware(logger, cfg)
+	loggerMiddleware := middleware.NewLoggerMiddleware(params.Logger, params.Cfg)
 	echoServer.Use(loggerMiddleware.Handle)
 
 	// 3. CORS middleware
 	echoServer.Use(echomiddleware.CORS())
 
 	// Set up centralized error handler
-	errorMiddleware := middleware.NewErrorMiddleware(logger)
+	errorMiddleware := middleware.NewErrorMiddleware(params.Logger)
 	echoServer.HTTPErrorHandler = errorMiddleware.HandleHTTPError
 
 	// Set up validator
 	echoServer.Validator = validator.New()
 
-	router := router.NewRouter(routerParams)
-	router.RegisterRoutes(echoServer)
-	router.RegisterTestRoutes(echoServer)
+	r := router.NewRouter(params.RouterParams)
+	r.RegisterRoutes(echoServer)
+	r.RegisterTestRoutes(echoServer)
 
-	delivery := &httpServer{
-		cfg:    cfg,
-		logger: logger,
+	srv := &httpServer{
+		cfg:    params.Cfg,
+		logger: params.Logger,
 		server: echoServer,
 	}
 
-	lc.Append(fx.Hook{
-		OnStop: delivery.stop,
+	params.Lc.Append(fx.Hook{
+		OnStop: srv.stop,
 	})
 
-	return delivery, nil
+	return srv, nil
 }
 
 func (s *httpServer) Serve(ctx context.Context) error {

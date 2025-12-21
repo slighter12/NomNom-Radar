@@ -33,7 +33,10 @@ func createTestLocationService(t *testing.T, cfg *config.Config) locationService
 			},
 		}
 	}
-	service := NewLocationService(addressRepo, cfg)
+	service := NewLocationService(LocationServiceParams{
+		AddressRepo: addressRepo,
+		Config:      cfg,
+	})
 
 	return locationServiceFixtures{
 		service:     service,

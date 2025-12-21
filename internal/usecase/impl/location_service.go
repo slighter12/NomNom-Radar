@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"go.uber.org/fx"
 )
 
 var (
@@ -27,11 +28,19 @@ type locationService struct {
 	config      *config.Config
 }
 
+// LocationServiceParams holds dependencies for LocationService, injected by Fx.
+type LocationServiceParams struct {
+	fx.In
+
+	AddressRepo repository.AddressRepository
+	Config      *config.Config
+}
+
 // NewLocationService creates a new location service instance
-func NewLocationService(addressRepo repository.AddressRepository, cfg *config.Config) usecase.LocationUsecase {
+func NewLocationService(params LocationServiceParams) usecase.LocationUsecase {
 	// If LocationNotification is not configured, provide a default configuration
-	if cfg.LocationNotification == nil {
-		cfg.LocationNotification = &config.LocationNotificationConfig{
+	if params.Config.LocationNotification == nil {
+		params.Config.LocationNotification = &config.LocationNotificationConfig{
 			UserMaxLocations:     5,    // Default to 5 locations
 			MerchantMaxLocations: 10,   // Default to 10 locations
 			DefaultRadius:        1000, // Default to 1km
@@ -40,8 +49,8 @@ func NewLocationService(addressRepo repository.AddressRepository, cfg *config.Co
 	}
 
 	return &locationService{
-		addressRepo: addressRepo,
-		config:      cfg,
+		addressRepo: params.AddressRepo,
+		config:      params.Config,
 	}
 }
 

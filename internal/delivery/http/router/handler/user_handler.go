@@ -13,21 +13,34 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/pkg/errors"
+	"go.uber.org/fx"
 )
+
+// UserHandlerParams holds dependencies for UserHandler, injected by Fx.
+type UserHandlerParams struct {
+	fx.In
+
+	UserUC        usecase.UserUsecase
+	ProfileUC     usecase.ProfileUsecase
+	Logger        *slog.Logger
+	GoogleAuthSVC service.OAuthAuthService
+}
 
 // UserHandler holds dependencies for user-related handlers.
 type UserHandler struct {
-	uc                usecase.UserUsecase
-	logger            *slog.Logger
-	googleAuthService service.OAuthAuthService
+	userUC        usecase.UserUsecase
+	profileUC     usecase.ProfileUsecase
+	logger        *slog.Logger
+	googleAuthSVC service.OAuthAuthService
 }
 
 // NewUserHandler is the constructor for UserHandler, injected by Fx.
-func NewUserHandler(uc usecase.UserUsecase, logger *slog.Logger, googleAuthService service.OAuthAuthService) *UserHandler {
+func NewUserHandler(params UserHandlerParams) *UserHandler {
 	return &UserHandler{
-		uc:                uc,
-		logger:            logger,
-		googleAuthService: googleAuthService,
+		userUC:        params.UserUC,
+		profileUC:     params.ProfileUC,
+		logger:        params.Logger,
+		googleAuthSVC: params.GoogleAuthSVC,
 	}
 }
 
@@ -38,7 +51,7 @@ func (h *UserHandler) RegisterUser(c echo.Context) error {
 		return response.BindingError(c, "INVALID_INPUT", "Invalid registration input")
 	}
 
-	output, err := h.uc.RegisterUser(c.Request().Context(), input)
+	output, err := h.userUC.RegisterUser(c.Request().Context(), input)
 	if err != nil {
 		return h.handleAppError(c, err)
 	}
@@ -55,7 +68,7 @@ func (h *UserHandler) RegisterMerchant(c echo.Context) error {
 		return response.BindingError(c, "INVALID_INPUT", "Invalid registration input")
 	}
 
-	output, err := h.uc.RegisterMerchant(c.Request().Context(), input)
+	output, err := h.userUC.RegisterMerchant(c.Request().Context(), input)
 	if err != nil {
 		return h.handleAppError(c, err)
 	}
@@ -79,9 +92,9 @@ func (h *UserHandler) Login(c echo.Context) error {
 		return response.BindingError(c, "INVALID_INPUT", "Invalid login input")
 	}
 
-	output, err := h.uc.Login(c.Request().Context(), input)
+	output, err := h.userUC.Login(c.Request().Context(), input)
 	if err != nil {
-		return errors.WithStack(err)
+		return h.handleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, output, "Login successful")
@@ -94,9 +107,9 @@ func (h *UserHandler) RefreshToken(c echo.Context) error {
 		return response.BindingError(c, "INVALID_INPUT", "Invalid refresh token input")
 	}
 
-	output, err := h.uc.RefreshToken(c.Request().Context(), input)
+	output, err := h.userUC.RefreshToken(c.Request().Context(), input)
 	if err != nil {
-		return errors.WithStack(err)
+		return h.handleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, output, "Token refreshed successfully")
@@ -109,8 +122,8 @@ func (h *UserHandler) Logout(c echo.Context) error {
 		return response.BindingError(c, "INVALID_INPUT", "Invalid logout input")
 	}
 
-	if err := h.uc.Logout(c.Request().Context(), input); err != nil {
-		return errors.WithStack(err)
+	if err := h.userUC.Logout(c.Request().Context(), input); err != nil {
+		return h.handleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, map[string]string{"message": "Successfully logged out"}, "Logout successful")
@@ -130,9 +143,9 @@ func (h *UserHandler) GoogleCallback(c echo.Context) error {
 	}
 
 	// Process the callback
-	output, err := h.uc.GoogleCallback(c.Request().Context(), input)
+	output, err := h.userUC.GoogleCallback(c.Request().Context(), input)
 	if err != nil {
-		return errors.WithStack(err)
+		return h.handleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, output, "Google OAuth authentication successful")
@@ -191,11 +204,12 @@ func (h *UserHandler) GetProfile(c echo.Context) error {
 		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
-	// In a real app, you would have a GetProfile use case
-	// user, err := h.uc.GetProfile(c.Request().Context(), userID)
+	user, err := h.profileUC.GetProfile(c.Request().Context(), userID)
+	if err != nil {
+		return h.handleAppError(c, err)
+	}
 
-	// For now, just return the ID
-	return response.Success(c, http.StatusOK, map[string]string{"message": "Welcome!", "user_id": userID.String()}, "Profile retrieved successfully")
+	return response.Success(c, http.StatusOK, user, "Profile retrieved successfully")
 }
 
 // HealthCheck is a simple handler to check if the service is up.

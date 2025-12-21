@@ -43,16 +43,16 @@ func createTestUserService(t *testing.T) *userServiceFixtures {
 	googleAuthService := mockSvc.NewMockOAuthAuthService(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	service := NewUserService(
-		txManager,
-		userRepo,
-		authRepo,
-		refreshTokenRepo,
-		hasher,
-		tokenService,
-		googleAuthService,
-		logger,
-	)
+	service := NewUserService(UserServiceParams{
+		TxManager:         txManager,
+		UserRepo:          userRepo,
+		AuthRepo:          authRepo,
+		RefreshTokenRepo:  refreshTokenRepo,
+		Hasher:            hasher,
+		TokenService:      tokenService,
+		GoogleAuthService: googleAuthService,
+		Logger:            logger,
+	})
 
 	return &userServiceFixtures{
 		t:                 t,
