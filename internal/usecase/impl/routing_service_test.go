@@ -18,10 +18,10 @@ func TestNewRoutingService(t *testing.T) {
 		MaxSnapDistanceKm: 1.5,
 		DefaultSpeedKmh:   35.0,
 		DataPath:          "./data/routing",
-		Enabled:           true,
+		Enabled:           false, // Disabled to avoid loading non-existent data
 	}
 
-	service := NewRoutingService(cfg)
+	service := NewRoutingService(cfg, nil)
 
 	assert.NotNil(t, service)
 	assert.False(t, service.IsReady()) // Should start as not ready
@@ -31,7 +31,7 @@ func TestNewRoutingService_ZeroConfig(t *testing.T) {
 	// Test with zero values - should use defaults without panic
 	cfg := &config.RoutingConfig{}
 
-	service := NewRoutingService(cfg)
+	service := NewRoutingService(cfg, nil)
 	impl := service.(*routingService)
 
 	assert.NotNil(t, service)
@@ -41,16 +41,9 @@ func TestNewRoutingService_ZeroConfig(t *testing.T) {
 
 func TestRoutingService_IsReady(t *testing.T) {
 	cfg := &config.RoutingConfig{}
-	service := NewRoutingService(cfg).(*routingService)
+	service := NewRoutingService(cfg, nil).(*routingService)
 
-	// Initially not ready
-	assert.False(t, service.IsReady())
-
-	// Manually set ready (this would normally be done by data loading)
-	service.setReady(true)
-	assert.True(t, service.IsReady())
-
-	service.setReady(false)
+	// Should start not ready (no engine loaded)
 	assert.False(t, service.IsReady())
 }
 
@@ -58,7 +51,7 @@ func TestRoutingService_CalculateDistance(t *testing.T) {
 	cfg := &config.RoutingConfig{
 		DefaultSpeedKmh: 30.0, // 30 km/h
 	}
-	service := NewRoutingService(cfg)
+	service := NewRoutingService(cfg, nil)
 
 	ctx := context.Background()
 
@@ -85,7 +78,7 @@ func TestRoutingService_FindNearestNode(t *testing.T) {
 	cfg := &config.RoutingConfig{
 		MaxSnapDistanceKm: 1.0,
 	}
-	service := NewRoutingService(cfg)
+	service := NewRoutingService(cfg, nil)
 
 	ctx := context.Background()
 
@@ -106,7 +99,7 @@ func TestRoutingService_FindNearestNode_InvalidCoordinates(t *testing.T) {
 	cfg := &config.RoutingConfig{
 		MaxSnapDistanceKm: 1.0,
 	}
-	service := NewRoutingService(cfg)
+	service := NewRoutingService(cfg, nil)
 
 	ctx := context.Background()
 
@@ -127,7 +120,7 @@ func TestRoutingService_FindNearestNode_InvalidCoordinates(t *testing.T) {
 
 func TestRoutingService_OneToMany_EmptyTargets(t *testing.T) {
 	cfg := &config.RoutingConfig{}
-	service := NewRoutingService(cfg)
+	service := NewRoutingService(cfg, nil)
 
 	ctx := context.Background()
 	source := usecase.Coordinate{Lat: 25.0330, Lng: 121.5654}
@@ -146,7 +139,7 @@ func TestRoutingService_OneToMany_SingleTarget(t *testing.T) {
 	cfg := &config.RoutingConfig{
 		DefaultSpeedKmh: 30.0,
 	}
-	service := NewRoutingService(cfg)
+	service := NewRoutingService(cfg, nil)
 
 	ctx := context.Background()
 	source := usecase.Coordinate{Lat: 25.0330, Lng: 121.5654}
@@ -173,7 +166,7 @@ func TestRoutingService_OneToMany_MultipleTargets(t *testing.T) {
 	cfg := &config.RoutingConfig{
 		DefaultSpeedKmh: 30.0,
 	}
-	service := NewRoutingService(cfg)
+	service := NewRoutingService(cfg, nil)
 
 	ctx := context.Background()
 	source := usecase.Coordinate{Lat: 25.0330, Lng: 121.5654}
@@ -207,7 +200,7 @@ func TestRoutingService_OneToMany_MultipleTargets(t *testing.T) {
 
 func TestRoutingService_OneToMany_ContextCancellation(t *testing.T) {
 	cfg := &config.RoutingConfig{}
-	service := NewRoutingService(cfg)
+	service := NewRoutingService(cfg, nil)
 
 	// Create a canceled context
 	ctx, cancel := context.WithCancel(context.Background())
@@ -225,7 +218,7 @@ func TestRoutingService_OneToMany_ContextCancellation(t *testing.T) {
 
 func TestRoutingService_HaversineDistance(t *testing.T) {
 	cfg := &config.RoutingConfig{}
-	service := NewRoutingService(cfg).(*routingService)
+	service := NewRoutingService(cfg, nil).(*routingService)
 
 	// Test known distance: Taipei 101 to nearby location (~1km)
 	lat1, lng1 := 25.0330, 121.5654
@@ -240,7 +233,7 @@ func TestRoutingService_HaversineDistance(t *testing.T) {
 
 func TestRoutingService_IsValidCoordinate(t *testing.T) {
 	cfg := &config.RoutingConfig{}
-	service := NewRoutingService(cfg).(*routingService)
+	service := NewRoutingService(cfg, nil).(*routingService)
 
 	// Valid coordinates on Earth
 	validCoords := []usecase.Coordinate{
@@ -270,7 +263,7 @@ func TestRoutingService_CalculateDistance_InvalidCoordinates(t *testing.T) {
 	cfg := &config.RoutingConfig{
 		DefaultSpeedKmh: 30.0,
 	}
-	service := NewRoutingService(cfg)
+	service := NewRoutingService(cfg, nil)
 
 	ctx := context.Background()
 
@@ -297,7 +290,7 @@ func BenchmarkRoutingService_OneToMany(b *testing.B) {
 	cfg := &config.RoutingConfig{
 		DefaultSpeedKmh: 30.0,
 	}
-	service := NewRoutingService(cfg)
+	service := NewRoutingService(cfg, nil)
 
 	ctx := context.Background()
 	source := usecase.Coordinate{Lat: 25.0330, Lng: 121.5654}

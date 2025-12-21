@@ -48,8 +48,8 @@ func createTestNotificationService(t *testing.T) notificationServiceFixtures {
 			MaxSnapDistanceKm: 1.0,
 			DefaultSpeedKmh:   10.0,
 			DataPath:          "./data/routing",
-			Enabled:           true,
-		}),
+			Enabled:           false, // Disabled to use Haversine fallback
+		}, nil),
 	)
 
 	return notificationServiceFixtures{
