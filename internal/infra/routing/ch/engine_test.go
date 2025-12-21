@@ -12,6 +12,7 @@ import (
 
 	"radar/internal/infra/routing/loader"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -250,31 +251,57 @@ func TestHaversineMeters(t *testing.T) {
 	assert.InDelta(t, 255000, dist, 10000) // Allow 10km tolerance
 }
 
-func BenchmarkEngine_OneToMany(b *testing.B) {
-	// Create a larger test dataset
-	tmpDir := b.TempDir()
+func TestEngine_OneToMany_Concurrent(t *testing.T) {
+	dataDir := setupTestDataDir(t)
 
-	// Create grid of vertices
-	var verticesLines []string
-	verticesLines = append(verticesLines, "id,lat,lng,order_pos,importance")
-	var edgesLines []string
-	edgesLines = append(edgesLines, "from,to,weight")
+	config := DefaultEngineConfig()
+	config.OneToManyWorkers = 4
 
-	id := 0
-	for lat := 22.0; lat <= 25.5; lat += 0.05 {
-		for lng := 120.0; lng <= 122.0; lng += 0.05 {
-			verticesLines = append(verticesLines, formatVertex(id, lat, lng))
-			// Connect to neighbors
-			if id > 0 {
-				edgesLines = append(edgesLines, formatEdge(id-1, id, 1000))
-			}
-			id++
+	engine := NewEngine(config, nil)
+	require.NoError(t, engine.LoadData(dataDir))
+
+	ctx := context.Background()
+
+	// Run multiple concurrent OneToMany calls to verify thread safety
+	const numGoroutines = 10
+	const numTargets = 5
+
+	source := Coordinate{Lat: 25.0330, Lng: 121.5654}
+	targets := make([]Coordinate, numTargets)
+	for i := range targets {
+		targets[i] = Coordinate{
+			Lat: 25.0 + float64(i)*0.01,
+			Lng: 121.5 + float64(i)*0.01,
 		}
 	}
 
-	writeLines(b, filepath.Join(tmpDir, "vertices.csv"), verticesLines)
-	writeLines(b, filepath.Join(tmpDir, "edges.csv"), edgesLines)
-	os.WriteFile(filepath.Join(tmpDir, "shortcuts.csv"), []byte("from,to,weight,via_node\n"), 0644)
+	errCh := make(chan error, numGoroutines)
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			results, err := engine.OneToMany(ctx, source, targets)
+			if err != nil {
+				errCh <- err
+
+				return
+			}
+			if len(results) != numTargets {
+				errCh <- errors.Errorf("unexpected result count: got %d, want %d", len(results), numTargets)
+
+				return
+			}
+			errCh <- nil
+		}()
+	}
+
+	// Collect results
+	for range numGoroutines {
+		err := <-errCh
+		assert.NoError(t, err)
+	}
+}
+
+func BenchmarkEngine_OneToMany(b *testing.B) {
+	tmpDir := setupBenchmarkData(b, 0.05, 0.05)
 
 	config := DefaultEngineConfig()
 	config.OneToManyWorkers = 10
@@ -295,8 +322,7 @@ func BenchmarkEngine_OneToMany(b *testing.B) {
 
 	ctx := context.Background()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = engine.OneToMany(ctx, source, targets)
 	}
 }
@@ -323,5 +349,84 @@ func writeLines(b *testing.B, path string, lines []string) {
 	}
 	if err := os.WriteFile(path, []byte(sb.String()), 0644); err != nil {
 		b.Fatalf("Failed to write %s: %v", path, err)
+	}
+}
+
+// setupBenchmarkData generates a grid of vertices and edges for benchmarks.
+// latStep and lngStep control the grid density (smaller = more vertices).
+func setupBenchmarkData(b *testing.B, latStep, lngStep float64) string {
+	tmpDir := b.TempDir()
+
+	var verticesLines, edgesLines []string
+	verticesLines = append(verticesLines, "id,lat,lng,order_pos,importance")
+	edgesLines = append(edgesLines, "from,to,weight")
+
+	id := 0
+	for lat := 22.0; lat <= 25.5; lat += latStep {
+		for lng := 120.0; lng <= 122.0; lng += lngStep {
+			verticesLines = append(verticesLines, formatVertex(id, lat, lng))
+			if id > 0 {
+				edgesLines = append(edgesLines, formatEdge(id-1, id, 1000))
+			}
+			id++
+		}
+	}
+
+	writeLines(b, filepath.Join(tmpDir, "vertices.csv"), verticesLines)
+	writeLines(b, filepath.Join(tmpDir, "edges.csv"), edgesLines)
+	if err := os.WriteFile(filepath.Join(tmpDir, "shortcuts.csv"), []byte("from,to,weight,via_node\n"), 0644); err != nil {
+		b.Fatalf("Failed to write shortcuts.csv: %v", err)
+	}
+
+	return tmpDir
+}
+
+func BenchmarkEngine_ShortestPath(b *testing.B) {
+	tmpDir := setupBenchmarkData(b, 0.05, 0.05)
+
+	engine := NewEngine(DefaultEngineConfig(), nil)
+	if err := engine.LoadData(tmpDir); err != nil {
+		b.Fatalf("Failed to load data: %v", err)
+	}
+
+	from := Coordinate{Lat: 23.0, Lng: 121.0}
+	to := Coordinate{Lat: 24.5, Lng: 121.5}
+	ctx := context.Background()
+
+	for b.Loop() {
+		_, _ = engine.ShortestPath(ctx, from, to)
+	}
+}
+
+// BenchmarkEngine_OneToMany_WithPreFilter benchmarks OneToMany with tight pre-filter radius
+// to measure the effectiveness of Haversine pre-filtering
+func BenchmarkEngine_OneToMany_WithPreFilter(b *testing.B) {
+	// Use coarser grid (0.1 step) for faster benchmark
+	tmpDir := setupBenchmarkData(b, 0.1, 0.1)
+
+	// Tight pre-filter radius (5km) - should filter out most targets
+	configTight := DefaultEngineConfig()
+	configTight.MaxQueryRadiusMeters = 5000
+	configTight.PreFilterRadiusMultiplier = 1.3 // 6.5km effective
+
+	engine := NewEngine(configTight, nil)
+	if err := engine.LoadData(tmpDir); err != nil {
+		b.Fatalf("Failed to load data: %v", err)
+	}
+
+	source := Coordinate{Lat: 24.0, Lng: 121.0}
+	// Create targets spread across Taiwan - most will be filtered
+	targets := make([]Coordinate, 50)
+	for i := range targets {
+		targets[i] = Coordinate{
+			Lat: 22.5 + float64(i%10)*0.3,
+			Lng: 120.0 + float64(i/10)*0.4,
+		}
+	}
+
+	ctx := context.Background()
+
+	for b.Loop() {
+		_, _ = engine.OneToMany(ctx, source, targets)
 	}
 }
