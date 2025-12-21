@@ -267,10 +267,7 @@ func (e *Engine) ShortestPath(ctx context.Context, from, target Coordinate) (*Ro
 	// Snap target
 	dstNode, err := e.FindNearestNode(ctx, target)
 	if err != nil {
-		return &RouteResult{
-			TargetIdx:   0,
-			IsReachable: false,
-		}, err
+		return &RouteResult{IsReachable: false}, err
 	}
 
 	// Calculate shortest path using Dijkstra (placeholder until CH integration)
