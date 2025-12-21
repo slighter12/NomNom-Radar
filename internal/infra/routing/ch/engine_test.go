@@ -294,37 +294,14 @@ func TestEngine_OneToMany_Concurrent(t *testing.T) {
 	}
 
 	// Collect results
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		err := <-errCh
 		assert.NoError(t, err)
 	}
 }
 
 func BenchmarkEngine_OneToMany(b *testing.B) {
-	// Create a larger test dataset
-	tmpDir := b.TempDir()
-
-	// Create grid of vertices
-	var verticesLines []string
-	verticesLines = append(verticesLines, "id,lat,lng,order_pos,importance")
-	var edgesLines []string
-	edgesLines = append(edgesLines, "from,to,weight")
-
-	id := 0
-	for lat := 22.0; lat <= 25.5; lat += 0.05 {
-		for lng := 120.0; lng <= 122.0; lng += 0.05 {
-			verticesLines = append(verticesLines, formatVertex(id, lat, lng))
-			// Connect to neighbors
-			if id > 0 {
-				edgesLines = append(edgesLines, formatEdge(id-1, id, 1000))
-			}
-			id++
-		}
-	}
-
-	writeLines(b, filepath.Join(tmpDir, "vertices.csv"), verticesLines)
-	writeLines(b, filepath.Join(tmpDir, "edges.csv"), edgesLines)
-	os.WriteFile(filepath.Join(tmpDir, "shortcuts.csv"), []byte("from,to,weight,via_node\n"), 0644)
+	tmpDir := setupBenchmarkData(b, 0.05, 0.05)
 
 	config := DefaultEngineConfig()
 	config.OneToManyWorkers = 10
@@ -345,8 +322,7 @@ func BenchmarkEngine_OneToMany(b *testing.B) {
 
 	ctx := context.Background()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = engine.OneToMany(ctx, source, targets)
 	}
 }
@@ -376,18 +352,18 @@ func writeLines(b *testing.B, path string, lines []string) {
 	}
 }
 
-func BenchmarkEngine_ShortestPath(b *testing.B) {
-	// Reuse the larger test dataset setup from BenchmarkEngine_OneToMany
+// setupBenchmarkData generates a grid of vertices and edges for benchmarks.
+// latStep and lngStep control the grid density (smaller = more vertices).
+func setupBenchmarkData(b *testing.B, latStep, lngStep float64) string {
 	tmpDir := b.TempDir()
 
-	var verticesLines []string
+	var verticesLines, edgesLines []string
 	verticesLines = append(verticesLines, "id,lat,lng,order_pos,importance")
-	var edgesLines []string
 	edgesLines = append(edgesLines, "from,to,weight")
 
 	id := 0
-	for lat := 22.0; lat <= 25.5; lat += 0.05 {
-		for lng := 120.0; lng <= 122.0; lng += 0.05 {
+	for lat := 22.0; lat <= 25.5; lat += latStep {
+		for lng := 120.0; lng <= 122.0; lng += lngStep {
 			verticesLines = append(verticesLines, formatVertex(id, lat, lng))
 			if id > 0 {
 				edgesLines = append(edgesLines, formatEdge(id-1, id, 1000))
@@ -399,6 +375,12 @@ func BenchmarkEngine_ShortestPath(b *testing.B) {
 	writeLines(b, filepath.Join(tmpDir, "vertices.csv"), verticesLines)
 	writeLines(b, filepath.Join(tmpDir, "edges.csv"), edgesLines)
 	_ = os.WriteFile(filepath.Join(tmpDir, "shortcuts.csv"), []byte("from,to,weight,via_node\n"), 0644)
+
+	return tmpDir
+}
+
+func BenchmarkEngine_ShortestPath(b *testing.B) {
+	tmpDir := setupBenchmarkData(b, 0.05, 0.05)
 
 	engine := NewEngine(DefaultEngineConfig(), nil)
 	if err := engine.LoadData(tmpDir); err != nil {
@@ -409,8 +391,7 @@ func BenchmarkEngine_ShortestPath(b *testing.B) {
 	to := Coordinate{Lat: 24.5, Lng: 121.5}
 	ctx := context.Background()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = engine.ShortestPath(ctx, from, to)
 	}
 }
@@ -418,27 +399,8 @@ func BenchmarkEngine_ShortestPath(b *testing.B) {
 // BenchmarkEngine_OneToMany_WithPreFilter benchmarks OneToMany with tight pre-filter radius
 // to measure the effectiveness of Haversine pre-filtering
 func BenchmarkEngine_OneToMany_WithPreFilter(b *testing.B) {
-	tmpDir := b.TempDir()
-
-	// Create test data
-	var verticesLines, edgesLines []string
-	verticesLines = append(verticesLines, "id,lat,lng,order_pos,importance")
-	edgesLines = append(edgesLines, "from,to,weight")
-
-	id := 0
-	for lat := 22.0; lat <= 25.5; lat += 0.1 {
-		for lng := 120.0; lng <= 122.0; lng += 0.1 {
-			verticesLines = append(verticesLines, formatVertex(id, lat, lng))
-			if id > 0 {
-				edgesLines = append(edgesLines, formatEdge(id-1, id, 1000))
-			}
-			id++
-		}
-	}
-
-	writeLines(b, filepath.Join(tmpDir, "vertices.csv"), verticesLines)
-	writeLines(b, filepath.Join(tmpDir, "edges.csv"), edgesLines)
-	_ = os.WriteFile(filepath.Join(tmpDir, "shortcuts.csv"), []byte("from,to,weight,via_node\n"), 0644)
+	// Use coarser grid (0.1 step) for faster benchmark
+	tmpDir := setupBenchmarkData(b, 0.1, 0.1)
 
 	// Tight pre-filter radius (5km) - should filter out most targets
 	configTight := DefaultEngineConfig()
@@ -462,8 +424,7 @@ func BenchmarkEngine_OneToMany_WithPreFilter(b *testing.B) {
 
 	ctx := context.Background()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = engine.OneToMany(ctx, source, targets)
 	}
 }
