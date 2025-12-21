@@ -2,8 +2,8 @@ package impl
 
 import (
 	"context"
+	"io"
 	"log/slog"
-	"os"
 	"testing"
 	"time"
 
@@ -19,7 +19,7 @@ import (
 
 func TestSessionService_GetActiveSessions_Success(t *testing.T) {
 	txManager := mockRepo.NewMockTransactionManager(t)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := NewSessionService(txManager, logger)
 
 	ctx := context.Background()
@@ -55,7 +55,7 @@ func TestSessionService_GetActiveSessions_Success(t *testing.T) {
 
 func TestSessionService_RevokeSession_Success(t *testing.T) {
 	txManager := mockRepo.NewMockTransactionManager(t)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := NewSessionService(txManager, logger)
 
 	ctx := context.Background()
@@ -89,7 +89,7 @@ func TestSessionService_RevokeSession_Success(t *testing.T) {
 
 func TestSessionService_RevokeAllSessions_Success(t *testing.T) {
 	txManager := mockRepo.NewMockTransactionManager(t)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := NewSessionService(txManager, logger)
 
 	ctx := context.Background()
@@ -120,7 +120,7 @@ func TestSessionService_RevokeAllSessions_Success(t *testing.T) {
 
 func TestSessionService_GetSessionStatistics(t *testing.T) {
 	txManager := mockRepo.NewMockTransactionManager(t)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := NewSessionService(txManager, logger)
 
 	ctx := context.Background()
@@ -160,7 +160,7 @@ func TestSessionService_GetSessionStatistics(t *testing.T) {
 
 func TestSessionService_CleanupExpiredSessions_Error(t *testing.T) {
 	txManager := mockRepo.NewMockTransactionManager(t)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := NewSessionService(txManager, logger)
 
 	ctx := context.Background()
@@ -185,7 +185,7 @@ func TestSessionService_CleanupExpiredSessions_Error(t *testing.T) {
 
 func TestSessionService_GetSessionInfo_OwnerMismatch(t *testing.T) {
 	txManager := mockRepo.NewMockTransactionManager(t)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := NewSessionService(txManager, logger)
 
 	ctx := context.Background()

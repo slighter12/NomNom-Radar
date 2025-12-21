@@ -2,8 +2,8 @@ package impl
 
 import (
 	"context"
+	"io"
 	"log/slog"
-	"os"
 	"testing"
 
 	"radar/config"
@@ -32,7 +32,7 @@ func createTestNotificationService(t *testing.T) (
 	deviceRepo := mockRepo.NewMockDeviceRepository(t)
 	addressRepo := mockRepo.NewMockAddressRepository(t)
 	notificationSvc := mockSvc.NewMockNotificationService(t)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	service := NewNotificationService(
 		logger,
@@ -243,7 +243,7 @@ func TestNotificationService_PublishLocationNotification_UnreachableTargets(t *t
 }
 
 func TestNotificationService_GetMerchantNotificationHistory(t *testing.T) {
-	_, notificationRepo, _, _, _, _ := createTestNotificationService(t)
+	service, notificationRepo, _, _, _, _ := createTestNotificationService(t)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
@@ -254,21 +254,6 @@ func TestNotificationService_GetMerchantNotificationHistory(t *testing.T) {
 	notificationRepo.EXPECT().
 		FindNotificationsByMerchant(ctx, merchantID, 10, 0).
 		Return(expected, nil)
-
-	service := NewNotificationService(
-		slog.New(slog.NewTextHandler(os.Stdout, nil)),
-		notificationRepo,
-		nil,
-		nil,
-		nil,
-		nil,
-		NewRoutingService(&config.RoutingConfig{
-			MaxSnapDistanceKm: 1.0,
-			DefaultSpeedKmh:   10.0,
-			DataPath:          "./data/routing",
-			Enabled:           true,
-		}),
-	)
 
 	got, err := service.GetMerchantNotificationHistory(ctx, merchantID, 10, 0)
 

@@ -2,8 +2,8 @@ package impl
 
 import (
 	"context"
+	"io"
 	"log/slog"
-	"os"
 	"testing"
 
 	"radar/internal/domain/entity"
@@ -19,7 +19,7 @@ import (
 
 func TestProfileService_GetProfile_Success(t *testing.T) {
 	txManager := mockRepo.NewMockTransactionManager(t)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := NewProfileService(txManager, logger)
 
 	ctx := context.Background()
@@ -51,7 +51,7 @@ func TestProfileService_GetProfile_Success(t *testing.T) {
 
 func TestProfileService_UpdateUserProfile_Success(t *testing.T) {
 	txManager := mockRepo.NewMockTransactionManager(t)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := NewProfileService(txManager, logger)
 
 	ctx := context.Background()
@@ -91,7 +91,7 @@ func TestProfileService_UpdateUserProfile_Success(t *testing.T) {
 
 func TestProfileService_SwitchToMerchant_Success(t *testing.T) {
 	txManager := mockRepo.NewMockTransactionManager(t)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := NewProfileService(txManager, logger)
 
 	ctx := context.Background()
@@ -128,7 +128,7 @@ func TestProfileService_SwitchToMerchant_Success(t *testing.T) {
 
 func TestProfileService_GetUserRole(t *testing.T) {
 	txManager := mockRepo.NewMockTransactionManager(t)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := NewProfileService(txManager, logger)
 
 	ctx := context.Background()
@@ -162,7 +162,7 @@ func TestProfileService_GetUserRole(t *testing.T) {
 
 func TestProfileService_UpdateMerchantProfile_NoProfile(t *testing.T) {
 	txManager := mockRepo.NewMockTransactionManager(t)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := NewProfileService(txManager, logger)
 
 	ctx := context.Background()
@@ -197,7 +197,7 @@ func TestProfileService_UpdateMerchantProfile_NoProfile(t *testing.T) {
 
 func TestProfileService_GetProfile_NotFound(t *testing.T) {
 	txManager := mockRepo.NewMockTransactionManager(t)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := NewProfileService(txManager, logger)
 
 	ctx := context.Background()

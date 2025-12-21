@@ -2,8 +2,8 @@ package impl
 
 import (
 	"context"
+	"io"
 	"log/slog"
-	"os"
 	"testing"
 
 	"radar/internal/domain/entity"
@@ -27,7 +27,7 @@ func TestUserService_RegisterUser_Success(t *testing.T) {
 	hasher := mockSvc.NewMockPasswordHasher(t)
 	tokenService := mockSvc.NewMockTokenService(t)
 	googleAuthService := mockSvc.NewMockOAuthAuthService(t)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	service := NewUserService(
 		txManager,
@@ -103,7 +103,7 @@ func TestUserService_RegisterUser_InvalidCredentials(t *testing.T) {
 	hasher := mockSvc.NewMockPasswordHasher(t)
 	tokenService := mockSvc.NewMockTokenService(t)
 	googleAuthService := mockSvc.NewMockOAuthAuthService(t)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	service := NewUserService(
 		txManager,
