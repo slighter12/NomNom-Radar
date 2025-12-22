@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"radar/internal/delivery/http/middleware"
 	"radar/internal/delivery/http/response"
 	"radar/internal/usecase"
 
@@ -48,9 +49,9 @@ type UpdateFCMTokenRequest struct {
 
 // RegisterDevice handles device registration
 func (h *DeviceHandler) RegisterDevice(c echo.Context) error {
-	userID, err := h.getUserID(c)
-	if err != nil {
-		return err
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	var req RegisterDeviceRequest
@@ -78,9 +79,9 @@ func (h *DeviceHandler) RegisterDevice(c echo.Context) error {
 
 // GetUserDevices handles retrieving all user devices
 func (h *DeviceHandler) GetUserDevices(c echo.Context) error {
-	userID, err := h.getUserID(c)
-	if err != nil {
-		return err
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	devices, err := h.deviceUC.GetUserDevices(c.Request().Context(), userID)
@@ -93,9 +94,9 @@ func (h *DeviceHandler) GetUserDevices(c echo.Context) error {
 
 // UpdateFCMToken handles updating FCM token for a device
 func (h *DeviceHandler) UpdateFCMToken(c echo.Context) error {
-	userID, err := h.getUserID(c)
-	if err != nil {
-		return err
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	deviceID, err := uuid.Parse(c.Param("id"))
@@ -121,9 +122,9 @@ func (h *DeviceHandler) UpdateFCMToken(c echo.Context) error {
 
 // DeactivateDevice handles deactivating a device
 func (h *DeviceHandler) DeactivateDevice(c echo.Context) error {
-	userID, err := h.getUserID(c)
-	if err != nil {
-		return err
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	deviceID, err := uuid.Parse(c.Param("id"))
@@ -136,15 +137,4 @@ func (h *DeviceHandler) DeactivateDevice(c echo.Context) error {
 	}
 
 	return response.Success(c, http.StatusOK, map[string]string{"message": "Device deactivated successfully"}, "Device deactivated successfully")
-}
-
-// getUserID extracts the user ID from the context
-func (h *DeviceHandler) getUserID(c echo.Context) (uuid.UUID, error) {
-	userIDVal := c.Get("userID")
-	userID, ok := userIDVal.(uuid.UUID)
-	if !ok {
-		return uuid.Nil, response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
-	}
-
-	return userID, nil
 }

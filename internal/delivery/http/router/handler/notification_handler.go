@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"radar/internal/delivery/http/middleware"
 	"radar/internal/delivery/http/response"
 	"radar/internal/usecase"
 
@@ -44,9 +45,9 @@ type PublishNotificationRequest struct {
 
 // PublishLocationNotification handles publishing a location notification
 func (h *NotificationHandler) PublishLocationNotification(c echo.Context) error {
-	merchantID, err := h.getMerchantID(c)
-	if err != nil {
-		return err
+	merchantID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	var req PublishNotificationRequest
@@ -113,9 +114,9 @@ func (h *NotificationHandler) validateLocationData(c echo.Context, data *usecase
 
 // GetMerchantNotificationHistory handles retrieving notification history for a merchant
 func (h *NotificationHandler) GetMerchantNotificationHistory(c echo.Context) error {
-	merchantID, err := h.getMerchantID(c)
-	if err != nil {
-		return err
+	merchantID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	// Parse pagination parameters
@@ -144,36 +145,4 @@ func (h *NotificationHandler) GetMerchantNotificationHistory(c echo.Context) err
 	}
 
 	return response.Success(c, http.StatusOK, notifications, "Notification history retrieved successfully")
-}
-
-// getMerchantID extracts the merchant ID from the context and verifies merchant role
-func (h *NotificationHandler) getMerchantID(c echo.Context) (uuid.UUID, error) {
-	// Check if user has merchant role
-	rolesVal := c.Get("roles")
-	roles, ok := rolesVal.([]string)
-	if !ok {
-		return uuid.Nil, response.Forbidden(c, "FORBIDDEN", "Role information missing")
-	}
-
-	hasMerchantRole := false
-	for _, role := range roles {
-		if role == "merchant" {
-			hasMerchantRole = true
-
-			break
-		}
-	}
-
-	if !hasMerchantRole {
-		return uuid.Nil, response.Forbidden(c, "FORBIDDEN", "Merchant role required")
-	}
-
-	// Get the user ID which is the merchant ID
-	userIDVal := c.Get("userID")
-	merchantID, ok := userIDVal.(uuid.UUID)
-	if !ok {
-		return uuid.Nil, response.Unauthorized(c, "INVALID_TOKEN", "Invalid merchant ID in token")
-	}
-
-	return merchantID, nil
 }

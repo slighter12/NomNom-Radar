@@ -153,8 +153,8 @@ func TestProfileService_GetUserRole(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Len(t, roles, 2)
-	assert.Contains(t, roles, "user")
-	assert.Contains(t, roles, "merchant")
+	assert.Contains(t, roles, entity.RoleUser.String())
+	assert.Contains(t, roles, entity.RoleMerchant.String())
 }
 
 func TestProfileService_UpdateMerchantProfile_NoProfile(t *testing.T) {

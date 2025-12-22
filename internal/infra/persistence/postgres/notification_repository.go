@@ -99,7 +99,7 @@ func (repo *notificationRepository) FindNotificationsByMerchant(ctx context.Cont
 func (repo *notificationRepository) UpdateNotificationStatus(ctx context.Context, id uuid.UUID, totalSent, totalFailed int) error {
 	result, err := repo.q.MerchantLocationNotificationModel.WithContext(ctx).
 		Where(repo.q.MerchantLocationNotificationModel.ID.Eq(id)).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"total_sent":   totalSent,
 			"total_failed": totalFailed,
 		})

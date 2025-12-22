@@ -276,7 +276,7 @@ func TestEngine_OneToMany_Concurrent(t *testing.T) {
 	}
 
 	errCh := make(chan error, numGoroutines)
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		go func() {
 			results, err := engine.OneToMany(ctx, source, targets)
 			if err != nil {

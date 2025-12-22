@@ -33,7 +33,7 @@ type registrationConfig struct {
 	Name               string
 	Email              string
 	Password           string
-	Role               string
+	Role               entity.Role
 	BuildNewUser       func() *entity.User
 	AttachProfile      func(*entity.User)
 	HasProfile         func(*entity.User) bool
@@ -74,7 +74,7 @@ func (srv *userService) RegisterUser(ctx context.Context, input *usecase.Registe
 		Name:          input.Name,
 		Email:         input.Email,
 		Password:      input.Password,
-		Role:          "user",
+		Role:          entity.RoleUser,
 		BuildNewUser:  func() *entity.User { return buildNewUserEntity(input.Name, input.Email) },
 		AttachProfile: attachUserProfile,
 		HasProfile:    userHasUserProfile,
@@ -249,7 +249,7 @@ func (srv *userService) RegisterMerchant(ctx context.Context, input *usecase.Reg
 		Name:          input.Name,
 		Email:         input.Email,
 		Password:      input.Password,
-		Role:          "merchant",
+		Role:          entity.RoleMerchant,
 		BuildNewUser:  func() *entity.User { return buildNewMerchantEntity(input) },
 		AttachProfile: attachMerchantProfile(input),
 		HasProfile:    userHasMerchantProfile,
@@ -266,7 +266,7 @@ func (srv *userService) Login(ctx context.Context, input *usecase.LoginInput) (*
 	srv.logger.Debug("Starting user login", "email", input.Email)
 
 	var loggedInUser *entity.User
-	var roles []string
+	var roles entity.Roles
 	var accessToken, refreshTokenString string
 
 	// Login involves multiple steps, so we use a transaction to ensure atomicity,
@@ -295,14 +295,14 @@ func (srv *userService) Login(ctx context.Context, input *usecase.LoginInput) (*
 		}
 
 		if user.UserProfile != nil {
-			roles = append(roles, "user")
+			roles = append(roles, entity.RoleUser)
 		}
 		if user.MerchantProfile != nil {
-			roles = append(roles, "merchant")
+			roles = append(roles, entity.RoleMerchant)
 		}
 
 		// 4. Generate new tokens.
-		accessToken, refreshTokenString, err = srv.tokenService.GenerateTokens(user.ID, roles)
+		accessToken, refreshTokenString, err = srv.tokenService.GenerateTokens(user.ID, roles.ToStrings())
 		if err != nil {
 			return errors.Wrap(err, "failed to generate tokens")
 		}
@@ -367,16 +367,16 @@ func (srv *userService) RefreshToken(ctx context.Context, input *usecase.Refresh
 		if err != nil {
 			return errors.Wrap(err, "failed to find user")
 		}
-		var roles []string
+		var roles entity.Roles
 		if user.UserProfile != nil {
-			roles = append(roles, "user")
+			roles = append(roles, entity.RoleUser)
 		}
 		if user.MerchantProfile != nil {
-			roles = append(roles, "merchant")
+			roles = append(roles, entity.RoleMerchant)
 		}
 
 		// 3. Generate only a new access token (refresh token remains unchanged).
-		newAccessToken, _, err = srv.tokenService.GenerateTokens(user.ID, roles)
+		newAccessToken, _, err = srv.tokenService.GenerateTokens(user.ID, roles.ToStrings())
 		if err != nil {
 			return errors.Wrap(err, "failed to generate new access token")
 		}
@@ -537,7 +537,7 @@ func (srv *userService) fetchExistingUser(ctx context.Context, userRepo reposito
 func (srv *userService) generateUserTokens(_ context.Context, user *entity.User) (string, string, error) {
 	roles := srv.extractUserRoles(user)
 
-	accessToken, refreshTokenString, err := srv.tokenService.GenerateTokens(user.ID, roles)
+	accessToken, refreshTokenString, err := srv.tokenService.GenerateTokens(user.ID, roles.ToStrings())
 	if err != nil {
 		return "", "", errors.Wrap(err, "failed to generate tokens for google auth")
 	}
@@ -546,14 +546,14 @@ func (srv *userService) generateUserTokens(_ context.Context, user *entity.User)
 }
 
 // extractUserRoles extracts roles from user profiles
-func (srv *userService) extractUserRoles(user *entity.User) []string {
-	var roles []string
+func (srv *userService) extractUserRoles(user *entity.User) entity.Roles {
+	var roles entity.Roles
 
 	if user.UserProfile != nil {
-		roles = append(roles, "user")
+		roles = append(roles, entity.RoleUser)
 	}
 	if user.MerchantProfile != nil {
-		roles = append(roles, "merchant")
+		roles = append(roles, entity.RoleMerchant)
 	}
 
 	return roles

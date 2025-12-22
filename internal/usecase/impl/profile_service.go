@@ -203,7 +203,7 @@ func (srv *profileService) SwitchToMerchant(ctx context.Context, userID uuid.UUI
 func (srv *profileService) GetUserRole(ctx context.Context, userID uuid.UUID) ([]string, error) {
 	srv.logger.Debug("Getting user roles", "userID", userID)
 
-	var roles []string
+	var roles entity.Roles
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
 		userRepo := repoFactory.UserRepo()
@@ -219,10 +219,10 @@ func (srv *profileService) GetUserRole(ctx context.Context, userID uuid.UUID) ([
 
 		// Extract roles based on profiles
 		if user.UserProfile != nil {
-			roles = append(roles, "user")
+			roles = append(roles, entity.RoleUser)
 		}
 		if user.MerchantProfile != nil {
-			roles = append(roles, "merchant")
+			roles = append(roles, entity.RoleMerchant)
 		}
 
 		return nil
@@ -235,5 +235,5 @@ func (srv *profileService) GetUserRole(ctx context.Context, userID uuid.UUID) ([
 	}
 	srv.logger.Debug("user roles", "roles", roles)
 
-	return roles, nil
+	return roles.ToStrings(), nil
 }

@@ -302,14 +302,14 @@ func BenchmarkRoutingService_OneToMany(b *testing.B) {
 		b.Run(fmt.Sprintf("targets_%d", count), func(b *testing.B) {
 			// Generate targets in a grid pattern
 			targets := make([]usecase.Coordinate, count)
-			for i := 0; i < count; i++ {
+			for i := range count {
 				lat := source.Lat + float64(i%10)*0.001
 				lng := source.Lng + float64(i/10)*0.001
 				targets[i] = usecase.Coordinate{Lat: lat, Lng: lng}
 			}
 
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, err := service.OneToMany(ctx, source, targets)
 				if err != nil {
 					b.Fatal(err)
