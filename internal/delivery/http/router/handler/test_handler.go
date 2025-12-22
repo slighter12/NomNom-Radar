@@ -21,8 +21,15 @@ func NewTestHandler() *TestHandler {
 // This endpoint requires a valid JWT token in the Authorization header
 func (h *TestHandler) TestAuthMiddleware(c echo.Context) error {
 	// Get user information from context (set by auth middleware)
-	userID, _ := middleware.GetUserID(c)
-	roles, _ := middleware.GetRoles(c)
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "CONTEXT_ERROR", "User ID not found in context")
+	}
+
+	roles, ok := middleware.GetRoles(c)
+	if !ok {
+		return response.Unauthorized(c, "CONTEXT_ERROR", "User roles not found in context")
+	}
 
 	return response.Success(c, http.StatusOK, map[string]any{
 		"message": "Authentication middleware test successful",
