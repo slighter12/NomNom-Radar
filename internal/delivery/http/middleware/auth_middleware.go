@@ -36,6 +36,7 @@ func GetUserID(c echo.Context) (uuid.UUID, bool) {
 func GetRoles(c echo.Context) (entity.Roles, bool) {
 	val := c.Get(string(contextKeyRoles))
 	roles, ok := val.(entity.Roles)
+
 	return roles, ok
 }
 
