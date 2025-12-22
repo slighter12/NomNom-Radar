@@ -27,6 +27,7 @@ const (
 func GetUserID(c echo.Context) (uuid.UUID, bool) {
 	val := c.Get(string(contextKeyUserID))
 	id, ok := val.(uuid.UUID)
+
 	return id, ok
 }
 

@@ -42,6 +42,7 @@ func (rs Roles) ToStrings() []string {
 	for i, r := range rs {
 		result[i] = r.String()
 	}
+
 	return result
 }
 
@@ -54,5 +55,6 @@ func RolesFromStrings(ss []string) Roles {
 			result = append(result, role)
 		}
 	}
+
 	return result
 }
