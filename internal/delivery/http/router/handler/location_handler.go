@@ -3,18 +3,14 @@ package handler
 import (
 	"log/slog"
 	"net/http"
-	"slices"
 
+	"radar/internal/delivery/http/middleware"
 	"radar/internal/delivery/http/response"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/fx"
-)
-
-const (
-	roleMerchant = "merchant"
 )
 
 // LocationHandlerParams holds dependencies for LocationHandler, injected by Fx.
@@ -61,9 +57,9 @@ type UpdateLocationRequest struct {
 
 // CreateUserLocation handles creating a new user location
 func (h *LocationHandler) CreateUserLocation(c echo.Context) error {
-	userID, err := h.getUserID(c)
-	if err != nil {
-		return err
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	var req CreateLocationRequest
@@ -94,9 +90,9 @@ func (h *LocationHandler) CreateUserLocation(c echo.Context) error {
 
 // GetUserLocations handles retrieving all user locations
 func (h *LocationHandler) GetUserLocations(c echo.Context) error {
-	userID, err := h.getUserID(c)
-	if err != nil {
-		return err
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	locations, err := h.locationUC.GetUserLocations(c.Request().Context(), userID)
@@ -109,9 +105,9 @@ func (h *LocationHandler) GetUserLocations(c echo.Context) error {
 
 // UpdateUserLocation handles updating a user location
 func (h *LocationHandler) UpdateUserLocation(c echo.Context) error {
-	userID, err := h.getUserID(c)
-	if err != nil {
-		return err
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	locationID, err := uuid.Parse(c.Param("id"))
@@ -147,9 +143,9 @@ func (h *LocationHandler) UpdateUserLocation(c echo.Context) error {
 
 // DeleteUserLocation handles deleting a user location
 func (h *LocationHandler) DeleteUserLocation(c echo.Context) error {
-	userID, err := h.getUserID(c)
-	if err != nil {
-		return err
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	locationID, err := uuid.Parse(c.Param("id"))
@@ -166,9 +162,9 @@ func (h *LocationHandler) DeleteUserLocation(c echo.Context) error {
 
 // CreateMerchantLocation handles creating a new merchant location
 func (h *LocationHandler) CreateMerchantLocation(c echo.Context) error {
-	merchantID, err := h.getMerchantID(c)
-	if err != nil {
-		return err
+	merchantID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	var req CreateLocationRequest
@@ -199,9 +195,9 @@ func (h *LocationHandler) CreateMerchantLocation(c echo.Context) error {
 
 // GetMerchantLocations handles retrieving all merchant locations
 func (h *LocationHandler) GetMerchantLocations(c echo.Context) error {
-	merchantID, err := h.getMerchantID(c)
-	if err != nil {
-		return err
+	merchantID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	locations, err := h.locationUC.GetMerchantLocations(c.Request().Context(), merchantID)
@@ -214,9 +210,9 @@ func (h *LocationHandler) GetMerchantLocations(c echo.Context) error {
 
 // UpdateMerchantLocation handles updating a merchant location
 func (h *LocationHandler) UpdateMerchantLocation(c echo.Context) error {
-	merchantID, err := h.getMerchantID(c)
-	if err != nil {
-		return err
+	merchantID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	locationID, err := uuid.Parse(c.Param("id"))
@@ -252,9 +248,9 @@ func (h *LocationHandler) UpdateMerchantLocation(c echo.Context) error {
 
 // DeleteMerchantLocation handles deleting a merchant location
 func (h *LocationHandler) DeleteMerchantLocation(c echo.Context) error {
-	merchantID, err := h.getMerchantID(c)
-	if err != nil {
-		return err
+	merchantID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	locationID, err := uuid.Parse(c.Param("id"))
@@ -267,41 +263,4 @@ func (h *LocationHandler) DeleteMerchantLocation(c echo.Context) error {
 	}
 
 	return response.Success(c, http.StatusOK, map[string]string{"message": "Location deleted successfully"}, "Merchant location deleted successfully")
-}
-
-// getUserID extracts the user ID from the context
-func (h *LocationHandler) getUserID(c echo.Context) (uuid.UUID, error) {
-	userIDVal := c.Get("userID")
-	userID, ok := userIDVal.(uuid.UUID)
-	if !ok {
-		return uuid.Nil, response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
-	}
-
-	return userID, nil
-}
-
-// getMerchantID extracts the merchant ID from the context
-// For merchant operations, we use the userID from the token as the merchantID
-func (h *LocationHandler) getMerchantID(c echo.Context) (uuid.UUID, error) {
-	// Check if user has merchant role
-	rolesVal := c.Get("roles")
-	roles, ok := rolesVal.([]string)
-	if !ok {
-		return uuid.Nil, response.Forbidden(c, "FORBIDDEN", "Role information missing")
-	}
-
-	hasMerchantRole := slices.Contains(roles, roleMerchant)
-
-	if !hasMerchantRole {
-		return uuid.Nil, response.Forbidden(c, "FORBIDDEN", "Merchant role required")
-	}
-
-	// Get the user ID which is the merchant ID
-	userIDVal := c.Get("userID")
-	merchantID, ok := userIDVal.(uuid.UUID)
-	if !ok {
-		return uuid.Nil, response.Unauthorized(c, "INVALID_TOKEN", "Invalid merchant ID in token")
-	}
-
-	return merchantID, nil
 }

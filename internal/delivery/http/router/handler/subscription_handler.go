@@ -3,8 +3,8 @@ package handler
 import (
 	"log/slog"
 	"net/http"
-	"slices"
 
+	"radar/internal/delivery/http/middleware"
 	"radar/internal/delivery/http/response"
 	"radar/internal/usecase"
 
@@ -49,9 +49,9 @@ type ProcessQRRequest struct {
 
 // SubscribeToMerchant handles subscribing to a merchant
 func (h *SubscriptionHandler) SubscribeToMerchant(c echo.Context) error {
-	userID, err := h.getUserID(c)
-	if err != nil {
-		return err
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	var req SubscribeRequest
@@ -73,9 +73,9 @@ func (h *SubscriptionHandler) SubscribeToMerchant(c echo.Context) error {
 
 // UnsubscribeFromMerchant handles unsubscribing from a merchant
 func (h *SubscriptionHandler) UnsubscribeFromMerchant(c echo.Context) error {
-	userID, err := h.getUserID(c)
-	if err != nil {
-		return err
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	merchantID, err := uuid.Parse(c.Param("merchantId"))
@@ -92,9 +92,9 @@ func (h *SubscriptionHandler) UnsubscribeFromMerchant(c echo.Context) error {
 
 // GetUserSubscriptions handles retrieving all user subscriptions
 func (h *SubscriptionHandler) GetUserSubscriptions(c echo.Context) error {
-	userID, err := h.getUserID(c)
-	if err != nil {
-		return err
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	subscriptions, err := h.subscriptionUC.GetUserSubscriptions(c.Request().Context(), userID)
@@ -107,9 +107,9 @@ func (h *SubscriptionHandler) GetUserSubscriptions(c echo.Context) error {
 
 // GenerateSubscriptionQR handles generating QR code for merchant subscription
 func (h *SubscriptionHandler) GenerateSubscriptionQR(c echo.Context) error {
-	merchantID, err := h.getMerchantID(c)
-	if err != nil {
-		return err
+	merchantID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	qrCode, err := h.subscriptionUC.GenerateSubscriptionQR(c.Request().Context(), merchantID)
@@ -126,9 +126,9 @@ func (h *SubscriptionHandler) GenerateSubscriptionQR(c echo.Context) error {
 
 // ProcessQRSubscription handles processing QR code subscription
 func (h *SubscriptionHandler) ProcessQRSubscription(c echo.Context) error {
-	userID, err := h.getUserID(c)
-	if err != nil {
-		return err
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
 	var req ProcessQRRequest
@@ -146,40 +146,4 @@ func (h *SubscriptionHandler) ProcessQRSubscription(c echo.Context) error {
 	}
 
 	return response.Success(c, http.StatusCreated, subscription, "Subscribed via QR code successfully")
-}
-
-// getUserID extracts the user ID from the context
-func (h *SubscriptionHandler) getUserID(c echo.Context) (uuid.UUID, error) {
-	userIDVal := c.Get("userID")
-	userID, ok := userIDVal.(uuid.UUID)
-	if !ok {
-		return uuid.Nil, response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
-	}
-
-	return userID, nil
-}
-
-// getMerchantID extracts the merchant ID from the context and verifies merchant role
-func (h *SubscriptionHandler) getMerchantID(c echo.Context) (uuid.UUID, error) {
-	// Check if user has merchant role
-	rolesVal := c.Get("roles")
-	roles, ok := rolesVal.([]string)
-	if !ok {
-		return uuid.Nil, response.Forbidden(c, "FORBIDDEN", "Role information missing")
-	}
-
-	hasMerchantRole := slices.Contains(roles, "merchant")
-
-	if !hasMerchantRole {
-		return uuid.Nil, response.Forbidden(c, "FORBIDDEN", "Merchant role required")
-	}
-
-	// Get the user ID which is the merchant ID
-	userIDVal := c.Get("userID")
-	merchantID, ok := userIDVal.(uuid.UUID)
-	if !ok {
-		return uuid.Nil, response.Unauthorized(c, "INVALID_TOKEN", "Invalid merchant ID in token")
-	}
-
-	return merchantID, nil
 }

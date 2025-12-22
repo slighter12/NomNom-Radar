@@ -5,11 +5,11 @@ import (
 	"log/slog"
 	"net/http"
 
+	"radar/internal/delivery/http/middleware"
 	"radar/internal/delivery/http/response"
 	"radar/internal/domain/service"
 	"radar/internal/usecase"
 
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/fx"
 )
@@ -175,8 +175,7 @@ func (h *UserHandler) extractGoogleCallbackInput(c echo.Context) (*usecase.Googl
 
 // GetProfile handles the request to get the current user's profile.
 func (h *UserHandler) GetProfile(c echo.Context) error {
-	userIDVal := c.Get("userID")
-	userID, ok := userIDVal.(uuid.UUID)
+	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}

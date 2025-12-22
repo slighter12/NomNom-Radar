@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 
+	"radar/internal/delivery/http/middleware"
 	"radar/internal/delivery/http/response"
 
 	"github.com/labstack/echo/v4"
@@ -20,8 +21,8 @@ func NewTestHandler() *TestHandler {
 // This endpoint requires a valid JWT token in the Authorization header
 func (h *TestHandler) TestAuthMiddleware(c echo.Context) error {
 	// Get user information from context (set by auth middleware)
-	userID := c.Get("userID")
-	roles := c.Get("roles")
+	userID, _ := middleware.GetUserID(c)
+	roles, _ := middleware.GetRoles(c)
 
 	return response.Success(c, http.StatusOK, map[string]any{
 		"message": "Authentication middleware test successful",

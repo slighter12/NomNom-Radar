@@ -5,6 +5,7 @@ import (
 	"radar/config"
 	"radar/internal/delivery/http/middleware"
 	"radar/internal/delivery/http/router/handler"
+	"radar/internal/domain/entity"
 
 	"github.com/labstack/echo/v4"
 	"go.uber.org/fx"
@@ -80,8 +81,8 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 
 	// Merchant routes that require authentication and "merchant" role
 	merchantGroup := e.Group("/merchant")
-	merchantGroup.Use(r.authMiddleware.Authenticate)            // First, check if logged in
-	merchantGroup.Use(r.authMiddleware.RequireRole("merchant")) // Then, check for the role
+	merchantGroup.Use(r.authMiddleware.Authenticate)                     // First, check if logged in
+	merchantGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant)) // Then, check for the role
 	{
 		// ... merchant-specific handlers
 		// merchantGroup.GET("/dashboard", r.merchantHandler.GetDashboard)
@@ -102,7 +103,7 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 
 		// Merchant location routes (require merchant role)
 		merchantLocGroup := locationsGroup.Group("/merchant")
-		merchantLocGroup.Use(r.authMiddleware.RequireRole("merchant"))
+		merchantLocGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant))
 		{
 			merchantLocGroup.POST("", r.locationHandler.CreateMerchantLocation)
 			merchantLocGroup.GET("", r.locationHandler.GetMerchantLocations)
@@ -131,14 +132,14 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 
 	// Merchant QR code generation (requires merchant role)
 	merchantsGroup := apiV1.Group("/merchants")
-	merchantsGroup.Use(r.authMiddleware.RequireRole("merchant"))
+	merchantsGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant))
 	{
 		merchantsGroup.GET("/:id/qr", r.subscriptionHandler.GenerateSubscriptionQR)
 	}
 
 	// Notification management routes (require merchant role)
 	notificationsGroup := apiV1.Group("/notifications")
-	notificationsGroup.Use(r.authMiddleware.RequireRole("merchant"))
+	notificationsGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant))
 	{
 		notificationsGroup.POST("", r.notificationHandler.PublishLocationNotification)
 		notificationsGroup.GET("", r.notificationHandler.GetMerchantNotificationHistory)

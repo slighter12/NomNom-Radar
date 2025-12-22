@@ -1,15 +1,42 @@
 package middleware
 
 import (
-	"slices"
 	"strings"
 
 	"radar/config"
 	"radar/internal/delivery/http/response"
+	"radar/internal/domain/entity"
 	"radar/internal/domain/service"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
+
+// ContextKey is a custom type for context keys to avoid collisions.
+type ContextKey string
+
+const (
+	// contextKeyUserID is the key for storing user ID in context.
+	contextKeyUserID ContextKey = "userID"
+	// contextKeyRoles is the key for storing user roles in context.
+	contextKeyRoles ContextKey = "roles"
+)
+
+// GetUserID extracts the authenticated user ID from context.
+// Returns the user ID and a boolean indicating success.
+func GetUserID(c echo.Context) (uuid.UUID, bool) {
+	val := c.Get(string(contextKeyUserID))
+	id, ok := val.(uuid.UUID)
+	return id, ok
+}
+
+// GetRoles extracts the user roles from context.
+// Returns the roles and a boolean indicating success.
+func GetRoles(c echo.Context) (entity.Roles, bool) {
+	val := c.Get(string(contextKeyRoles))
+	roles, ok := val.(entity.Roles)
+	return roles, ok
+}
 
 // AuthMiddleware provides middleware for JWT authentication and authorization.
 type AuthMiddleware struct {
@@ -43,15 +70,12 @@ func (m *AuthMiddleware) Authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 		// Extract user ID
 		userID := claims.UserID
 
-		// Extract roles
-		var roles []string
-		if claims.Roles != nil {
-			roles = claims.Roles
-		}
+		// Convert []string roles from JWT to entity.Roles (boundary conversion)
+		roles := entity.RolesFromStrings(claims.Roles)
 
 		// Set user info on the context for handlers to use
-		c.Set("userID", userID)
-		c.Set("roles", roles)
+		c.Set(string(contextKeyUserID), userID)
+		c.Set(string(contextKeyRoles), roles)
 
 		return next(c)
 	}
@@ -59,17 +83,16 @@ func (m *AuthMiddleware) Authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 
 // RequireRole is a middleware factory that checks if the user has a specific role.
 // It must be used AFTER the Authenticate middleware.
-func (m *AuthMiddleware) RequireRole(requiredRole string) echo.MiddlewareFunc {
+func (m *AuthMiddleware) RequireRole(requiredRole entity.Role) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			rolesVal := c.Get("roles")
-			roles, ok := rolesVal.([]string)
+			roles, ok := GetRoles(c)
 			if !ok {
 				return response.Forbidden(c, "FORBIDDEN", "Permission denied: role information missing")
 			}
 
-			if !slices.Contains(roles, requiredRole) {
-				return response.Forbidden(c, "FORBIDDEN", "Permission denied: require '"+requiredRole+"' role")
+			if !roles.Contains(requiredRole) {
+				return response.Forbidden(c, "FORBIDDEN", "Permission denied: require '"+requiredRole.String()+"' role")
 			}
 
 			return next(c)
