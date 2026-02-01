@@ -68,7 +68,7 @@ func (repo *addressRepository) FindAddressByID(ctx context.Context, id uuid.UUID
 			return nil, repository.ErrAddressNotFound
 		}
 
-		return nil, errors.Wrap(err, "failed to find address by ID")
+		return nil, errors.WithStack(err)
 	}
 
 	return toAddressDomain(addressM), nil
@@ -96,7 +96,7 @@ func (repo *addressRepository) FindAddressesByOwner(ctx context.Context, ownerID
 		Find()
 
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to find addresses by owner")
+		return nil, errors.WithStack(err)
 	}
 
 	addresses := make([]*entity.Address, 0, len(addressModels))
@@ -129,7 +129,7 @@ func (repo *addressRepository) FindPrimaryAddressByOwner(ctx context.Context, ow
 			return nil, repository.ErrAddressNotFound
 		}
 
-		return nil, errors.Wrap(err, "failed to find primary address by owner")
+		return nil, errors.WithStack(err)
 	}
 
 	return toAddressDomain(addressM), nil
@@ -167,7 +167,7 @@ func (repo *addressRepository) DeleteAddress(ctx context.Context, id uuid.UUID) 
 		Delete()
 
 	if err != nil {
-		return errors.Wrap(err, "failed to delete address")
+		return errors.WithStack(err)
 	}
 
 	// If no rows were affected, it means the address was not found.
@@ -197,7 +197,7 @@ func (repo *addressRepository) CountAddressesByOwner(ctx context.Context, ownerI
 
 	count, err := query.Count()
 	if err != nil {
-		return 0, errors.Wrap(err, "failed to count addresses by owner")
+		return 0, errors.WithStack(err)
 	}
 
 	return count, nil
@@ -228,7 +228,7 @@ func (repo *addressRepository) FindActiveAddressesByOwner(ctx context.Context, o
 		Find()
 
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to find active addresses by owner")
+		return nil, errors.WithStack(err)
 	}
 
 	addresses := make([]*entity.Address, 0, len(addressModels))

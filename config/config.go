@@ -61,6 +61,12 @@ type Config struct {
 
 	// Routing configuration for the routing engine
 	Routing *RoutingConfig `json:"routing" yaml:"routing"`
+
+	// PubSub configuration for event publishing
+	PubSub *PubSubConfig `json:"pubsub" yaml:"pubsub"`
+
+	// PMTiles configuration for serverless routing
+	PMTiles *PMTilesConfig `json:"pmtiles" yaml:"pmtiles"`
 }
 
 type GoogleOAuthConfig struct {
@@ -87,7 +93,6 @@ type PasswordStrengthConfig struct {
 type Log struct {
 	Pretty       bool          `json:"pretty" yaml:"pretty"`
 	Level        string        `json:"level" yaml:"level"`
-	Path         string        `json:"path" yaml:"path"`
 	MaxAge       time.Duration `json:"maxAge" yaml:"maxAge"`
 	RotationTime time.Duration `json:"rotationTime" yaml:"rotationTime"`
 }
@@ -143,6 +148,36 @@ type RoutingConfig struct {
 
 	// Grid cell size in kilometers for spatial index
 	GridCellSizeKm float64 `json:"gridCellSizeKm" yaml:"gridCellSizeKm"`
+}
+
+// PubSubConfig defines Pub/Sub configuration for event publishing
+type PubSubConfig struct {
+	// Provider type: "local" for local HTTP or "google" for Google Pub/Sub
+	Provider string `json:"provider" yaml:"provider"`
+
+	// Google Cloud project ID (for google provider)
+	ProjectID string `json:"projectId" yaml:"projectId"`
+
+	// Pub/Sub topic ID (for google provider)
+	TopicID string `json:"topicId" yaml:"topicId"`
+
+	// Local HTTP endpoint for development (for local provider)
+	LocalEndpoint string `json:"localEndpoint" yaml:"localEndpoint"`
+}
+
+// PMTilesConfig defines PMTiles routing configuration
+type PMTilesConfig struct {
+	// Enable PMTiles-based routing
+	Enabled bool `json:"enabled" yaml:"enabled"`
+
+	// PMTiles source URL (local file path, HTTP URL, or GCS URL)
+	Source string `json:"source" yaml:"source"`
+
+	// Road layer name in the MVT tiles
+	RoadLayer string `json:"roadLayer" yaml:"roadLayer"`
+
+	// Zoom level for tile queries
+	ZoomLevel int `json:"zoomLevel" yaml:"zoomLevel"`
 }
 
 // LoadWithEnv loads .yaml files through koanf.

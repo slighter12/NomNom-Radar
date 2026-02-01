@@ -43,19 +43,19 @@ if psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -t -c "SELECT 1 FROM pg_roles WHER
     log "readonly_user already exists, skipping user creation..."
 else
     log "Creating readonly user with SCRAM-SHA-256 authentication..."
-    
+
     # Create readonly user with SCRAM-SHA-256 password
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
         -- Create readonly user with SCRAM-SHA-256 encryption and replication permissions
         SET password_encryption = 'scram-sha-256';
         CREATE USER readonly_user WITH PASSWORD 'password' REPLICATION;
-        
+
         -- Grant necessary permissions for read-only access
         GRANT CONNECT ON DATABASE ${POSTGRES_DB} TO readonly_user;
         GRANT USAGE ON SCHEMA public TO readonly_user;
         GRANT SELECT ON ALL TABLES IN SCHEMA public TO readonly_user;
         GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO readonly_user;
-        
+
         -- Set default privileges for future tables
         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO readonly_user;
         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO readonly_user;
@@ -69,14 +69,14 @@ if grep -q "host.*replication.*all.*0\.0\.0\.0/0.*scram-sha-256" "$PGDATA/pg_hba
     log "SCRAM-SHA-256 replication permissions already configured, skipping..."
 else
     log "Updating pg_hba.conf with SCRAM-SHA-256 replication permissions..."
-    
+
     # Remove old md5 entries if they exist
     if grep -q "host.*replication.*all.*0\.0\.0\.0/0.*md5" "$PGDATA/pg_hba.conf"; then
         log "Removing old md5 replication entries..."
         sed -i '/host.*replication.*all.*0\.0\.0\.0\/0.*md5/d' "$PGDATA/pg_hba.conf"
         sed -i '/host.*all.*all.*0\.0\.0\.0\/0.*md5/d' "$PGDATA/pg_hba.conf"
     fi
-    
+
     # Add SCRAM-SHA-256 replication permissions to pg_hba.conf
     cat >> "$PGDATA/pg_hba.conf" <<EOF
 
@@ -96,7 +96,7 @@ if psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -t -c "SELECT 1 FROM pg_replicatio
     log "Replication slot 'replica_slot' already exists, skipping creation..."
 else
     log "Creating replication slot 'replica_slot'..."
-    
+
     # Create replication slot
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
         SELECT pg_create_physical_replication_slot('replica_slot');

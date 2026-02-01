@@ -57,4 +57,8 @@ type SubscriptionRepository interface {
 	// FindDevicesForUsers retrieves all active devices for a list of user IDs.
 	// Used for batch fetching devices for notification sending.
 	FindDevicesForUsers(ctx context.Context, userIDs []uuid.UUID) ([]*entity.UserDevice, error)
+
+	// FindSubscriberAddressesByUserIDs retrieves addresses for specific user IDs who subscribe to a merchant.
+	// Returns addresses bundled with their subscription notification radius.
+	FindSubscriberAddressesByUserIDs(ctx context.Context, merchantID uuid.UUID, userIDs []uuid.UUID) ([]*entity.SubscriberAddress, error)
 }

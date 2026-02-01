@@ -60,15 +60,15 @@ func LoadMetadata(dataDir string) (*RoutingMetadata, error) {
 	data, err := os.ReadFile(metadataPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, errors.Wrap(err, "metadata.json not found in routing data directory")
+			return nil, errors.WithStack(err)
 		}
 
-		return nil, errors.Wrap(err, "failed to read metadata.json")
+		return nil, errors.WithStack(err)
 	}
 
 	var metadata RoutingMetadata
 	if err := json.Unmarshal(data, &metadata); err != nil {
-		return nil, errors.Wrap(err, "failed to parse metadata.json")
+		return nil, errors.WithStack(err)
 	}
 
 	return &metadata, nil

@@ -60,7 +60,7 @@ func (tm *gormTransactionManager) Execute(ctx context.Context, fn func(repoFacto
 	// Begin a new transaction
 	tx := tm.db.WithContext(ctx).Begin()
 	if tx.Error != nil {
-		return errors.Wrap(tx.Error, "failed to begin transaction")
+		return errors.WithStack(tx.Error)
 	}
 
 	// This defer block ensures that if a panic occurs within the callback function,
@@ -82,15 +82,15 @@ func (tm *gormTransactionManager) Execute(ctx context.Context, fn func(repoFacto
 		// If the business logic returns an error, roll back the transaction.
 		if rbErr := tx.Rollback().Error; rbErr != nil {
 			// Log the rollback error, but return the original, more meaningful business error.
-			tm.logger.Error("transaction rollback failed", "error", rbErr)
+			tm.logger.Error("transaction rollback failed", slog.Any("error", rbErr))
 		}
 
-		return errors.Wrap(err, "transaction failed") // Return the original business error.
+		return errors.WithStack(err) // Return the original business error.
 	}
 
 	// If the business logic completes without error, commit the transaction.
 	if err := tx.Commit().Error; err != nil {
-		return errors.Wrap(err, "failed to commit transaction")
+		return errors.WithStack(err)
 	}
 
 	return nil

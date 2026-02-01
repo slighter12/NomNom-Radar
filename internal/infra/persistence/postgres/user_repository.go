@@ -43,8 +43,8 @@ func (repo *userRepository) FindByID(ctx context.Context, id uuid.UUID) (*entity
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, repository.ErrUserNotFound
 		}
-		// Otherwise, return the original database error.
-		return nil, errors.Wrap(err, "failed to find user by id")
+		// Otherwise, return the original database error with stack trace.
+		return nil, errors.WithStack(err)
 	}
 
 	// Map the persistence model back to a pure domain entity before returning.
@@ -64,7 +64,7 @@ func (repo *userRepository) FindByEmail(ctx context.Context, email string) (*ent
 			return nil, repository.ErrUserNotFound
 		}
 
-		return nil, errors.Wrap(err, "failed to find user by email")
+		return nil, errors.WithStack(err)
 	}
 
 	return toUserDomain(userM), nil

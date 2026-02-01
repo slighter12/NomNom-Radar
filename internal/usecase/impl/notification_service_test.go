@@ -85,7 +85,7 @@ func TestNotificationService_PublishLocationNotification_Success(t *testing.T) {
 	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
-			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
+			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1000.0},
 		}, nil)
 
 	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberOwnerID, FCMToken: "test-fcm-token"}
@@ -144,7 +144,7 @@ func TestNotificationService_PublishLocationNotification_RoutingFailure(t *testi
 	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
-			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
+			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1000.0},
 		}, nil)
 
 	_, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
@@ -165,7 +165,7 @@ func TestNotificationService_PublishLocationNotification_PartialDeliveryFailure(
 	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
-			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
+			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1000.0},
 		}, nil)
 
 	deviceID := uuid.New()
@@ -255,7 +255,7 @@ func TestNotificationService_PublishLocationNotification_UnreachableTargets(t *t
 	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
-			{Address: entity.Address{OwnerID: uuid.New(), Latitude: 25.1, Longitude: 121.1}, NotificationRadius: 0.5},
+			{Address: entity.Address{OwnerID: uuid.New(), Latitude: 25.1, Longitude: 121.1}, NotificationRadius: 500.0},
 		}, nil)
 
 	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
@@ -311,7 +311,7 @@ func TestNotificationService_PublishLocationNotification_WithAddressID(t *testin
 	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, address.Latitude, address.Longitude).
 		Return([]*entity.SubscriberAddress{
-			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.051, Longitude: 121.051}, NotificationRadius: 1.0},
+			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.051, Longitude: 121.051}, NotificationRadius: 1000.0},
 		}, nil)
 
 	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberOwnerID, FCMToken: "token-123"}
@@ -384,7 +384,7 @@ func TestNotificationService_PublishLocationNotification_FindDevicesError(t *tes
 	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
-			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
+			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1000.0},
 		}, nil)
 
 	fx.subscriptionRepo.EXPECT().
@@ -411,7 +411,7 @@ func TestNotificationService_PublishLocationNotification_SendBatchError(t *testi
 	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
-			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
+			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1000.0},
 		}, nil)
 
 	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberOwnerID, FCMToken: "token-xyz"}
@@ -448,7 +448,7 @@ func TestNotificationService_PublishLocationNotification_UpdateStatusError(t *te
 	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
-			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
+			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1000.0},
 		}, nil)
 
 	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberOwnerID, FCMToken: "token-abc"}
@@ -489,9 +489,9 @@ func TestNotificationService_PublishLocationNotification_MultipleSubscribers(t *
 	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
-			{Address: entity.Address{OwnerID: user1ID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0}, // reachable
-			{Address: entity.Address{OwnerID: user2ID, Latitude: 25.002, Longitude: 121.002}, NotificationRadius: 1.0}, // reachable
-			{Address: entity.Address{OwnerID: user3ID, Latitude: 25.5, Longitude: 121.5}, NotificationRadius: 0.1},     // unreachable (too far)
+			{Address: entity.Address{OwnerID: user1ID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1000.0}, // reachable
+			{Address: entity.Address{OwnerID: user2ID, Latitude: 25.002, Longitude: 121.002}, NotificationRadius: 1000.0}, // reachable
+			{Address: entity.Address{OwnerID: user3ID, Latitude: 25.5, Longitude: 121.5}, NotificationRadius: 100.0},     // unreachable (too far)
 		}, nil)
 
 	// Only 2 users are reachable - use assert.ElementsMatch for unordered slice comparison
@@ -533,7 +533,7 @@ func TestNotificationService_PublishLocationNotification_NoDevicesForSubscribers
 	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
-			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1.0},
+			{Address: entity.Address{OwnerID: subscriberOwnerID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1000.0},
 		}, nil)
 
 	// Subscriber exists but has no registered devices
@@ -587,17 +587,17 @@ func TestNotificationService_HaversineDistanceFiltering(t *testing.T) {
 
 	fx.notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
 
-	// Two subscribers: one nearby (within 1km), one far (beyond 5km radius)
+	// Two subscribers: one nearby (within 1000m/1km), one far (beyond 5000m/5km)
 	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return([]*entity.SubscriberAddress{
 			{
 				Address:            entity.Address{OwnerID: nearbyOwner, Latitude: 25.0335, Longitude: 121.5660},
-				NotificationRadius: 1.0, // 1km radius - should match
+				NotificationRadius: 1000.0, // 1000m (1km) radius - should match
 			},
 			{
 				Address:            entity.Address{OwnerID: farOwner, Latitude: 25.1, Longitude: 121.7},
-				NotificationRadius: 0.5, // 0.5km radius - too far away
+				NotificationRadius: 500.0, // 500m (0.5km) radius - too far away
 			},
 		}, nil)
 

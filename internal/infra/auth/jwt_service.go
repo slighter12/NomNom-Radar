@@ -42,12 +42,12 @@ func NewJWTService(cfg *config.Config) (service.TokenService, error) {
 func (s *jwtService) GenerateTokens(userID uuid.UUID, roles []string) (accessToken string, refreshToken string, err error) {
 	accessToken, err = s.generateToken(userID, roles, s.accessTTL, s.accessSecret, "access")
 	if err != nil {
-		return "", "", errors.Wrap(err, "failed to generate access token")
+		return "", "", errors.WithStack(err)
 	}
 
 	refreshToken, err = s.generateToken(userID, nil, s.refreshTTL, s.refreshSecret, "refresh")
 	if err != nil {
-		return "", "", errors.Wrap(err, "failed to generate refresh token")
+		return "", "", errors.WithStack(err)
 	}
 
 	return accessToken, refreshToken, nil
@@ -58,7 +58,7 @@ func (s *jwtService) ValidateToken(tokenString string) (*service.Claims, error) 
 	// First, parse the token without verification to get the claims
 	unverifiedToken, _, err := new(jwt.Parser).ParseUnverified(tokenString, &service.Claims{})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to parse token structure")
+		return nil, errors.WithStack(err)
 	}
 
 	// Get the claims to determine the token type
@@ -89,7 +89,7 @@ func (s *jwtService) ValidateToken(tokenString string) (*service.Claims, error) 
 	})
 
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to parse token")
+		return nil, errors.WithStack(err)
 	}
 
 	claims, ok := token.Claims.(*service.Claims)
@@ -121,7 +121,7 @@ func (s *jwtService) RotateTokens(userID uuid.UUID, roles []string) (accessToken
 	// Generate new token pair
 	accessToken, refreshToken, err = s.GenerateTokens(userID, roles)
 	if err != nil {
-		return "", "", "", errors.Wrap(err, "failed to generate new token pair during rotation")
+		return "", "", "", errors.WithStack(err)
 	}
 
 	// Hash the refresh token for secure storage
@@ -147,7 +147,7 @@ func (s *jwtService) generateToken(userID uuid.UUID, roles []string, ttl time.Du
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signedToken, err := token.SignedString([]byte(secret))
 	if err != nil {
-		return "", errors.Wrap(err, "failed to sign token")
+		return "", errors.WithStack(err)
 	}
 
 	return signedToken, nil

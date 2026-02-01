@@ -7,6 +7,7 @@ import (
 	"slices"
 	"time"
 
+	deliverycontext "radar/internal/delivery/context"
 	"radar/internal/domain/entity"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
@@ -35,6 +36,7 @@ type notificationService struct {
 	addressRepo      repository.AddressRepository
 	notificationSvc  service.NotificationService
 	routingSvc       usecase.RoutingUsecase
+	eventPublisher   service.EventPublisher
 }
 
 // NotificationServiceParams holds dependencies for NotificationService, injected by Fx.
@@ -48,6 +50,7 @@ type NotificationServiceParams struct {
 	AddressRepo      repository.AddressRepository
 	NotificationSvc  service.NotificationService
 	RoutingSvc       usecase.RoutingUsecase
+	EventPublisher   service.EventPublisher `optional:"true"`
 }
 
 // NewNotificationService creates a new notification service instance
@@ -60,7 +63,13 @@ func NewNotificationService(params NotificationServiceParams) usecase.Notificati
 		addressRepo:      params.AddressRepo,
 		notificationSvc:  params.NotificationSvc,
 		routingSvc:       params.RoutingSvc,
+		eventPublisher:   params.EventPublisher,
 	}
+}
+
+// log returns a request-scoped logger if available, otherwise falls back to the service's logger.
+func (s *notificationService) log(ctx context.Context) *slog.Logger {
+	return deliverycontext.GetLoggerOrDefault(ctx, s.logger)
 }
 
 // PublishLocationNotification publishes a location notification to nearby subscribers
@@ -103,6 +112,89 @@ func (s *notificationService) PublishLocationNotification(
 		return nil, errors.Wrap(err, "failed to create notification")
 	}
 
+	// Check if async processing is available
+	if s.eventPublisher != nil {
+		return s.publishAsync(ctx, notification, merchantID, latitude, longitude, locationName, fullAddress, hintMessage)
+	}
+
+	// Fallback to synchronous processing
+	return s.publishSync(ctx, notification, merchantID, latitude, longitude, locationName, fullAddress, hintMessage)
+}
+
+// publishAsync publishes the notification event to Pub/Sub for async processing
+func (s *notificationService) publishAsync(
+	ctx context.Context,
+	notification *entity.MerchantLocationNotification,
+	merchantID uuid.UUID,
+	latitude, longitude float64,
+	locationName, fullAddress, hintMessage string,
+) (*entity.MerchantLocationNotification, error) {
+	// Pre-filter subscribers using PostGIS (straight-line distance)
+	candidateAddresses, err := s.subscriptionRepo.FindSubscriberAddressesWithinRadius(ctx, merchantID, latitude, longitude)
+	if err != nil {
+		s.log(ctx).Warn("Failed to pre-filter subscribers, falling back to sync",
+			slog.Any("error", err),
+		)
+
+		return s.publishSync(ctx, notification, merchantID, latitude, longitude, locationName, fullAddress, hintMessage)
+	}
+
+	if len(candidateAddresses) == 0 {
+		s.log(ctx).Info("No subscribers within radius",
+			slog.String("notification_id", notification.ID.String()),
+		)
+
+		return notification, nil
+	}
+
+	// Extract unique user IDs
+	userIDSet := make(map[uuid.UUID]bool)
+	for _, addr := range candidateAddresses {
+		userIDSet[addr.OwnerID] = true
+	}
+	subscriberIDs := make([]string, 0, len(userIDSet))
+	for userID := range userIDSet {
+		subscriberIDs = append(subscriberIDs, userID.String())
+	}
+
+	// Create and publish event
+	event := &service.NotificationEvent{
+		RequestID:      deliverycontext.GetRequestIDFromContext(ctx),
+		NotificationID: notification.ID.String(),
+		MerchantID:     merchantID.String(),
+		Latitude:       latitude,
+		Longitude:      longitude,
+		LocationName:   locationName,
+		FullAddress:    fullAddress,
+		HintMessage:    hintMessage,
+		SubscriberIDs:  subscriberIDs,
+	}
+
+	if err := s.eventPublisher.PublishNotificationEvent(ctx, event); err != nil {
+		s.log(ctx).Warn("Failed to publish async event, falling back to sync",
+			slog.Any("error", err),
+		)
+
+		return s.publishSync(ctx, notification, merchantID, latitude, longitude, locationName, fullAddress, hintMessage)
+	}
+
+	s.log(ctx).Info("Notification event published for async processing",
+		slog.String("notification_id", notification.ID.String()),
+		slog.Int("subscriber_count", len(subscriberIDs)),
+	)
+
+	// Return immediately without waiting for notification delivery
+	return notification, nil
+}
+
+// publishSync processes notifications synchronously (original behavior)
+func (s *notificationService) publishSync(
+	ctx context.Context,
+	notification *entity.MerchantLocationNotification,
+	merchantID uuid.UUID,
+	latitude, longitude float64,
+	locationName, fullAddress, hintMessage string,
+) (*entity.MerchantLocationNotification, error) {
 	// Get devices for subscribers
 	tokens, deviceMap, err := s.getSubscriberDevices(ctx, merchantID, latitude, longitude)
 	if err != nil {
@@ -256,7 +348,7 @@ func (s *notificationService) handleInvalidTokens(ctx context.Context, invalidTo
 		if device, ok := deviceMap[token]; ok {
 			if err := s.deviceRepo.DeleteDevice(ctx, device.ID); err != nil {
 				// Log error but continue
-				slog.Warn("failed to delete invalid device", slog.String("device_id", device.ID.String()), slog.Any("error", err))
+				s.log(ctx).Warn("failed to delete invalid device", slog.String("device_id", device.ID.String()), slog.Any("error", err))
 			}
 		}
 	}
@@ -322,7 +414,8 @@ func (s *notificationService) buildTargetCoordinates(addresses []*entity.Subscri
 func filterReachableAddresses(addresses []*entity.SubscriberAddress, results []usecase.RouteResult) []*entity.SubscriberAddress {
 	validAddresses := make([]*entity.SubscriberAddress, 0, len(addresses))
 	for idx, result := range results {
-		if result.IsReachable && result.DistanceKm <= addresses[idx].NotificationRadius {
+		distanceMeters := result.DistanceKm * 1000.0
+		if result.IsReachable && distanceMeters <= addresses[idx].NotificationRadius {
 			validAddresses = append(validAddresses, addresses[idx])
 		}
 	}
@@ -387,7 +480,7 @@ func (s *notificationService) sendAndProcessNotifications(
 	if len(notificationLogs) > 0 {
 		if err := s.notificationRepo.BatchCreateNotificationLogs(ctx, notificationLogs); err != nil {
 			// Log error but don't fail the entire operation
-			s.logger.Error("failed to create notification logs", slog.Any("error", err))
+			s.log(ctx).Error("failed to create notification logs", slog.Any("error", err))
 		}
 	}
 

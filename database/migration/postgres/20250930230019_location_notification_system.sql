@@ -5,32 +5,32 @@
 CREATE EXTENSION IF NOT EXISTS postgis;
 
 -- Step 2: Extend existing addresses table with location notification features
-ALTER TABLE addresses 
+ALTER TABLE addresses
 ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT true,
 ADD COLUMN deleted_at TIMESTAMPTZ,
 ADD COLUMN location GEOMETRY(POINT, 4326);
 
 -- Populate location column using existing latitude and longitude
-UPDATE addresses 
+UPDATE addresses
 SET location = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326);
 
 -- Create spatial index for geolocation queries
 CREATE INDEX idx_addresses_location ON addresses USING GIST(location);
 CREATE INDEX idx_addresses_deleted_at ON addresses(deleted_at);
 
-COMMENT ON COLUMN addresses.deleted_at IS 
+COMMENT ON COLUMN addresses.deleted_at IS
 'Soft delete timestamp for this address. Independent from user deletion - users can delete/restore addresses separately. Always check owner user deleted_at as well to ensure the owner account is active.';
 
 -- Update unique indexes to respect soft deletes
 DROP INDEX IF EXISTS idx_addresses_user_primary;
 DROP INDEX IF EXISTS idx_addresses_merchant_primary;
 
-CREATE UNIQUE INDEX idx_addresses_user_primary 
-    ON addresses(user_profile_id) 
+CREATE UNIQUE INDEX idx_addresses_user_primary
+    ON addresses(user_profile_id)
     WHERE is_primary = TRUE AND user_profile_id IS NOT NULL AND deleted_at IS NULL;
 
-CREATE UNIQUE INDEX idx_addresses_merchant_primary 
-    ON addresses(merchant_profile_id) 
+CREATE UNIQUE INDEX idx_addresses_merchant_primary
+    ON addresses(merchant_profile_id)
     WHERE is_primary = TRUE AND merchant_profile_id IS NOT NULL AND deleted_at IS NULL;
 
 -- Step 3: Create shared trigger function to automatically update location column from lat/lng
@@ -63,17 +63,17 @@ CREATE TABLE user_devices (
 );
 
 -- Unique constraints that respect soft deletes (only apply to non-deleted records)
-CREATE UNIQUE INDEX idx_user_devices_fcm_token_unique 
-    ON user_devices(fcm_token) 
+CREATE UNIQUE INDEX idx_user_devices_fcm_token_unique
+    ON user_devices(fcm_token)
     WHERE deleted_at IS NULL;
 
-CREATE UNIQUE INDEX idx_user_devices_user_device_unique 
-    ON user_devices(user_id, device_id) 
+CREATE UNIQUE INDEX idx_user_devices_user_device_unique
+    ON user_devices(user_id, device_id)
     WHERE deleted_at IS NULL;
 
 -- Composite index for FindDevicesByUser and FindActiveDevicesByUser queries
-CREATE INDEX idx_user_devices_user_active 
-    ON user_devices(user_id, is_active) 
+CREATE INDEX idx_user_devices_user_active
+    ON user_devices(user_id, is_active)
     WHERE deleted_at IS NULL;
 
 -- Create updated_at trigger
@@ -82,7 +82,7 @@ CREATE TRIGGER update_user_devices_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
-COMMENT ON COLUMN user_devices.deleted_at IS 
+COMMENT ON COLUMN user_devices.deleted_at IS
 'Soft delete timestamp for this device. Independent from user deletion - users can remove/re-add devices. Always check users.deleted_at as well to ensure the user account is active.';
 
 -- Step 5: Create user merchant subscriptions table
@@ -101,13 +101,13 @@ CREATE TABLE user_merchant_subscriptions (
 CREATE INDEX idx_subscriptions_user_id ON user_merchant_subscriptions(user_id);
 
 -- Composite index for FindSubscribersWithinRadius (filters merchant_id + is_active)
-CREATE INDEX idx_subscriptions_merchant_active 
-    ON user_merchant_subscriptions(merchant_id, is_active) 
+CREATE INDEX idx_subscriptions_merchant_active
+    ON user_merchant_subscriptions(merchant_id, is_active)
     WHERE deleted_at IS NULL;
 
 -- Unique constraint for soft delete: only applies to non-deleted records
-CREATE UNIQUE INDEX idx_subscriptions_unique_active 
-    ON user_merchant_subscriptions(user_id, merchant_id) 
+CREATE UNIQUE INDEX idx_subscriptions_unique_active
+    ON user_merchant_subscriptions(user_id, merchant_id)
     WHERE deleted_at IS NULL;
 
 -- Create updated_at trigger
@@ -116,10 +116,10 @@ CREATE TRIGGER update_user_merchant_subscriptions_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
-COMMENT ON COLUMN user_merchant_subscriptions.deleted_at IS 
+COMMENT ON COLUMN user_merchant_subscriptions.deleted_at IS
 'Soft delete timestamp for this subscription. Independent from user deletion - users can unsubscribe/resubscribe. Always check both user_id and merchant_id users.deleted_at to ensure both accounts are active.';
 
-COMMENT ON COLUMN user_merchant_subscriptions.notification_radius IS 
+COMMENT ON COLUMN user_merchant_subscriptions.notification_radius IS
 'Notification radius in meters. Defines the distance within which the user wants to receive notifications from the merchant.';
 
 -- Step 6: Create merchant location notifications table
@@ -128,12 +128,12 @@ COMMENT ON COLUMN user_merchant_subscriptions.notification_radius IS
 CREATE TABLE merchant_location_notifications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
     merchant_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    
+
     -- Optional reference to a saved address in the addresses table.
     -- NULL if merchant used a temporary/custom location instead of quick selection.
     -- ON DELETE SET NULL preserves notification history even if the address is deleted.
     address_id UUID REFERENCES addresses(id) ON DELETE SET NULL,
-    
+
     -- Snapshot of location data at the time of notification.
     -- These fields are always required regardless of whether address_id is set.
     -- This ensures historical accuracy even if the referenced address is modified or deleted.
@@ -142,7 +142,7 @@ CREATE TABLE merchant_location_notifications (
     latitude DECIMAL(10, 8) NOT NULL,
     longitude DECIMAL(11, 8) NOT NULL,
     location GEOMETRY(POINT, 4326),
-    
+
     hint_message TEXT,
     total_sent INTEGER NOT NULL DEFAULT 0,
     total_failed INTEGER NOT NULL DEFAULT 0,
@@ -154,11 +154,11 @@ CREATE TABLE merchant_location_notifications (
 );
 
 -- Composite index for FindNotificationsByMerchant with pagination (ORDER BY published_at DESC)
-CREATE INDEX idx_merchant_notifications_merchant_published 
+CREATE INDEX idx_merchant_notifications_merchant_published
     ON merchant_location_notifications(merchant_id, published_at DESC);
 
 -- Spatial index for geolocation queries
-CREATE INDEX idx_merchant_notifications_location 
+CREATE INDEX idx_merchant_notifications_location
     ON merchant_location_notifications USING GIST(location);
 
 -- Create trigger using shared function
@@ -205,7 +205,7 @@ DROP TRIGGER IF EXISTS trigger_update_address_location ON addresses;
 DROP FUNCTION IF EXISTS update_location_from_lat_lng();
 
 -- Step 3: Remove added columns from addresses table
-ALTER TABLE addresses 
+ALTER TABLE addresses
 DROP COLUMN IF EXISTS location,
 DROP COLUMN IF EXISTS deleted_at,
 DROP COLUMN IF EXISTS is_active;

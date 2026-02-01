@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"radar/config"
+	deliverycontext "radar/internal/delivery/context"
 	"radar/internal/domain/entity"
 	"radar/internal/domain/service"
 
@@ -26,6 +27,11 @@ func NewOAuthService(cfg *config.Config, logger *slog.Logger) service.OAuthAuthS
 	}
 }
 
+// log returns a request-scoped logger if available, otherwise falls back to the service's logger.
+func (s *OAuthService) log(ctx context.Context) *slog.Logger {
+	return deliverycontext.GetLoggerOrDefault(ctx, s.logger)
+}
+
 // VerifyIDToken implements service.OAuthAuthService interface
 func (s *OAuthService) VerifyIDToken(ctx context.Context, idToken string) (*service.OAuthUser, error) {
 	// Validate the token using Google's library.
@@ -33,9 +39,9 @@ func (s *OAuthService) VerifyIDToken(ctx context.Context, idToken string) (*serv
 	// and checking the issuer and expiration time.
 	payload, err := idtoken.Validate(ctx, idToken, s.clientID)
 	if err != nil {
-		s.logger.Error("Google token validation failed", "error", err)
+		s.log(ctx).Error("Google token validation failed", slog.Any("error", err))
 
-		return nil, errors.Wrap(err, "google token validation failed")
+		return nil, errors.WithStack(err)
 	}
 
 	// After validation, the payload is trustworthy.
@@ -77,7 +83,7 @@ func (s *OAuthService) VerifyIDToken(ctx context.Context, idToken string) (*serv
 		ExtraData:     claims,
 	}
 
-	s.logger.Info("Google ID token verified successfully",
+	s.log(ctx).Info("Google ID token verified successfully",
 		slog.String("userID", oauthUser.ID),
 		slog.String("email", oauthUser.Email))
 
