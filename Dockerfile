@@ -10,6 +10,10 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
+# Copy shared packages (improves cache: cmd changes don't invalidate other builds)
+COPY ./internal ./internal
+COPY ./config ./config
+
 # =============================================================================
 # Radar Builder
 # =============================================================================
@@ -17,8 +21,6 @@ FROM base-builder AS radar-builder
 
 # Copy only radar source code
 COPY ./cmd/radar ./cmd/radar
-COPY ./internal ./internal
-COPY ./config ./config
 
 # Build radar
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
@@ -32,8 +34,6 @@ FROM base-builder AS geoworker-builder
 
 # Copy only geoworker source code
 COPY ./cmd/geoworker ./cmd/geoworker
-COPY ./internal ./internal
-COPY ./config ./config
 
 # Build geoworker
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
