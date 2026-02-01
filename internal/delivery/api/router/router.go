@@ -3,8 +3,8 @@ package router
 
 import (
 	"radar/config"
-	"radar/internal/delivery/http/middleware"
-	"radar/internal/delivery/http/router/handler"
+	"radar/internal/delivery/api/middleware"
+	"radar/internal/delivery/api/router/handler"
 	"radar/internal/domain/entity"
 
 	"github.com/labstack/echo/v4"

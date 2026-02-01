@@ -6,7 +6,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// AppError unified application error interface
+// AppError defines the interface for application-specific errors
 type AppError interface {
 	error
 	HTTPCode() int     // HTTP status code
@@ -15,7 +15,7 @@ type AppError interface {
 	Details() string   // Detailed error information (optional)
 }
 
-// BaseError basic error structure that implements AppError interface
+// BaseError is a basic error structure that implements the AppError interface
 type BaseError struct {
 	httpCode  int
 	errorCode string
@@ -33,7 +33,7 @@ func NewBaseError(httpCode int, errorCode, message, details string) *BaseError {
 	}
 }
 
-// Error implements error interface
+// Error implements the error interface
 func (e *BaseError) Error() string {
 	return e.message
 }
@@ -43,17 +43,17 @@ func (e *BaseError) WrapMessage(message string) error {
 	return errors.Wrap(e, message)
 }
 
-// HTTPCode returns HTTP status code
+// HTTPCode returns the HTTP status code
 func (e *BaseError) HTTPCode() int {
 	return e.httpCode
 }
 
-// ErrorCode returns business error code
+// ErrorCode returns the business error code
 func (e *BaseError) ErrorCode() string {
 	return e.errorCode
 }
 
-// Message returns user-friendly error message
+// Message returns the user-friendly error message
 func (e *BaseError) Message() string {
 	return e.message
 }
@@ -79,28 +79,28 @@ var (
 	ErrUserNotFound = NewBaseError(
 		http.StatusNotFound,
 		"USER_NOT_FOUND",
-		"User not found",
+		"找不到該使用者",
 		"",
 	)
 
 	ErrUserAlreadyExists = NewBaseError(
 		http.StatusConflict,
 		"USER_ALREADY_EXISTS",
-		"User with this email already exists",
+		"此電子郵件已被註冊",
 		"",
 	)
 
 	ErrUserCreationFailed = NewBaseError(
 		http.StatusInternalServerError,
 		"USER_CREATION_FAILED",
-		"Failed to create user",
+		"建立使用者失敗",
 		"",
 	)
 
 	ErrUserUpdateFailed = NewBaseError(
 		http.StatusInternalServerError,
 		"USER_UPDATE_FAILED",
-		"Failed to update user",
+		"更新使用者失敗",
 		"",
 	)
 
@@ -108,42 +108,42 @@ var (
 	ErrAuthNotFound = NewBaseError(
 		http.StatusUnauthorized,
 		"AUTH_NOT_FOUND",
-		"Authentication method not found",
+		"找不到認證方式",
 		"",
 	)
 
 	ErrInvalidCredentials = NewBaseError(
 		http.StatusUnauthorized,
 		"INVALID_CREDENTIALS",
-		"Invalid email or password",
+		"電子郵件或密碼錯誤",
 		"",
 	)
 
 	ErrRefreshTokenInvalid = NewBaseError(
 		http.StatusUnauthorized,
 		"REFRESH_TOKEN_INVALID",
-		"Invalid or expired refresh token",
+		"無效或已過期的重新整理權杖",
 		"",
 	)
 
 	ErrPasswordHashFailed = NewBaseError(
 		http.StatusInternalServerError,
 		"PASSWORD_HASH_FAILED",
-		"Password processing error",
+		"密碼處理錯誤",
 		"",
 	)
 
 	ErrPasswordStrength = NewBaseError(
 		http.StatusBadRequest,
 		"PASSWORD_STRENGTH",
-		"Password strength is weak",
+		"密碼強度不足",
 		"",
 	)
 
 	ErrPasswordForbiddenWords = NewBaseError(
 		http.StatusBadRequest,
 		"PASSWORD_FORBIDDEN_WORDS",
-		"Password contains forbidden words or patterns",
+		"密碼包含禁止使用的字詞或模式",
 		"",
 	)
 
@@ -151,21 +151,21 @@ var (
 	ErrOAuthFailed = NewBaseError(
 		http.StatusUnauthorized,
 		"OAUTH_FAILED",
-		"OAuth authentication failed",
+		"OAuth 認證失敗",
 		"",
 	)
 
 	ErrOAuthCodeInvalid = NewBaseError(
 		http.StatusBadRequest,
 		"OAUTH_CODE_INVALID",
-		"Invalid authorization code",
+		"無效的授權碼",
 		"",
 	)
 
 	ErrOAuthTokenInvalid = NewBaseError(
 		http.StatusBadRequest,
 		"OAUTH_TOKEN_INVALID",
-		"Invalid ID token",
+		"無效的 ID 權杖",
 		"",
 	)
 
@@ -173,7 +173,7 @@ var (
 	ErrMerchantAlreadyExists = NewBaseError(
 		http.StatusConflict,
 		"MERCHANT_ALREADY_EXISTS",
-		"Merchant with this email already exists",
+		"此電子郵件已被註冊為商家",
 		"",
 	)
 
@@ -181,7 +181,7 @@ var (
 	ErrValidationFailed = NewBaseError(
 		http.StatusBadRequest,
 		"VALIDATION_FAILED",
-		"Validation failed",
+		"輸入資料驗證失敗",
 		"",
 	)
 
@@ -189,43 +189,43 @@ var (
 	ErrAddressNotFound = NewBaseError(
 		http.StatusNotFound,
 		"ADDRESS_NOT_FOUND",
-		"Address not found",
+		"找不到該地址",
 		"",
 	)
 
 	ErrPrimaryAddressConflict = NewBaseError(
 		http.StatusConflict,
 		"PRIMARY_ADDRESS_CONFLICT",
-		"Owner already has a primary address",
+		"該使用者已設定主要地址",
 		"",
 	)
 
 	ErrAddressOwnershipViolation = NewBaseError(
 		http.StatusForbidden,
 		"ADDRESS_OWNERSHIP_VIOLATION",
-		"You don't have permission to access this address",
+		"您沒有權限存取此地址",
 		"",
 	)
 
-	// Refresh Token-related errors
+	// Refresh token-related errors
 	ErrRefreshTokenNotFound = NewBaseError(
 		http.StatusNotFound,
 		"REFRESH_TOKEN_NOT_FOUND",
-		"Refresh token not found",
+		"找不到重新整理權杖",
 		"",
 	)
 
 	ErrRefreshTokenExpired = NewBaseError(
 		http.StatusUnauthorized,
 		"REFRESH_TOKEN_EXPIRED",
-		"Refresh token has expired",
+		"重新整理權杖已過期",
 		"",
 	)
 
 	ErrSessionLimitExceeded = NewBaseError(
 		http.StatusTooManyRequests,
 		"SESSION_LIMIT_EXCEEDED",
-		"Maximum number of active sessions exceeded",
+		"已達到最大同時登入裝置數量",
 		"",
 	)
 
@@ -233,7 +233,7 @@ var (
 	ErrTransactionFailed = NewBaseError(
 		http.StatusInternalServerError,
 		"TRANSACTION_FAILED",
-		"Database transaction failed",
+		"資料庫交易失敗",
 		"",
 	)
 
@@ -241,39 +241,39 @@ var (
 	ErrInternalError = NewBaseError(
 		http.StatusInternalServerError,
 		"INTERNAL_ERROR",
-		"Internal server error",
+		"系統內部錯誤",
 		"",
 	)
 
 	ErrForbidden = NewBaseError(
 		http.StatusForbidden,
 		"FORBIDDEN",
-		"Access forbidden",
+		"存取被拒絕",
 		"",
 	)
 
 	ErrNotFound = NewBaseError(
 		http.StatusNotFound,
 		"NOT_FOUND",
-		"Resource not found",
+		"找不到該資源",
 		"",
 	)
 
 	ErrConflict = NewBaseError(
 		http.StatusConflict,
 		"CONFLICT",
-		"Resource conflict",
+		"資源衝突",
 		"",
 	)
 )
 
-// DatabaseExecute error structure that implements AppError interface
+// DatabaseExecuteError represents a database execution error, implementing the AppError interface
 type DatabaseExecuteError struct {
 	err     error
 	details string
 }
 
-// NewDatabaseExecuteError creates a Database-related errors
+// NewDatabaseExecuteError creates a database-related error
 func NewDatabaseExecuteError(err error, details string) AppError {
 	return &DatabaseExecuteError{
 		err:     err,
@@ -281,24 +281,24 @@ func NewDatabaseExecuteError(err error, details string) AppError {
 	}
 }
 
-// Error implements error interface
+// Error implements the error interface
 func (e *DatabaseExecuteError) Error() string {
-	return errors.Wrap(e.err, "Database execute failed").Error()
+	return errors.Wrap(e.err, "database execution failed").Error()
 }
 
-// HTTPCode returns HTTP status code
+// HTTPCode returns the HTTP status code
 func (e *DatabaseExecuteError) HTTPCode() int {
 	return http.StatusInternalServerError
 }
 
-// ErrorCode returns business error code
+// ErrorCode returns the business error code
 func (e *DatabaseExecuteError) ErrorCode() string {
 	return "DATABASE_EXECUTE_FAILED"
 }
 
-// Message returns user-friendly error message
+// Message returns the user-friendly error message
 func (e *DatabaseExecuteError) Message() string {
-	return "Database execute failed"
+	return "資料庫執行失敗"
 }
 
 // Details returns detailed error information

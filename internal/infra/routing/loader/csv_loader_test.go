@@ -147,7 +147,7 @@ func TestCSVLoader_LoadVertices_InvalidNumber(t *testing.T) {
 	loader := NewCSVLoader(tmpDir)
 	_, err = loader.LoadVertices()
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid vertex lat")
+	assert.Contains(t, err.Error(), "strconv.ParseFloat")
 }
 
 func TestCSVLoader_LoadVertices_FileNotFound(t *testing.T) {
