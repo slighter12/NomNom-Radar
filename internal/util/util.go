@@ -14,14 +14,14 @@ import (
 func CalculateFileChecksum(filePath string) (string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to open file")
+		return "", errors.WithStack(err)
 	}
 	defer file.Close()
 
 	sha256Hash := sha256.New()
 
 	if _, err := io.Copy(sha256Hash, file); err != nil {
-		return "", errors.Wrap(err, "failed to calculate checksum")
+		return "", errors.WithStack(err)
 	}
 
 	sha256Sum := fmt.Sprintf("%x", sha256Hash.Sum(nil))

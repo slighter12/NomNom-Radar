@@ -106,7 +106,7 @@ func (s *firebaseService) SendSingleNotification(ctx context.Context, token, tit
 
 	_, err := s.client.Send(ctx, message)
 	if err != nil {
-		return errors.Wrap(err, "failed to send notification")
+		return errors.WithStack(err)
 	}
 
 	return nil
@@ -134,7 +134,7 @@ func (s *firebaseService) SendBatchNotification(ctx context.Context, tokens []st
 
 	response, err := s.client.SendEachForMulticast(ctx, message)
 	if err != nil {
-		return 0, 0, nil, errors.Wrap(err, "failed to send multicast notification")
+		return 0, 0, nil, errors.WithStack(err)
 	}
 
 	successCount = response.SuccessCount

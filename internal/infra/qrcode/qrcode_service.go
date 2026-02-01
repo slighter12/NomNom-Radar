@@ -64,19 +64,19 @@ func (s *qrcodeService) GenerateSubscriptionQR(merchantID uuid.UUID) ([]byte, er
 	// Convert to JSON
 	jsonData, err := json.Marshal(data)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to marshal QR code data")
+		return nil, errors.WithStack(err)
 	}
 
 	// Generate QR code
 	qrCode, err := qrcode.New(string(jsonData), s.errorCorrectionLevel)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create QR code")
+		return nil, errors.WithStack(err)
 	}
 
 	// Generate PNG image
 	pngBytes, err := qrCode.PNG(s.size)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to generate PNG")
+		return nil, errors.WithStack(err)
 	}
 
 	return pngBytes, nil
@@ -86,7 +86,7 @@ func (s *qrcodeService) GenerateSubscriptionQR(merchantID uuid.UUID) ([]byte, er
 func (s *qrcodeService) ParseSubscriptionQR(qrData string) (uuid.UUID, error) {
 	var data QRCodeData
 	if err := json.Unmarshal([]byte(qrData), &data); err != nil {
-		return uuid.Nil, errors.Wrap(err, "failed to unmarshal QR code data")
+		return uuid.Nil, errors.WithStack(err)
 	}
 
 	// Validate type
@@ -97,7 +97,7 @@ func (s *qrcodeService) ParseSubscriptionQR(qrData string) (uuid.UUID, error) {
 	// Parse UUID
 	merchantID, err := uuid.Parse(data.MerchantID)
 	if err != nil {
-		return uuid.Nil, errors.Wrap(err, "failed to parse merchant ID")
+		return uuid.Nil, errors.WithStack(err)
 	}
 
 	return merchantID, nil

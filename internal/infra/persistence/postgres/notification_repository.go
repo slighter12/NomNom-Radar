@@ -63,7 +63,7 @@ func (repo *notificationRepository) FindNotificationByID(ctx context.Context, id
 			return nil, repository.ErrNotificationNotFound
 		}
 
-		return nil, errors.Wrap(err, "failed to find notification by ID")
+		return nil, errors.WithStack(err)
 	}
 
 	return toNotificationDomain(notificationM), nil
@@ -84,7 +84,7 @@ func (repo *notificationRepository) FindNotificationsByMerchant(ctx context.Cont
 
 	notificationModels, err := query.Find()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to find notifications by merchant")
+		return nil, errors.WithStack(err)
 	}
 
 	notifications := make([]*entity.MerchantLocationNotification, 0, len(notificationModels))
@@ -105,7 +105,7 @@ func (repo *notificationRepository) UpdateNotificationStatus(ctx context.Context
 		})
 
 	if err != nil {
-		return errors.Wrap(err, "failed to update notification status")
+		return errors.WithStack(err)
 	}
 
 	if result.RowsAffected == 0 {

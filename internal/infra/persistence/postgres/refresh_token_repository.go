@@ -68,7 +68,7 @@ func (repo *refreshTokenRepository) FindRefreshTokenByHash(ctx context.Context, 
 			return nil, repository.ErrRefreshTokenNotFound
 		}
 
-		return nil, errors.Wrap(err, "failed to find refresh token by hash")
+		return nil, errors.WithStack(err)
 	}
 
 	token := toRefreshTokenDomain(tokenM)
@@ -92,7 +92,7 @@ func (repo *refreshTokenRepository) FindRefreshTokenByID(ctx context.Context, id
 			return nil, repository.ErrRefreshTokenNotFound
 		}
 
-		return nil, errors.Wrap(err, "failed to find refresh token by ID")
+		return nil, errors.WithStack(err)
 	}
 
 	token := toRefreshTokenDomain(tokenM)
@@ -118,7 +118,7 @@ func (repo *refreshTokenRepository) FindRefreshTokensByUserID(ctx context.Contex
 		Find()
 
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to find refresh tokens by user ID")
+		return nil, errors.WithStack(err)
 	}
 
 	tokens := make([]*entity.RefreshToken, 0, len(tokenModels))
@@ -158,7 +158,7 @@ func (repo *refreshTokenRepository) DeleteRefreshToken(ctx context.Context, id u
 		Delete()
 
 	if err != nil {
-		return errors.Wrap(err, "failed to delete refresh token")
+		return errors.WithStack(err)
 	}
 
 	// If no rows were affected, it means the token was not found.
@@ -176,7 +176,7 @@ func (repo *refreshTokenRepository) DeleteRefreshTokenByHash(ctx context.Context
 		Delete()
 
 	if err != nil {
-		return errors.Wrap(err, "failed to delete refresh token by hash")
+		return errors.WithStack(err)
 	}
 
 	// If no rows were affected, it means the token was not found.
@@ -192,7 +192,7 @@ func (repo *refreshTokenRepository) DeleteRefreshTokensByUserID(ctx context.Cont
 	if _, err := repo.q.RefreshTokenModel.WithContext(ctx).
 		Where(repo.q.RefreshTokenModel.UserID.Eq(userID)).
 		Delete(); err != nil {
-		return errors.Wrap(err, "failed to delete refresh tokens by user ID")
+		return errors.WithStack(err)
 	}
 
 	return nil
@@ -205,7 +205,7 @@ func (repo *refreshTokenRepository) DeleteExpiredRefreshTokens(ctx context.Conte
 	if _, err := repo.q.RefreshTokenModel.WithContext(ctx).
 		Where(repo.q.RefreshTokenModel.ExpiresAt.Lt(now)).
 		Delete(); err != nil {
-		return errors.Wrap(err, "failed to delete expired refresh tokens")
+		return errors.WithStack(err)
 	}
 
 	return nil
@@ -223,7 +223,7 @@ func (repo *refreshTokenRepository) CountActiveSessionsByUserID(ctx context.Cont
 		Count()
 
 	if err != nil {
-		return 0, errors.Wrap(err, "failed to count active sessions by user ID")
+		return 0, errors.WithStack(err)
 	}
 
 	return int(count), nil

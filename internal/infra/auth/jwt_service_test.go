@@ -75,7 +75,7 @@ func TestJWTService_InvalidToken(t *testing.T) {
 	claims, err := jwtService.ValidateToken(invalidToken)
 	assert.Error(t, err)
 	assert.Nil(t, claims)
-	assert.Contains(t, err.Error(), "failed to parse token structure")
+	assert.Contains(t, err.Error(), "token is malformed")
 }
 
 func TestJWTService_UnknownTokenType(t *testing.T) {

@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"radar/internal/delivery/http/middleware"
-	"radar/internal/delivery/http/response"
+	"radar/internal/delivery/api/middleware"
+	"radar/internal/delivery/api/response"
 	"radar/internal/domain/service"
 	"radar/internal/usecase"
 
@@ -56,7 +56,7 @@ func (h *UserHandler) RegisterUser(c echo.Context) error {
 
 	// Do not return sensitive data in the response.
 	// The DTO from the usecase might need to be mapped to a response model.
-	return response.Success(c, http.StatusCreated, output.User, "User registered successfully")
+	return response.Success(c, http.StatusCreated, output.User)
 }
 
 // RegisterMerchant handles the merchant registration request.
@@ -71,7 +71,7 @@ func (h *UserHandler) RegisterMerchant(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusCreated, output.User, "Merchant registered successfully")
+	return response.Success(c, http.StatusCreated, output.User)
 }
 
 // Login handles the user login request.
@@ -86,7 +86,7 @@ func (h *UserHandler) Login(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusOK, output, "Login successful")
+	return response.Success(c, http.StatusOK, output)
 }
 
 // RefreshToken handles the token refresh request.
@@ -101,7 +101,7 @@ func (h *UserHandler) RefreshToken(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusOK, output, "Token refreshed successfully")
+	return response.Success(c, http.StatusOK, output)
 }
 
 // Logout handles the user logout request.
@@ -115,7 +115,7 @@ func (h *UserHandler) Logout(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusOK, map[string]string{"message": "Successfully logged out"}, "Logout successful")
+	return response.Success(c, http.StatusOK, map[string]string{"message": "Successfully logged out"})
 }
 
 // GoogleCallback handles the Google Sign-In callback.
@@ -132,7 +132,7 @@ func (h *UserHandler) GoogleCallback(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusOK, output, "Google OAuth authentication successful")
+	return response.Success(c, http.StatusOK, output)
 }
 
 // extractGoogleCallbackInput extracts and validates input from the request
@@ -185,10 +185,10 @@ func (h *UserHandler) GetProfile(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusOK, user, "Profile retrieved successfully")
+	return response.Success(c, http.StatusOK, user)
 }
 
 // HealthCheck is a simple handler to check if the service is up.
 func HealthCheck(c echo.Context) error {
-	return response.Success(c, http.StatusOK, map[string]string{"status": "ok"}, "Service is healthy")
+	return response.Success(c, http.StatusOK, map[string]string{"status": "ok"})
 }

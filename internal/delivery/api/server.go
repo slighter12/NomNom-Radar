@@ -1,4 +1,4 @@
-package http
+package api
 
 import (
 	"context"
@@ -8,9 +8,10 @@ import (
 
 	"radar/config"
 	"radar/internal/delivery"
-	"radar/internal/delivery/http/middleware"
-	"radar/internal/delivery/http/router"
-	"radar/internal/delivery/http/validator"
+	apimiddleware "radar/internal/delivery/api/middleware"
+	"radar/internal/delivery/api/router"
+	"radar/internal/delivery/api/validator"
+	"radar/internal/delivery/middleware"
 	"radar/internal/domain/lifecycle"
 
 	"github.com/labstack/echo/v4"
@@ -19,7 +20,7 @@ import (
 	"go.uber.org/fx"
 )
 
-type httpServer struct {
+type apiServer struct {
 	cfg    *config.Config
 	logger *slog.Logger
 	server *echo.Echo
@@ -43,15 +44,19 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 	// 1. Recover middleware first (to catch panics early)
 	echoServer.Use(echomiddleware.Recover())
 
-	// 2. Logger middleware
+	// 2. Request ID middleware (must be before logger to include in logs)
+	requestIDMiddleware := middleware.NewRequestIDMiddleware(params.Logger)
+	echoServer.Use(requestIDMiddleware.Process)
+
+	// 3. Logger middleware
 	loggerMiddleware := middleware.NewLoggerMiddleware(params.Logger, params.Cfg)
 	echoServer.Use(loggerMiddleware.Handle)
 
-	// 3. CORS middleware
+	// 4. CORS middleware
 	echoServer.Use(echomiddleware.CORS())
 
 	// Set up centralized error handler
-	errorMiddleware := middleware.NewErrorMiddleware(params.Logger)
+	errorMiddleware := apimiddleware.NewErrorMiddleware(params.Logger)
 	echoServer.HTTPErrorHandler = errorMiddleware.HandleHTTPError
 
 	// Set up validator
@@ -61,7 +66,7 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 	r.RegisterRoutes(echoServer)
 	r.RegisterTestRoutes(echoServer)
 
-	srv := &httpServer{
+	srv := &apiServer{
 		cfg:    params.Cfg,
 		logger: params.Logger,
 		server: echoServer,
@@ -74,21 +79,21 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 	return srv, nil
 }
 
-func (s *httpServer) Serve(ctx context.Context) error {
+func (s *apiServer) Serve(ctx context.Context) error {
 	hostPort := net.JoinHostPort("0.0.0.0", strconv.Itoa(s.cfg.HTTP.Port))
-	s.logger.Info("Starting HTTP server", slog.String("hostPort", hostPort))
+	s.logger.Info("Starting API HTTP server", slog.String("hostPort", hostPort))
 	if err := s.server.Start(hostPort); err != nil {
-		return errors.Wrap(err, "failed to serve https")
+		return errors.WithStack(err)
 	}
 
 	return nil
 }
 
-func (s *httpServer) stop(ctx context.Context) error {
+func (s *apiServer) stop(ctx context.Context) error {
 	shutdownCtx, cancel := context.WithTimeout(ctx, lifecycle.DefaultTimeout)
 	defer cancel()
 
-	s.logger.Info("Shutting down HTTP server")
+	s.logger.Info("Shutting down API HTTP server")
 
 	return errors.WithStack(s.server.Shutdown(shutdownCtx))
 }

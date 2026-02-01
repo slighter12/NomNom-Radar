@@ -70,7 +70,7 @@ func (repo *authRepository) FindAuthentication(ctx context.Context, provider ent
 			return nil, repository.ErrAuthNotFound
 		}
 
-		return nil, errors.Wrap(err, "failed to find authentication")
+		return nil, errors.WithStack(err)
 	}
 
 	return toAuthenticationDomain(authM), nil
@@ -90,7 +90,7 @@ func (repo *authRepository) FindAuthenticationByUserIDAndProvider(ctx context.Co
 			return nil, repository.ErrAuthNotFound
 		}
 
-		return nil, errors.Wrap(err, "failed to find authentication by user and provider")
+		return nil, errors.WithStack(err)
 	}
 
 	return toAuthenticationDomain(authM), nil
@@ -125,7 +125,7 @@ func (repo *authRepository) DeleteAuthentication(ctx context.Context, id uuid.UU
 		Delete()
 
 	if err != nil {
-		return errors.Wrap(err, "failed to delete authentication")
+		return errors.WithStack(err)
 	}
 
 	// If no rows were affected, it means the authentication was not found.
@@ -143,7 +143,7 @@ func (repo *authRepository) ListAuthenticationsByUserID(ctx context.Context, use
 		Find()
 
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to list authentications by user ID")
+		return nil, errors.WithStack(err)
 	}
 
 	authentications := make([]*entity.Authentication, 0, len(authModels))

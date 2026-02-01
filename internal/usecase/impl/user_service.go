@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	deliverycontext "radar/internal/delivery/context"
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
@@ -68,6 +69,11 @@ func NewUserService(params UserServiceParams) usecase.UserUsecase {
 	}
 }
 
+// log returns a request-scoped logger if available, otherwise falls back to the service's logger.
+func (srv *userService) log(ctx context.Context) *slog.Logger {
+	return deliverycontext.GetLoggerOrDefault(ctx, srv.logger)
+}
+
 // RegisterUser orchestrates the complete user registration process.
 func (srv *userService) RegisterUser(ctx context.Context, input *usecase.RegisterUserInput) (*usecase.RegisterOutput, error) {
 	config := &registrationConfig{
@@ -87,7 +93,7 @@ func (srv *userService) RegisterUser(ctx context.Context, input *usecase.Registe
 }
 
 func (srv *userService) executeRegistration(ctx context.Context, cfg *registrationConfig) (*usecase.RegisterOutput, error) {
-	srv.logger.Info("Starting registration", "role", cfg.Role, "email", cfg.Email)
+	srv.log(ctx).Info("Starting registration", slog.Any("role", cfg.Role), slog.String("email", cfg.Email))
 
 	var registeredUser *entity.User
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
@@ -106,12 +112,12 @@ func (srv *userService) executeRegistration(ctx context.Context, cfg *registrati
 	})
 
 	if err != nil {
-		srv.logger.Error("Failed to execute registration transaction", "role", cfg.Role, "email", cfg.Email, "error", err)
+		srv.log(ctx).Error("Failed to execute registration transaction", slog.Any("role", cfg.Role), slog.String("email", cfg.Email), slog.Any("error", err))
 
 		return nil, errors.Wrap(err, "failed to execute user registration transaction")
 	}
 
-	srv.logger.Debug("Registration completed", "role", cfg.Role, "userID", registeredUser.ID)
+	srv.log(ctx).Debug("Registration completed", slog.Any("role", cfg.Role), slog.Any("userID", registeredUser.ID))
 
 	return &usecase.RegisterOutput{User: registeredUser}, nil
 }
@@ -124,14 +130,14 @@ func (srv *userService) handleNewRegistration(
 	registeredUser **entity.User,
 ) error {
 	if err := srv.hasher.ValidatePasswordStrength(cfg.Password); err != nil {
-		srv.logger.Warn("Password validation failed during registration", "role", cfg.Role, "email", cfg.Email, "error", err)
+		srv.log(ctx).Warn("Password validation failed during registration", slog.Any("role", cfg.Role), slog.String("email", cfg.Email), slog.Any("error", err))
 
 		return errors.Wrap(domainerrors.ErrValidationFailed, "password does not meet security requirements")
 	}
 
 	hashedPassword, err := srv.hasher.Hash(cfg.Password)
 	if err != nil {
-		srv.logger.Error("Failed to hash password during registration", "role", cfg.Role, "error", err)
+		srv.log(ctx).Error("Failed to hash password during registration", slog.Any("role", cfg.Role), slog.Any("error", err))
 
 		return errors.Wrap(err, "failed to hash password during registration")
 	}
@@ -143,7 +149,7 @@ func (srv *userService) handleNewRegistration(
 	newUser.Email = cfg.Email
 
 	if err := userRepo.Create(ctx, newUser); err != nil {
-		return errors.WithStack(err)
+		return errors.Wrap(err, "failed to create user during registration")
 	}
 
 	newAuth := &entity.Authentication{
@@ -154,7 +160,7 @@ func (srv *userService) handleNewRegistration(
 	}
 
 	if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
-		return errors.WithStack(err)
+		return errors.Wrap(err, "failed to create authentication during registration")
 	}
 
 	*registeredUser = newUser
@@ -170,7 +176,7 @@ func (srv *userService) handleExistingAccountRegistration(
 	registeredUser **entity.User,
 ) error {
 	if !srv.hasher.Check(cfg.Password, authRecord.PasswordHash) {
-		srv.logger.Warn("Password mismatch when attaching profile", "role", cfg.Role, "email", cfg.Email)
+		srv.log(ctx).Warn("Password mismatch when attaching profile", slog.Any("role", cfg.Role), slog.String("email", cfg.Email))
 
 		return errors.Wrap(domainerrors.ErrInvalidCredentials, "password mismatch during registration")
 	}
@@ -181,7 +187,7 @@ func (srv *userService) handleExistingAccountRegistration(
 	}
 
 	if cfg.HasProfile(existingUser) {
-		srv.logger.Warn("Profile already exists for account", "role", cfg.Role, "userID", existingUser.ID)
+		srv.log(ctx).Warn("Profile already exists for account", slog.Any("role", cfg.Role), slog.Any("userID", existingUser.ID))
 
 		return cfg.ProfileExistsError()
 	}
@@ -193,10 +199,10 @@ func (srv *userService) handleExistingAccountRegistration(
 	cfg.AttachProfile(existingUser)
 
 	if err := userRepo.Update(ctx, existingUser); err != nil {
-		return errors.WithStack(err)
+		return errors.Wrap(err, "failed to update user profile during registration")
 	}
 
-	srv.logger.Debug("Attached profile to existing account", "role", cfg.Role, "userID", existingUser.ID)
+	srv.log(ctx).Debug("Attached profile to existing account", slog.Any("role", cfg.Role), slog.Any("userID", existingUser.ID))
 	*registeredUser = existingUser
 
 	return nil
@@ -263,7 +269,7 @@ func (srv *userService) RegisterMerchant(ctx context.Context, input *usecase.Reg
 
 // Login orchestrates the user login process.
 func (srv *userService) Login(ctx context.Context, input *usecase.LoginInput) (*usecase.LoginOutput, error) {
-	srv.logger.Debug("Starting user login", "email", input.Email)
+	srv.log(ctx).Debug("Starting user login", slog.String("email", input.Email))
 
 	var loggedInUser *entity.User
 	var roles entity.Roles
@@ -317,7 +323,7 @@ func (srv *userService) Login(ctx context.Context, input *usecase.LoginInput) (*
 		}
 
 		if err := refreshRepo.CreateRefreshToken(ctx, newRefreshToken); err != nil {
-			return errors.WithStack(err)
+			return errors.Wrap(err, "failed to create refresh token during login")
 		}
 		loggedInUser = user
 
@@ -325,11 +331,11 @@ func (srv *userService) Login(ctx context.Context, input *usecase.LoginInput) (*
 	})
 
 	if err != nil {
-		srv.logger.Warn("Login failed", "email", input.Email, "error", err.Error())
+		srv.log(ctx).Warn("Login failed", slog.String("email", input.Email), slog.Any("error", err))
 
 		return nil, errors.Wrap(err, "failed to execute user login transaction")
 	}
-	srv.logger.Debug("User logged in successfully", "userID", loggedInUser.ID)
+	srv.log(ctx).Debug("User logged in successfully", slog.Any("userID", loggedInUser.ID))
 
 	return &usecase.LoginOutput{
 		AccessToken:  accessToken,
@@ -341,7 +347,7 @@ func (srv *userService) Login(ctx context.Context, input *usecase.LoginInput) (*
 // RefreshToken handles the process of issuing a new access token using a refresh token.
 // The refresh token remains unchanged for security reasons.
 func (srv *userService) RefreshToken(ctx context.Context, input *usecase.RefreshTokenInput) (*usecase.RefreshTokenOutput, error) {
-	srv.logger.Info("Attempting to refresh access token")
+	srv.log(ctx).Info("Attempting to refresh access token")
 
 	claims, err := srv.tokenService.ValidateToken(input.RefreshToken)
 	if err != nil {
@@ -388,7 +394,7 @@ func (srv *userService) RefreshToken(ctx context.Context, input *usecase.Refresh
 	})
 
 	if err != nil {
-		srv.logger.Error("Failed to execute refresh token transaction", "error", err)
+		srv.log(ctx).Error("Failed to execute refresh token transaction", slog.Any("error", err))
 
 		return nil, errors.Wrap(err, "failed to execute refresh token transaction")
 	}
@@ -400,30 +406,30 @@ func (srv *userService) RefreshToken(ctx context.Context, input *usecase.Refresh
 
 // Logout handles the process of invalidating a user's session by deleting their refresh token.
 func (srv *userService) Logout(ctx context.Context, input *usecase.LogoutInput) error {
-	srv.logger.Info("Attempting to log out")
+	srv.log(ctx).Info("Attempting to log out")
 
 	_, err := srv.tokenService.ValidateToken(input.RefreshToken)
 	if err != nil {
 		// Even if the token is invalid, we can proceed to delete it from the database.
-		srv.logger.Warn("Logout with invalid token", "error", err)
+		srv.log(ctx).Warn("Logout with invalid token", slog.Any("error", err))
 	}
 
 	tokenHash := srv.tokenService.HashToken(input.RefreshToken)
 
 	// Single operation - use direct repository instance
 	if err := srv.refreshTokenRepo.DeleteRefreshTokenByHash(ctx, tokenHash); err != nil {
-		srv.logger.Error("Failed to delete refresh token", "error", err)
+		srv.log(ctx).Error("Failed to delete refresh token", slog.Any("error", err))
 
 		return errors.Wrap(err, "failed to delete refresh token")
 	}
-	srv.logger.Info("Successfully logged out")
+	srv.log(ctx).Info("Successfully logged out")
 
 	return nil
 }
 
 // GoogleCallback handles the user login or registration via Google Sign-In.
 func (srv *userService) GoogleCallback(ctx context.Context, input *usecase.GoogleCallbackInput) (*usecase.LoginOutput, error) {
-	srv.logger.Info("Handling Google callback")
+	srv.log(ctx).Info("Handling Google callback")
 
 	// 1. Verify the ID token with Google.
 	oauthUser, err := srv.googleAuthService.VerifyIDToken(ctx, input.IDToken)
@@ -496,7 +502,7 @@ func (srv *userService) findOrCreateGoogleUser(ctx context.Context, repoFactory 
 
 // createGoogleUser creates a new user for Google authentication
 func (srv *userService) createGoogleUser(ctx context.Context, userRepo repository.UserRepository, authRepo repository.AuthRepository, oauthUser *service.OAuthUser) (*entity.User, error) {
-	srv.logger.Info("Google user not found, creating new user", "email", oauthUser.Email)
+	srv.log(ctx).Info("Google user not found, creating new user", slog.String("email", oauthUser.Email))
 
 	newUser := &entity.User{
 		Name:        oauthUser.Name,
@@ -505,7 +511,7 @@ func (srv *userService) createGoogleUser(ctx context.Context, userRepo repositor
 	}
 
 	if err := userRepo.Create(ctx, newUser); err != nil {
-		return nil, errors.WithStack(err)
+		return nil, errors.Wrap(err, "failed to create user for Google authentication")
 	}
 
 	newAuth := &entity.Authentication{
@@ -515,7 +521,7 @@ func (srv *userService) createGoogleUser(ctx context.Context, userRepo repositor
 	}
 
 	if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
-		return nil, errors.WithStack(err)
+		return nil, errors.Wrap(err, "failed to create Google authentication")
 	}
 
 	return newUser, nil
@@ -523,7 +529,7 @@ func (srv *userService) createGoogleUser(ctx context.Context, userRepo repositor
 
 // fetchExistingUser fetches existing user by ID
 func (srv *userService) fetchExistingUser(ctx context.Context, userRepo repository.UserRepository, userID uuid.UUID) (*entity.User, error) {
-	srv.logger.Info("Found existing Google user", "userID", userID)
+	srv.log(ctx).Info("Found existing Google user", slog.Any("userID", userID))
 
 	user, err := userRepo.FindByID(ctx, userID)
 	if err != nil {
@@ -573,7 +579,7 @@ func (srv *userService) storeRefreshToken(ctx context.Context, repoFactory repos
 	}
 
 	if err := refreshRepo.CreateRefreshToken(ctx, newRefreshToken); err != nil {
-		return errors.WithStack(err)
+		return errors.Wrap(err, "failed to store refresh token")
 	}
 
 	return nil
@@ -581,27 +587,27 @@ func (srv *userService) storeRefreshToken(ctx context.Context, repoFactory repos
 
 // LogoutAllDevices handles the process of invalidating all user sessions by deleting all refresh tokens.
 func (srv *userService) LogoutAllDevices(ctx context.Context, userID uuid.UUID) error {
-	srv.logger.Info("Attempting to log out from all devices", "userID", userID)
+	srv.log(ctx).Info("Attempting to log out from all devices", slog.Any("userID", userID))
 
 	// Single operation - use direct repository instance
 	if err := srv.refreshTokenRepo.DeleteRefreshTokensByUserID(ctx, userID); err != nil {
-		srv.logger.Error("Failed to delete all refresh tokens", "error", err, "userID", userID)
+		srv.log(ctx).Error("Failed to delete all refresh tokens", slog.Any("error", err), slog.Any("userID", userID))
 
 		return errors.Wrap(err, "failed to delete all refresh tokens")
 	}
-	srv.logger.Info("Successfully logged out from all devices", "userID", userID)
+	srv.log(ctx).Info("Successfully logged out from all devices", slog.Any("userID", userID))
 
 	return nil
 }
 
 // GetActiveSessions retrieves all active sessions for a user.
 func (srv *userService) GetActiveSessions(ctx context.Context, userID uuid.UUID) ([]*entity.RefreshToken, error) {
-	srv.logger.Debug("Getting active sessions", "userID", userID)
+	srv.log(ctx).Debug("Getting active sessions", slog.Any("userID", userID))
 
 	// Single query operation - use direct repository instance
 	sessions, err := srv.refreshTokenRepo.FindRefreshTokensByUserID(ctx, userID)
 	if err != nil {
-		srv.logger.Error("Failed to get active sessions", "error", err, "userID", userID)
+		srv.log(ctx).Error("Failed to get active sessions", slog.Any("error", err), slog.Any("userID", userID))
 
 		return nil, errors.Wrap(err, "failed to get active sessions")
 	}
@@ -611,7 +617,7 @@ func (srv *userService) GetActiveSessions(ctx context.Context, userID uuid.UUID)
 
 // RevokeSession revokes a specific session by refresh token ID.
 func (srv *userService) RevokeSession(ctx context.Context, userID, tokenID uuid.UUID) error {
-	srv.logger.Info("Attempting to revoke session", "userID", userID, "tokenID", tokenID)
+	srv.log(ctx).Info("Attempting to revoke session", slog.Any("userID", userID), slog.Any("tokenID", tokenID))
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
 		refreshRepo := repoFactory.RefreshTokenRepo()
@@ -634,18 +640,18 @@ func (srv *userService) RevokeSession(ctx context.Context, userID, tokenID uuid.
 	})
 
 	if err != nil {
-		srv.logger.Error("Failed to revoke session", "error", err, "userID", userID, "tokenID", tokenID)
+		srv.log(ctx).Error("Failed to revoke session", slog.Any("error", err), slog.Any("userID", userID), slog.Any("tokenID", tokenID))
 
 		return errors.Wrap(err, "failed to revoke session")
 	}
-	srv.logger.Info("Successfully revoked session", "userID", userID, "tokenID", tokenID)
+	srv.log(ctx).Info("Successfully revoked session", slog.Any("userID", userID), slog.Any("tokenID", tokenID))
 
 	return nil
 }
 
 // LinkGoogleAccount links a Google account to an existing user account.
 func (srv *userService) LinkGoogleAccount(ctx context.Context, userID uuid.UUID, idToken string) error {
-	srv.logger.Info("Linking Google account to existing user", "userID", userID)
+	srv.log(ctx).Info("Linking Google account to existing user", slog.Any("userID", userID))
 
 	// 1. Verify the Google ID token
 	oauthUser, err := srv.googleAuthService.VerifyIDToken(ctx, idToken)
@@ -658,11 +664,11 @@ func (srv *userService) LinkGoogleAccount(ctx context.Context, userID uuid.UUID,
 	})
 
 	if err != nil {
-		srv.logger.Error("Failed to link Google account", "error", err, "userID", userID)
+		srv.log(ctx).Error("Failed to link Google account", slog.Any("error", err), slog.Any("userID", userID))
 
 		return errors.Wrap(err, "failed to link Google account")
 	}
-	srv.logger.Info("Successfully linked Google account", "userID", userID)
+	srv.log(ctx).Info("Successfully linked Google account", slog.Any("userID", userID))
 
 	return nil
 }
@@ -691,10 +697,10 @@ func (srv *userService) performGoogleAccountLinking(ctx context.Context, repoFac
 	// Note: In a real application, you might want to verify the email change
 	// or ask the user to confirm this change
 	if user.Email != oauthUser.Email {
-		srv.logger.Info("Google email differs from user email",
-			"userID", userID,
-			"userEmail", user.Email,
-			"googleEmail", oauthUser.Email)
+		srv.log(ctx).Info("Google email differs from user email",
+			slog.Any("userID", userID),
+			slog.String("userEmail", user.Email),
+			slog.String("googleEmail", oauthUser.Email))
 	}
 
 	return nil
@@ -749,7 +755,7 @@ func (srv *userService) createOrUpdateGoogleAuth(ctx context.Context, authRepo r
 
 // UnlinkGoogleAccount removes the Google authentication method from a user account.
 func (srv *userService) UnlinkGoogleAccount(ctx context.Context, userID uuid.UUID) error {
-	srv.logger.Info("Unlinking Google account from user", "userID", userID)
+	srv.log(ctx).Info("Unlinking Google account from user", slog.Any("userID", userID))
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
 		authRepo := repoFactory.AuthRepo()
@@ -783,11 +789,11 @@ func (srv *userService) UnlinkGoogleAccount(ctx context.Context, userID uuid.UUI
 	})
 
 	if err != nil {
-		srv.logger.Error("Failed to unlink Google account", "error", err, "userID", userID)
+		srv.log(ctx).Error("Failed to unlink Google account", slog.Any("error", err), slog.Any("userID", userID))
 
 		return errors.Wrap(err, "failed to unlink Google account")
 	}
-	srv.logger.Info("Successfully unlinked Google account", "userID", userID)
+	srv.log(ctx).Info("Successfully unlinked Google account", slog.Any("userID", userID))
 
 	return nil
 }

@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - main
+      - gcp_cloud_run
   pull_request:
     branches:
       - main
+      - gcp_cloud_run
   workflow_dispatch:
 
 env:
@@ -55,7 +57,7 @@ jobs:
           else
             echo "TAG=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
           fi
-          echo "IMAGE_NAME=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+          echo "IMAGE_NAME=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
       - name: Set up Go version
         id: setup-go
@@ -76,21 +78,42 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker Image
+      - name: Build and push Radar image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
+          target: radar
           platforms: linux/amd64
           push: true
           pull: true
           provenance: false
           sbom: false
-          tags: ${{ env.REGISTRY }}/${{ steps.set-vars.outputs.IMAGE_NAME }}:${{ steps.set-vars.outputs.TAG }}
+          tags: ${{ env.REGISTRY }}/radar:${{ steps.set-vars.outputs.TAG }}
           build-args: |
             VERSION=${{ steps.set-vars.outputs.TAG }}
             BUILT=${{ github.event.head_commit.timestamp }}
             GIT_COMMIT=${{ github.sha }}
             IMAGE_NAME=${{ steps.set-vars.outputs.IMAGE_NAME }}
-          cache-from: type=gha,scope=go-${{ steps.setup-go.outputs.go-version }}
-          cache-to: type=gha,mode=max,scope=go-${{ steps.setup-go.outputs.go-version }}
+          cache-from: type=gha,scope=radar-${{ steps.setup-go.outputs.go-version }}
+          cache-to: type=gha,mode=max,scope=radar-${{ steps.setup-go.outputs.go-version }}
+
+      - name: Build and push Geoworker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          target: geoworker
+          platforms: linux/amd64
+          push: true
+          pull: true
+          provenance: false
+          sbom: false
+          tags: ${{ env.REGISTRY }}/geoworker:${{ steps.set-vars.outputs.TAG }}
+          build-args: |
+            VERSION=${{ steps.set-vars.outputs.TAG }}
+            BUILT=${{ github.event.head_commit.timestamp }}
+            GIT_COMMIT=${{ github.sha }}
+            IMAGE_NAME=${{ steps.set-vars.outputs.IMAGE_NAME }}
+          cache-from: type=gha,scope=geoworker-${{ steps.setup-go.outputs.go-version }}
+          cache-to: type=gha,mode=max,scope=geoworker-${{ steps.setup-go.outputs.go-version }}

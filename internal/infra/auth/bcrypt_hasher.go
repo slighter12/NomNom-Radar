@@ -41,12 +41,12 @@ func NewBcryptHasher(cfg *config.Config) (service.PasswordHasher, error) {
 func (h *bcryptHasher) Hash(password string) (string, error) {
 	// Validate password strength before hashing
 	if err := h.ValidatePasswordStrength(password); err != nil {
-		return "", errors.Wrap(err, "password does not meet strength requirements")
+		return "", errors.WithStack(err)
 	}
 
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), h.bcryptCost)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to hash password")
+		return "", errors.WithStack(err)
 	}
 
 	return string(bytes), nil

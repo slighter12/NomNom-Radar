@@ -7,14 +7,15 @@ import (
 
 	"radar/config"
 	"radar/internal/delivery"
-	"radar/internal/delivery/http"
-	"radar/internal/delivery/http/middleware"
-	"radar/internal/delivery/http/router/handler"
+	"radar/internal/delivery/api"
+	apimiddleware "radar/internal/delivery/api/middleware"
+	"radar/internal/delivery/api/router/handler"
 	"radar/internal/infra/auth"
 	"radar/internal/infra/auth/google"
 	logs "radar/internal/infra/log"
 	"radar/internal/infra/notification"
 	"radar/internal/infra/persistence/postgres"
+	"radar/internal/infra/pubsub"
 	"radar/internal/infra/qrcode"
 	"radar/internal/usecase/impl"
 
@@ -24,6 +25,7 @@ import (
 type startServerParams struct {
 	fx.In
 	fx.Lifecycle
+	fx.Shutdowner
 
 	Deliveries []delivery.Delivery `group:"deliveries"`
 }
@@ -84,6 +86,7 @@ func injectService() fx.Option {
 			google.NewOAuthService,
 			notification.NewFirebaseService,
 			qrcode.NewQRCodeService,
+			pubsub.NewEventPublisher,
 		),
 	)
 }
@@ -106,8 +109,8 @@ func injectUsecase() fx.Option {
 func injectMiddleware() fx.Option {
 	return fx.Options(
 		fx.Provide(
-			middleware.NewAuthMiddleware,
-			middleware.NewErrorMiddleware,
+			apimiddleware.NewAuthMiddleware,
+			apimiddleware.NewErrorMiddleware,
 		),
 	)
 }
@@ -129,7 +132,7 @@ func injectDelivery() fx.Option {
 	return fx.Options(
 		fx.Provide(
 			fx.Annotate(
-				http.NewServer,
+				api.NewServer,
 				fx.ResultTags(`group:"deliveries"`),
 			),
 		),
@@ -141,7 +144,12 @@ func startServer(ctx context.Context, params startServerParams) {
 		go func() {
 			if err := delivery.Serve(ctx); err != nil {
 				slog.Error("Failed to start server", slog.Any("error", err))
-				os.Exit(1)
+
+				// Trigger graceful shutdown to execute all OnStop hooks
+				if shutdownErr := params.Shutdown(); shutdownErr != nil {
+					slog.Error("Failed to shutdown gracefully", slog.Any("error", shutdownErr))
+					os.Exit(1)
+				}
 			}
 		}()
 	}

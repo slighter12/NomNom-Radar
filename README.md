@@ -70,6 +70,34 @@ cp config.example.yaml config.yaml
 go run cmd/server/main.go
 ```
 
+### Build Road PMTiles (Taiwan example)
+
+Install the required tools:
+
+```bash
+brew install osmium-tool tippecanoe
+```
+
+Then generate a road-only GeoJSON and PMTiles:
+
+```bash
+# 1) Filter: keep only ways with the "highway" tag (w/highway = ways with highway tag)
+# This produces a smaller .pbf containing only roads.
+osmium tags-filter taiwan-latest.osm.pbf w/highway -o filtered-roads.osm.pbf --overwrite
+
+# 2) Convert: turn the filtered PBF into GeoJSON
+# osmium export converts OSM ways to LineString and preserves all tags.
+osmium export filtered-roads.osm.pbf -o roads.geojson --overwrite
+
+# 3) Build PMTiles (same parameters as before)
+tippecanoe -o walking.pmtiles \
+  -z15 -Z15 \
+  --buffer=100 \
+  --no-clipping \
+  --layer=roads \
+  roads.geojson
+```
+
 ## 🧪 Testing
 
 This project uses [mockery](https://github.com/vektra/mockery) to generate mocks. To regenerate mocks after interface changes:

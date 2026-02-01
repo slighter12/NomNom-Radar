@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"radar/config"
+	deliverycontext "radar/internal/delivery/context"
 
 	"github.com/labstack/echo/v4"
 )
@@ -52,11 +53,11 @@ func (m *LoggerMiddleware) logRequest(c echo.Context, start time.Time, err error
 
 	// Prepare log fields
 	fields := []slog.Attr{
+		slog.String("request_id", deliverycontext.GetRequestID(c)),
 		slog.String("method", req.Method),
 		slog.String("uri", req.URL.Path),
 		slog.Int("status", res.Status),
 		slog.Duration("latency", latency),
-		slog.String("latency_human", latency.String()),
 		slog.String("remote_ip", c.RealIP()),
 		slog.String("user_agent", req.UserAgent()),
 		slog.String("time", start.Format(time.RFC3339)),
@@ -69,7 +70,7 @@ func (m *LoggerMiddleware) logRequest(c echo.Context, start time.Time, err error
 
 	// If there's an error, log error details
 	if err != nil {
-		fields = append(fields, slog.String("error", err.Error()))
+		fields = append(fields, slog.Any("error", err))
 	}
 
 	// Choose log level based on status code

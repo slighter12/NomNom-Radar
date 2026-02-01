@@ -221,6 +221,80 @@ func (_c *MockSubscriptionRepository_FindDevicesForUsers_Call) RunAndReturn(run 
 	return _c
 }
 
+// FindSubscriberAddressesByUserIDs provides a mock function for the type MockSubscriptionRepository
+func (_mock *MockSubscriptionRepository) FindSubscriberAddressesByUserIDs(ctx context.Context, merchantID uuid.UUID, userIDs []uuid.UUID) ([]*entity.SubscriberAddress, error) {
+	ret := _mock.Called(ctx, merchantID, userIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FindSubscriberAddressesByUserIDs")
+	}
+
+	var r0 []*entity.SubscriberAddress
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, []uuid.UUID) ([]*entity.SubscriberAddress, error)); ok {
+		return returnFunc(ctx, merchantID, userIDs)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, []uuid.UUID) []*entity.SubscriberAddress); ok {
+		r0 = returnFunc(ctx, merchantID, userIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*entity.SubscriberAddress)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID, []uuid.UUID) error); ok {
+		r1 = returnFunc(ctx, merchantID, userIDs)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockSubscriptionRepository_FindSubscriberAddressesByUserIDs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FindSubscriberAddressesByUserIDs'
+type MockSubscriptionRepository_FindSubscriberAddressesByUserIDs_Call struct {
+	*mock.Call
+}
+
+// FindSubscriberAddressesByUserIDs is a helper method to define mock.On call
+//   - ctx context.Context
+//   - merchantID uuid.UUID
+//   - userIDs []uuid.UUID
+func (_e *MockSubscriptionRepository_Expecter) FindSubscriberAddressesByUserIDs(ctx interface{}, merchantID interface{}, userIDs interface{}) *MockSubscriptionRepository_FindSubscriberAddressesByUserIDs_Call {
+	return &MockSubscriptionRepository_FindSubscriberAddressesByUserIDs_Call{Call: _e.mock.On("FindSubscriberAddressesByUserIDs", ctx, merchantID, userIDs)}
+}
+
+func (_c *MockSubscriptionRepository_FindSubscriberAddressesByUserIDs_Call) Run(run func(ctx context.Context, merchantID uuid.UUID, userIDs []uuid.UUID)) *MockSubscriptionRepository_FindSubscriberAddressesByUserIDs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		var arg2 []uuid.UUID
+		if args[2] != nil {
+			arg2 = args[2].([]uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockSubscriptionRepository_FindSubscriberAddressesByUserIDs_Call) Return(subscriberAddresss []*entity.SubscriberAddress, err error) *MockSubscriptionRepository_FindSubscriberAddressesByUserIDs_Call {
+	_c.Call.Return(subscriberAddresss, err)
+	return _c
+}
+
+func (_c *MockSubscriptionRepository_FindSubscriberAddressesByUserIDs_Call) RunAndReturn(run func(ctx context.Context, merchantID uuid.UUID, userIDs []uuid.UUID) ([]*entity.SubscriberAddress, error)) *MockSubscriptionRepository_FindSubscriberAddressesByUserIDs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // FindSubscriberAddressesWithinRadius provides a mock function for the type MockSubscriptionRepository
 func (_mock *MockSubscriptionRepository) FindSubscriberAddressesWithinRadius(ctx context.Context, merchantID uuid.UUID, merchantLat float64, merchantLon float64) ([]*entity.SubscriberAddress, error) {
 	ret := _mock.Called(ctx, merchantID, merchantLat, merchantLon)

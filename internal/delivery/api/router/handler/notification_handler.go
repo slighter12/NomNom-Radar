@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"radar/internal/delivery/http/middleware"
-	"radar/internal/delivery/http/response"
+	"radar/internal/delivery/api/middleware"
+	"radar/internal/delivery/api/response"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
@@ -71,7 +71,7 @@ func (h *NotificationHandler) PublishLocationNotification(c echo.Context) error 
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusCreated, notification, "Location notification published successfully")
+	return response.Success(c, http.StatusCreated, notification)
 }
 
 // validatePublishNotificationRequest validates the publish notification request
@@ -144,5 +144,5 @@ func (h *NotificationHandler) GetMerchantNotificationHistory(c echo.Context) err
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusOK, notifications, "Notification history retrieved successfully")
+	return response.Success(c, http.StatusOK, notifications)
 }

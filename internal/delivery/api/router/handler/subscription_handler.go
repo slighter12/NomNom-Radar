@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"radar/internal/delivery/http/middleware"
-	"radar/internal/delivery/http/response"
+	"radar/internal/delivery/api/middleware"
+	"radar/internal/delivery/api/response"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
@@ -68,7 +68,7 @@ func (h *SubscriptionHandler) SubscribeToMerchant(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusCreated, subscription, "Subscribed to merchant successfully")
+	return response.Success(c, http.StatusCreated, subscription)
 }
 
 // UnsubscribeFromMerchant handles unsubscribing from a merchant
@@ -87,7 +87,7 @@ func (h *SubscriptionHandler) UnsubscribeFromMerchant(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusOK, map[string]string{"message": "Unsubscribed successfully"}, "Unsubscribed from merchant successfully")
+	return response.Success(c, http.StatusOK, map[string]string{"message": "Unsubscribed successfully"})
 }
 
 // GetUserSubscriptions handles retrieving all user subscriptions
@@ -102,7 +102,7 @@ func (h *SubscriptionHandler) GetUserSubscriptions(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusOK, subscriptions, "User subscriptions retrieved successfully")
+	return response.Success(c, http.StatusOK, subscriptions)
 }
 
 // GenerateSubscriptionQR handles generating QR code for merchant subscription
@@ -145,5 +145,5 @@ func (h *SubscriptionHandler) ProcessQRSubscription(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusCreated, subscription, "Subscribed via QR code successfully")
+	return response.Success(c, http.StatusCreated, subscription)
 }

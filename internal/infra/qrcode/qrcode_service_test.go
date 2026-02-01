@@ -105,7 +105,7 @@ func TestQRCodeService_ParseSubscriptionQR_InvalidJSON(t *testing.T) {
 
 	_, err := service.ParseSubscriptionQR("invalid json")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to unmarshal QR code data")
+	assert.Contains(t, err.Error(), "invalid character")
 }
 
 func TestQRCodeService_ParseSubscriptionQR_InvalidType(t *testing.T) {
@@ -139,7 +139,7 @@ func TestQRCodeService_ParseSubscriptionQR_InvalidUUID(t *testing.T) {
 
 	_, err = service.ParseSubscriptionQR(string(jsonData))
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to parse merchant ID")
+	assert.Contains(t, err.Error(), "invalid UUID")
 }
 
 func TestQRCodeService_RoundTrip(t *testing.T) {

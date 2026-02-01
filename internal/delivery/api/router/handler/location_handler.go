@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"radar/internal/delivery/http/middleware"
-	"radar/internal/delivery/http/response"
+	"radar/internal/delivery/api/middleware"
+	"radar/internal/delivery/api/response"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
@@ -85,7 +85,7 @@ func (h *LocationHandler) CreateUserLocation(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusCreated, location, "User location created successfully")
+	return response.Success(c, http.StatusCreated, location)
 }
 
 // GetUserLocations handles retrieving all user locations
@@ -100,7 +100,7 @@ func (h *LocationHandler) GetUserLocations(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusOK, locations, "User locations retrieved successfully")
+	return response.Success(c, http.StatusOK, locations)
 }
 
 // UpdateUserLocation handles updating a user location
@@ -138,7 +138,7 @@ func (h *LocationHandler) UpdateUserLocation(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusOK, location, "User location updated successfully")
+	return response.Success(c, http.StatusOK, location)
 }
 
 // DeleteUserLocation handles deleting a user location
@@ -157,7 +157,7 @@ func (h *LocationHandler) DeleteUserLocation(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusOK, map[string]string{"message": "Location deleted successfully"}, "User location deleted successfully")
+	return response.Success(c, http.StatusOK, map[string]string{"message": "Location deleted successfully"})
 }
 
 // CreateMerchantLocation handles creating a new merchant location
@@ -190,7 +190,7 @@ func (h *LocationHandler) CreateMerchantLocation(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusCreated, location, "Merchant location created successfully")
+	return response.Success(c, http.StatusCreated, location)
 }
 
 // GetMerchantLocations handles retrieving all merchant locations
@@ -205,7 +205,7 @@ func (h *LocationHandler) GetMerchantLocations(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusOK, locations, "Merchant locations retrieved successfully")
+	return response.Success(c, http.StatusOK, locations)
 }
 
 // UpdateMerchantLocation handles updating a merchant location
@@ -243,7 +243,7 @@ func (h *LocationHandler) UpdateMerchantLocation(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusOK, location, "Merchant location updated successfully")
+	return response.Success(c, http.StatusOK, location)
 }
 
 // DeleteMerchantLocation handles deleting a merchant location
@@ -262,5 +262,5 @@ func (h *LocationHandler) DeleteMerchantLocation(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusOK, map[string]string{"message": "Location deleted successfully"}, "Merchant location deleted successfully")
+	return response.Success(c, http.StatusOK, map[string]string{"message": "Location deleted successfully"})
 }
