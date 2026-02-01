@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net"
+	"net/http"
 	"strconv"
 
 	"radar/config"
@@ -76,7 +77,7 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 func (s *workerServer) Serve(ctx context.Context) error {
 	hostPort := net.JoinHostPort("0.0.0.0", strconv.Itoa(s.cfg.HTTP.Port))
 	s.logger.Info("Starting Worker HTTP server", slog.String("hostPort", hostPort))
-	if err := s.server.Start(hostPort); err != nil {
+	if err := s.server.Start(hostPort); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return errors.WithStack(err)
 	}
 
