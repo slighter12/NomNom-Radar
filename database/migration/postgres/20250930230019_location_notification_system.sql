@@ -161,6 +161,10 @@ CREATE INDEX idx_merchant_notifications_merchant_published
 CREATE INDEX idx_merchant_notifications_location
     ON merchant_location_notifications USING GIST(location);
 
+-- FK index for ON DELETE SET NULL performance
+CREATE INDEX idx_merchant_notifications_address_id
+    ON merchant_location_notifications(address_id);
+
 -- Create trigger using shared function
 CREATE TRIGGER trigger_update_notification_location
     BEFORE INSERT OR UPDATE ON merchant_location_notifications
