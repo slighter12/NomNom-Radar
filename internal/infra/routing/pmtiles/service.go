@@ -366,15 +366,27 @@ func getTilesForBounds(minLat, maxLat, minLng, maxLng float64, zoom maptile.Zoom
 	return tiles
 }
 
-// mergeGraphs merges source graph into target graph
+// mergeGraphs merges source graph into target graph by remapping node IDs
+// to avoid collisions between tiles with independent ID spaces
 func mergeGraphs(target, source *RoadGraph) {
-	for id, point := range source.Nodes {
-		if _, exists := target.Nodes[id]; !exists {
-			target.Nodes[id] = point
-		}
+	// Build mapping from source node IDs to target node IDs
+	idMapping := make(map[NodeID]NodeID)
+	for sourceID, point := range source.Nodes {
+		targetID := target.getOrCreateNode(point)
+		idMapping[sourceID] = targetID
 	}
-	for id, edges := range source.Edges {
-		target.Edges[id] = append(target.Edges[id], edges...)
+
+	// Add edges with remapped node IDs
+	for sourceFromID, edges := range source.Edges {
+		targetFromID := idMapping[sourceFromID]
+		for _, edge := range edges {
+			remappedEdge := Edge{
+				To:       idMapping[edge.To],
+				Distance: edge.Distance,
+				Duration: edge.Duration,
+			}
+			target.Edges[targetFromID] = append(target.Edges[targetFromID], remappedEdge)
+		}
 	}
 }
 
