@@ -491,7 +491,7 @@ func TestNotificationService_PublishLocationNotification_MultipleSubscribers(t *
 		Return([]*entity.SubscriberAddress{
 			{Address: entity.Address{OwnerID: user1ID, Latitude: 25.001, Longitude: 121.001}, NotificationRadius: 1000.0}, // reachable
 			{Address: entity.Address{OwnerID: user2ID, Latitude: 25.002, Longitude: 121.002}, NotificationRadius: 1000.0}, // reachable
-			{Address: entity.Address{OwnerID: user3ID, Latitude: 25.5, Longitude: 121.5}, NotificationRadius: 100.0},     // unreachable (too far)
+			{Address: entity.Address{OwnerID: user3ID, Latitude: 25.5, Longitude: 121.5}, NotificationRadius: 100.0},      // unreachable (too far)
 		}, nil)
 
 	// Only 2 users are reachable - use assert.ElementsMatch for unordered slice comparison
