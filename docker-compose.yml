@@ -91,20 +91,6 @@ services:
     networks:
       - radar-network
 
-  # Local PMTiles server for development
-  pmtiles-server:
-    image: python:3.12-slim
-    container_name: radar-pmtiles-server
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./data/pmtiles:/data
-    command: python -m http.server 8080 --directory /data
-    networks:
-      - radar-network
-    profiles:
-      - dev
-
   # Geo Worker for async notification processing
   geoworker:
     build:
@@ -116,15 +102,15 @@ services:
       - "8081:8081"
     environment:
       - PUBSUB_PROVIDER=local
-      - PMTILES_SOURCE=http://pmtiles-server:8080/map.pmtiles
+      - PMTILES_SOURCE=/app/data/map.pmtiles
       - PMTILES_ENABLED=true
       - PMTILES_ROADLAYER=transportation
       - PMTILES_ZOOMLEVEL=14
+    volumes:
+      - ./data/pmtiles:/app/data
     depends_on:
       postgres-master:
         condition: service_healthy
-      pmtiles-server:
-        condition: service_started
     networks:
       - radar-network
     profiles:

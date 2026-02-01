@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -15,17 +16,18 @@ import (
 	"github.com/paulmach/orb"
 	"github.com/paulmach/orb/maptile"
 	"github.com/pkg/errors"
+	"github.com/protomaps/go-pmtiles/pmtiles"
 	"go.uber.org/fx"
 )
 
 // pmtilesRoutingService implements RoutingUsecase using PMTiles for tile data
 type pmtilesRoutingService struct {
-	source     string
-	roadLayer  string
-	zoomLevel  int
-	logger     *slog.Logger
-	httpClient *http.Client
-	parser     *MVTParser
+	source    string
+	roadLayer string
+	zoomLevel int
+	logger    *slog.Logger
+	server    *pmtiles.Server
+	parser    *MVTParser
 
 	// Cache for loaded tiles
 	tileCache   map[string]*RoadGraph
@@ -65,14 +67,25 @@ func NewPMTilesRoutingService(params PMTilesServiceParams) (usecase.RoutingUseca
 		zoomLevel = 14 // Default zoom level for routing
 	}
 
+	// Create a silent logger for pmtiles (it requires *log.Logger)
+	silentLogger := log.New(io.Discard, "", 0)
+
+	// Create PMTiles server - handles local files, HTTP, and cloud storage
+	cacheSize := 64 // Cache up to 64 tiles in memory
+	server, err := pmtiles.NewServer(cfg.Source, "", silentLogger, cacheSize, "")
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create PMTiles server")
+	}
+
+	// Start the server (required for serving tiles)
+	server.Start()
+
 	svc := &pmtilesRoutingService{
 		source:    cfg.Source,
 		roadLayer: roadLayer,
 		zoomLevel: zoomLevel,
 		logger:    logger,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		server:    server,
 		parser:    NewMVTParser(roadLayer),
 		tileCache: make(map[string]*RoadGraph),
 	}
@@ -199,7 +212,7 @@ func (s *pmtilesRoutingService) CalculateDistance(ctx context.Context, source, t
 
 // IsReady returns whether the service is ready
 func (s *pmtilesRoutingService) IsReady() bool {
-	return true
+	return s.server != nil
 }
 
 // buildGraphForArea builds a road graph covering the area between source and targets
@@ -317,41 +330,25 @@ func (s *pmtilesRoutingService) loadTileGraph(ctx context.Context, tile maptile.
 	return graph, nil
 }
 
-// fetchTile fetches tile data from HTTP
+// fetchTile fetches tile data from PMTiles using HTTP Range requests
 func (s *pmtilesRoutingService) fetchTile(ctx context.Context, tile maptile.Tile) ([]byte, error) {
-	url := buildTileURL(s.source, tile)
+	// Build the tile path in the format expected by PMTiles server
+	// Format: /{z}/{x}/{y}.mvt
+	tilePath := fmt.Sprintf("/%d/%d/%d.mvt", tile.Z, tile.X, tile.Y)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
+	// Get tile data using the PMTiles server
+	// The server handles HTTP Range requests internally for remote files
+	statusCode, _, data := s.server.Get(ctx, tilePath)
 
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
+	if statusCode == http.StatusNotFound {
 		return nil, errors.New("tile not found")
 	}
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
-		return nil, errors.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, errors.WithStack(err)
+	if statusCode != http.StatusOK {
+		return nil, errors.Errorf("unexpected status code: %d", statusCode)
 	}
 
 	return data, nil
-}
-
-// buildTileURL builds a tile URL from the source
-func buildTileURL(source string, tile maptile.Tile) string {
-	// Assume XYZ tile server URL pattern: {source}/{z}/{x}/{y}.mvt
-	return fmt.Sprintf("%s/%d/%d/%d.mvt", source, tile.Z, tile.X, tile.Y)
 }
 
 // getTilesForBounds returns all tiles that cover the given bounds

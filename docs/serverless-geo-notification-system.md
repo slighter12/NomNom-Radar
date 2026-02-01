@@ -138,7 +138,7 @@ func (s *pmtilesRoutingService) OneToMany(ctx context.Context, source Coordinate
 ```go
 type PMTilesConfig struct {
     Enabled   bool   `json:"enabled" yaml:"enabled"`
-    Source    string `json:"source" yaml:"source"`       // "http://localhost:8080/map.pmtiles" or tile server URL
+    Source    string `json:"source" yaml:"source"`       // Local: "/path/to/map.pmtiles", GCS: "gs://bucket/map.pmtiles"
     RoadLayer string `json:"roadLayer" yaml:"roadLayer"` // MVT layer name
     ZoomLevel int    `json:"zoomLevel" yaml:"zoomLevel"` // Zoom level for queries
 }
@@ -214,21 +214,7 @@ func (s *notificationService) PublishLocationNotification(...) (*entity.Merchant
 
 ```yaml
 services:
-  # Local PMTiles server
-  pmtiles-server:
-    image: python:3.12-slim
-    container_name: radar-pmtiles-server
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./data/pmtiles:/data
-    command: python -m http.server 8080 --directory /data
-    networks:
-      - radar-network
-    profiles:
-      - dev
-
-  # Geo Worker
+  # Geo Worker - uses PMTiles Bucket API (no separate tile server needed)
   geoworker:
     build:
       context: .
@@ -239,8 +225,12 @@ services:
       - "8081:8081"
     environment:
       - PUBSUB_PROVIDER=local
-      - PMTILES_SOURCE=http://pmtiles-server:8080/map.pmtiles
+      - PMTILES_SOURCE=/app/data/map.pmtiles
       - PMTILES_ENABLED=true
+      - PMTILES_ROADLAYER=transportation
+      - PMTILES_ZOOMLEVEL=14
+    volumes:
+      - ./data/pmtiles:/app/data
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -260,8 +250,8 @@ pubsub:
   localEndpoint: "http://localhost:8081/push"
 
 pmtiles:
-  enabled: false
-  source: "http://localhost:8080/map.pmtiles"
+  enabled: true
+  source: "/path/to/map.pmtiles"  # Local: file path, GCS: gs://bucket/map.pmtiles
   roadLayer: "transportation"
   zoomLevel: 14
 ```
@@ -395,7 +385,7 @@ require (
   ```yaml
    pmtiles:
      enabled: true
-     source: "https://storage.googleapis.com/your-bucket"
+     source: "gs://your-bucket/map.pmtiles"  # Uses gocloud.dev for GCS access
      roadLayer: "transportation"
      zoomLevel: 14
   ```
