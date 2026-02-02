@@ -1,6 +1,8 @@
 package pmtiles
 
 import (
+	"math"
+
 	"github.com/paulmach/orb"
 	"github.com/paulmach/orb/encoding/mvt"
 	"github.com/paulmach/orb/geojson"
@@ -124,11 +126,24 @@ func (p *MVTParser) parseFeatureID(id any) uint64 {
 
 	switch fid := id.(type) {
 	case float64:
+		if fid < 0 || fid > math.MaxUint64 {
+			return 0
+		}
 		return uint64(fid)
 	case int:
+		if fid < 0 {
+			return 0
+		}
 		return uint64(fid)
 	case int64:
+		if fid < 0 {
+			return 0
+		}
 		return uint64(fid)
+	case uint:
+		return uint64(fid)
+	case uint64:
+		return fid
 	default:
 		return 0
 	}
