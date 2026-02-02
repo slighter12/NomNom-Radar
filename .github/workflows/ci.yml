@@ -13,7 +13,7 @@ on:
 
 env:
   GO_VERSION: 1.25
-  GOLANGCI_LINT_VERSION: v2.5.0
+  GOLANGCI_LINT_VERSION: v2.6.0
   REGISTRY: ghcr.io
 
 jobs:
@@ -33,7 +33,7 @@ jobs:
           check-latest: true
 
       - name: Run Linter
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
 
