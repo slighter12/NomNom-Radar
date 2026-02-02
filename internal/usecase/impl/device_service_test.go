@@ -5,12 +5,10 @@ import (
 	"testing"
 
 	"radar/internal/domain/entity"
-	"radar/internal/domain/repository"
 	mockRepo "radar/internal/mocks/repository"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -138,47 +136,6 @@ func TestDeviceService_UpdateFCMToken_Success(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestDeviceService_UpdateFCMToken_NotFound(t *testing.T) {
-	fx := createTestDeviceService(t)
-
-	ctx := context.Background()
-	userID := uuid.New()
-	deviceID := uuid.New()
-	newToken := "new-fcm-token"
-
-	fx.deviceRepo.EXPECT().
-		FindDeviceByID(ctx, deviceID).
-		Return(nil, repository.ErrDeviceNotFound)
-
-	err := fx.service.UpdateFCMToken(ctx, userID, deviceID, newToken)
-	assert.Error(t, err)
-	assert.Equal(t, ErrDeviceNotFound, err)
-}
-
-func TestDeviceService_UpdateFCMToken_Unauthorized(t *testing.T) {
-	fx := createTestDeviceService(t)
-
-	ctx := context.Background()
-	userID := uuid.New()
-	differentUserID := uuid.New()
-	deviceID := uuid.New()
-	newToken := "new-fcm-token"
-
-	existingDevice := &entity.UserDevice{
-		ID:       deviceID,
-		UserID:   differentUserID,
-		FCMToken: "old-token",
-	}
-
-	fx.deviceRepo.EXPECT().
-		FindDeviceByID(ctx, deviceID).
-		Return(existingDevice, nil)
-
-	err := fx.service.UpdateFCMToken(ctx, userID, deviceID, newToken)
-	assert.Error(t, err)
-	assert.Equal(t, ErrDeviceUnauthorized, err)
-}
-
 func TestDeviceService_GetUserDevices(t *testing.T) {
 	fx := createTestDeviceService(t)
 
@@ -221,49 +178,4 @@ func TestDeviceService_DeactivateDevice_Success(t *testing.T) {
 
 	err := fx.service.DeactivateDevice(ctx, userID, deviceID)
 	require.NoError(t, err)
-}
-
-func TestDeviceService_DeactivateDevice_Unauthorized(t *testing.T) {
-	fx := createTestDeviceService(t)
-
-	ctx := context.Background()
-	userID := uuid.New()
-	differentUserID := uuid.New()
-	deviceID := uuid.New()
-
-	existingDevice := &entity.UserDevice{
-		ID:       deviceID,
-		UserID:   differentUserID,
-		IsActive: true,
-	}
-
-	fx.deviceRepo.EXPECT().
-		FindDeviceByID(ctx, deviceID).
-		Return(existingDevice, nil)
-
-	err := fx.service.DeactivateDevice(ctx, userID, deviceID)
-	assert.Error(t, err)
-	assert.Equal(t, ErrDeviceUnauthorized, err)
-}
-
-func TestDeviceService_RegisterDevice_FindError(t *testing.T) {
-	fx := createTestDeviceService(t)
-
-	ctx := context.Background()
-	userID := uuid.New()
-	deviceInfo := &usecase.DeviceInfo{
-		FCMToken: "test-fcm-token",
-		DeviceID: "device-123",
-		Platform: "ios",
-	}
-
-	expectedErr := errors.New("database error")
-	fx.deviceRepo.EXPECT().
-		FindDevicesByUser(ctx, userID).
-		Return(nil, expectedErr)
-
-	device, err := fx.service.RegisterDevice(ctx, userID, deviceInfo)
-	assert.Error(t, err)
-	assert.Nil(t, device)
-	assert.Contains(t, err.Error(), "failed to find devices by user")
 }

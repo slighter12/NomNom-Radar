@@ -7,6 +7,8 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,12 +24,13 @@ import (
 
 // pmtilesRoutingService implements RoutingUsecase using PMTiles for tile data
 type pmtilesRoutingService struct {
-	source    string
-	roadLayer string
-	zoomLevel int
-	logger    *slog.Logger
-	server    *pmtiles.Server
-	parser    *MVTParser
+	source      string
+	tilesetName string // Name of the tileset (extracted from filename, e.g., "walking" from "walking.pmtiles")
+	roadLayer   string
+	zoomLevel   int
+	logger      *slog.Logger
+	server      *pmtiles.Server
+	parser      *MVTParser
 
 	// Cache for loaded tiles
 	tileCache   map[string]*RoadGraph
@@ -67,12 +70,17 @@ func NewPMTilesRoutingService(params PMTilesServiceParams) (usecase.RoutingUseca
 		zoomLevel = 14 // Default zoom level for routing
 	}
 
+	// Parse source to extract bucket directory and tileset name
+	// The PMTiles server expects a bucket (directory) and looks for {name}.pmtiles files
+	bucketPath, tilesetName := parseSourcePath(cfg.Source)
+
 	// Create a silent logger for pmtiles (it requires *log.Logger)
 	silentLogger := log.New(io.Discard, "", 0)
 
 	// Create PMTiles server - handles local files, HTTP, and cloud storage
+	// bucketPath is the directory, tilesetName is derived from filename
 	cacheSize := 64 // Cache up to 64 tiles in memory
-	server, err := pmtiles.NewServer(cfg.Source, "", silentLogger, cacheSize, "")
+	server, err := pmtiles.NewServer(bucketPath, "", silentLogger, cacheSize, "")
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create PMTiles server")
 	}
@@ -81,17 +89,19 @@ func NewPMTilesRoutingService(params PMTilesServiceParams) (usecase.RoutingUseca
 	server.Start()
 
 	svc := &pmtilesRoutingService{
-		source:    cfg.Source,
-		roadLayer: roadLayer,
-		zoomLevel: zoomLevel,
-		logger:    logger,
-		server:    server,
-		parser:    NewMVTParser(roadLayer),
-		tileCache: make(map[string]*RoadGraph),
+		source:      cfg.Source,
+		tilesetName: tilesetName,
+		roadLayer:   roadLayer,
+		zoomLevel:   zoomLevel,
+		logger:      logger,
+		server:      server,
+		parser:      NewMVTParser(roadLayer),
+		tileCache:   make(map[string]*RoadGraph),
 	}
 
 	logger.Info("PMTiles routing service initialized",
 		slog.String("source", cfg.Source),
+		slog.String("tileset", tilesetName),
 		slog.String("road_layer", roadLayer),
 		slog.Int("zoom_level", zoomLevel),
 	)
@@ -102,6 +112,42 @@ func NewPMTilesRoutingService(params PMTilesServiceParams) (usecase.RoutingUseca
 // tileKey creates a string key for a tile
 func tileKey(tile maptile.Tile) string {
 	return fmt.Sprintf("%d/%d/%d", tile.Z, tile.X, tile.Y)
+}
+
+// parseSourcePath extracts the bucket directory and tileset name from a source path.
+// Examples:
+//   - "file:///path/to/walking.pmtiles" -> ("file:///path/to", "walking")
+//   - "/path/to/walking.pmtiles" -> ("file:///path/to", "walking")
+//   - "https://example.com/tiles/walking.pmtiles" -> ("https://example.com/tiles", "walking")
+func parseSourcePath(source string) (bucketPath, tilesetName string) {
+	// Handle file:// prefix
+	if after, ok := strings.CutPrefix(source, "file://"); ok {
+		path := after
+		dir := filepath.Dir(path)
+		filename := filepath.Base(path)
+		tilesetName = strings.TrimSuffix(filename, ".pmtiles")
+
+		return "file://" + dir, tilesetName
+	}
+
+	// Handle HTTP/HTTPS URLs
+	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
+		lastSlash := strings.LastIndex(source, "/")
+		if lastSlash > 0 {
+			bucketPath = source[:lastSlash]
+			filename := source[lastSlash+1:]
+			tilesetName = strings.TrimSuffix(filename, ".pmtiles")
+
+			return bucketPath, tilesetName
+		}
+	}
+
+	// Handle local file path without prefix
+	dir := filepath.Dir(source)
+	filename := filepath.Base(source)
+	tilesetName = strings.TrimSuffix(filename, ".pmtiles")
+
+	return "file://" + dir, tilesetName
 }
 
 // OneToMany calculates routes from one source to multiple targets
@@ -269,13 +315,21 @@ func (s *pmtilesRoutingService) buildGraphForArea(ctx context.Context, source us
 func (s *pmtilesRoutingService) buildGraphForPoint(ctx context.Context, coord usecase.Coordinate) *RoadGraph {
 	tile := maptile.At(orb.Point{coord.Lng, coord.Lat}, maptile.Zoom(s.zoomLevel))
 
-	// Load the center tile and surrounding tiles for better coverage
+	// Load the center tile and all 8 surrounding tiles (3x3 grid)
+	// This ensures coverage when the point is near a tile corner
 	tiles := []maptile.Tile{
+		// Center
 		tile,
+		// Cardinal directions (up, down, left, right)
 		{X: tile.X - 1, Y: tile.Y, Z: tile.Z},
 		{X: tile.X + 1, Y: tile.Y, Z: tile.Z},
 		{X: tile.X, Y: tile.Y - 1, Z: tile.Z},
 		{X: tile.X, Y: tile.Y + 1, Z: tile.Z},
+		// Diagonal directions (corners)
+		{X: tile.X - 1, Y: tile.Y - 1, Z: tile.Z},
+		{X: tile.X + 1, Y: tile.Y - 1, Z: tile.Z},
+		{X: tile.X - 1, Y: tile.Y + 1, Z: tile.Z},
+		{X: tile.X + 1, Y: tile.Y + 1, Z: tile.Z},
 	}
 
 	graph := NewRoadGraph()
@@ -333,8 +387,8 @@ func (s *pmtilesRoutingService) loadTileGraph(ctx context.Context, tile maptile.
 // fetchTile fetches tile data from PMTiles using HTTP Range requests
 func (s *pmtilesRoutingService) fetchTile(ctx context.Context, tile maptile.Tile) ([]byte, error) {
 	// Build the tile path in the format expected by PMTiles server
-	// Format: /{z}/{x}/{y}.mvt
-	tilePath := fmt.Sprintf("/%d/%d/%d.mvt", tile.Z, tile.X, tile.Y)
+	// Format: /{tileset}/{z}/{x}/{y}.mvt
+	tilePath := fmt.Sprintf("/%s/%d/%d/%d.mvt", s.tilesetName, tile.Z, tile.X, tile.Y)
 
 	// Get tile data using the PMTiles server
 	// The server handles HTTP Range requests internally for remote files
