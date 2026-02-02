@@ -57,7 +57,7 @@ func BenchmarkPathfinder_ShortestPath(b *testing.B) {
 
 	// Create a chain of nodes
 	var prevPoint orb.Point
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		point := orb.Point{121.5 + float64(i)*0.001, 25.0}
 		if i > 0 {
 			segment := &RoadSegment{
@@ -87,8 +87,8 @@ func BenchmarkPathfinder_ShortestPathToMany(b *testing.B) {
 	graph := NewRoadGraph()
 
 	// Create a grid network
-	for row := 0; row < 10; row++ {
-		for col := 0; col < 10; col++ {
+	for row := range 10 {
+		for col := range 10 {
 			baseLng := 121.5 + float64(col)*0.01
 			baseLat := 25.0 + float64(row)*0.01
 

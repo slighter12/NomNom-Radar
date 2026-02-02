@@ -855,8 +855,8 @@ func TestLargeGraph(t *testing.T) {
 
 	// Create a 10x10 grid of connected nodes
 	gridSize := 10
-	for row := 0; row < gridSize; row++ {
-		for col := 0; col < gridSize; col++ {
+	for row := range gridSize {
+		for col := range gridSize {
 			baseLng := 121.5 + float64(col)*0.01
 			baseLat := 25.0 + float64(row)*0.01
 

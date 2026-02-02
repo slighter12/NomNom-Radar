@@ -39,7 +39,7 @@ jobs:
           args: --config=./.golangci.yaml
 
       - name: Run Tests
-        run: go test ./...
+        run: go test -race ./...
 
   build-and-push:
     name: Build and Push Docker Image

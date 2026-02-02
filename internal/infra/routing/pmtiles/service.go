@@ -121,8 +121,8 @@ func tileKey(tile maptile.Tile) string {
 //   - "https://example.com/tiles/walking.pmtiles" -> ("https://example.com/tiles", "walking")
 func parseSourcePath(source string) (bucketPath, tilesetName string) {
 	// Handle file:// prefix
-	if strings.HasPrefix(source, "file://") {
-		path := strings.TrimPrefix(source, "file://")
+	if after, ok := strings.CutPrefix(source, "file://"); ok {
+		path := after
 		dir := filepath.Dir(path)
 		filename := filepath.Base(path)
 		tilesetName = strings.TrimSuffix(filename, ".pmtiles")

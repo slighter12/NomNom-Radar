@@ -508,14 +508,12 @@ func TestTileCache_ConcurrentSameTile(t *testing.T) {
 	errChan := make(chan error, numGoroutines)
 
 	for range numGoroutines {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			_, _, err := svc.FindNearestNode(ctx, coord)
 			if err != nil {
 				errChan <- err
 			}
-		}()
+		})
 	}
 
 	wg.Wait()

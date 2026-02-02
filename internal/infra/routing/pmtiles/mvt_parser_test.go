@@ -29,13 +29,13 @@ func TestMVTParser_getStringProperty(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		properties map[string]interface{}
+		properties map[string]any
 		keys       []string
 		expected   string
 	}{
 		{
 			name: "first key exists",
-			properties: map[string]interface{}{
+			properties: map[string]any{
 				"class": "primary",
 				"type":  "road",
 			},
@@ -44,7 +44,7 @@ func TestMVTParser_getStringProperty(t *testing.T) {
 		},
 		{
 			name: "second key exists",
-			properties: map[string]interface{}{
+			properties: map[string]any{
 				"type": "secondary",
 			},
 			keys:     []string{"class", "type"},
@@ -52,7 +52,7 @@ func TestMVTParser_getStringProperty(t *testing.T) {
 		},
 		{
 			name: "no key exists",
-			properties: map[string]interface{}{
+			properties: map[string]any{
 				"other": "value",
 			},
 			keys:     []string{"class", "type"},
@@ -60,13 +60,13 @@ func TestMVTParser_getStringProperty(t *testing.T) {
 		},
 		{
 			name:       "empty properties",
-			properties: map[string]interface{}{},
+			properties: map[string]any{},
 			keys:       []string{"class"},
 			expected:   "",
 		},
 		{
 			name: "non-string value",
-			properties: map[string]interface{}{
+			properties: map[string]any{
 				"class": 123, // int, not string
 			},
 			keys:     []string{"class"},
@@ -74,7 +74,7 @@ func TestMVTParser_getStringProperty(t *testing.T) {
 		},
 		{
 			name: "nil value",
-			properties: map[string]interface{}{
+			properties: map[string]any{
 				"class": nil,
 			},
 			keys:     []string{"class"},
@@ -98,91 +98,91 @@ func TestMVTParser_getBoolProperty(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		properties map[string]interface{}
+		properties map[string]any
 		key        string
 		expected   bool
 	}{
 		{
 			name:       "bool true",
-			properties: map[string]interface{}{"oneway": true},
+			properties: map[string]any{"oneway": true},
 			key:        "oneway",
 			expected:   true,
 		},
 		{
 			name:       "bool false",
-			properties: map[string]interface{}{"oneway": false},
+			properties: map[string]any{"oneway": false},
 			key:        "oneway",
 			expected:   false,
 		},
 		{
 			name:       "int 1",
-			properties: map[string]interface{}{"oneway": 1},
+			properties: map[string]any{"oneway": 1},
 			key:        "oneway",
 			expected:   true,
 		},
 		{
 			name:       "int 0",
-			properties: map[string]interface{}{"oneway": 0},
+			properties: map[string]any{"oneway": 0},
 			key:        "oneway",
 			expected:   false,
 		},
 		{
 			name:       "int64 1",
-			properties: map[string]interface{}{"oneway": int64(1)},
+			properties: map[string]any{"oneway": int64(1)},
 			key:        "oneway",
 			expected:   true,
 		},
 		{
 			name:       "float64 1",
-			properties: map[string]interface{}{"oneway": float64(1.0)},
+			properties: map[string]any{"oneway": float64(1.0)},
 			key:        "oneway",
 			expected:   true,
 		},
 		{
 			name:       "float64 0",
-			properties: map[string]interface{}{"oneway": float64(0.0)},
+			properties: map[string]any{"oneway": float64(0.0)},
 			key:        "oneway",
 			expected:   false,
 		},
 		{
 			name:       "string yes",
-			properties: map[string]interface{}{"oneway": "yes"},
+			properties: map[string]any{"oneway": "yes"},
 			key:        "oneway",
 			expected:   true,
 		},
 		{
 			name:       "string true",
-			properties: map[string]interface{}{"oneway": "true"},
+			properties: map[string]any{"oneway": "true"},
 			key:        "oneway",
 			expected:   true,
 		},
 		{
 			name:       "string 1",
-			properties: map[string]interface{}{"oneway": "1"},
+			properties: map[string]any{"oneway": "1"},
 			key:        "oneway",
 			expected:   true,
 		},
 		{
 			name:       "string no",
-			properties: map[string]interface{}{"oneway": "no"},
+			properties: map[string]any{"oneway": "no"},
 			key:        "oneway",
 			expected:   false,
 		},
 		{
 			name:       "string false",
-			properties: map[string]interface{}{"oneway": "false"},
+			properties: map[string]any{"oneway": "false"},
 			key:        "oneway",
 			expected:   false,
 		},
 		{
 			name:       "key not exists",
-			properties: map[string]interface{}{},
+			properties: map[string]any{},
 			key:        "oneway",
 			expected:   false,
 		},
 		{
 			name:       "unsupported type",
-			properties: map[string]interface{}{"oneway": []string{"yes"}},
+			properties: map[string]any{"oneway": []string{"yes"}},
 			key:        "oneway",
 			expected:   false,
 		},
@@ -241,7 +241,7 @@ func TestMVTParser_parseFeatureID(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		id       interface{}
+		id       any
 		expected uint64
 	}{
 		{
@@ -386,7 +386,7 @@ func TestMVTParser_extractRoadSegment(t *testing.T) {
 			{121.50, 25.00},
 			{121.51, 25.01},
 		},
-		Properties: map[string]interface{}{
+		Properties: map[string]any{
 			"class":  "primary",
 			"name":   "Main Street",
 			"oneway": true,
@@ -452,7 +452,7 @@ func TestMVTParser_ParseTile_LayerNotFound(t *testing.T) {
 						{121.50, 25.00},
 						{121.51, 25.01},
 					},
-					Properties: map[string]interface{}{
+					Properties: map[string]any{
 						"class": "primary",
 					},
 				},
@@ -485,7 +485,7 @@ func TestMVTParser_ParseTile_ValidData(t *testing.T) {
 						{121.50, 25.00},
 						{121.51, 25.01},
 					},
-					Properties: map[string]interface{}{
+					Properties: map[string]any{
 						"class":  "primary",
 						"name":   "Test Road",
 						"oneway": true,
@@ -498,7 +498,7 @@ func TestMVTParser_ParseTile_ValidData(t *testing.T) {
 						{121.53, 25.03},
 						{121.54, 25.04},
 					},
-					Properties: map[string]interface{}{
+					Properties: map[string]any{
 						"class": "secondary",
 					},
 				},
@@ -541,12 +541,12 @@ func TestMVTParser_ParseTile_MultipleGeometryTypes(t *testing.T) {
 						{121.50, 25.00},
 						{121.51, 25.01},
 					},
-					Properties: map[string]interface{}{"class": "primary"},
+					Properties: map[string]any{"class": "primary"},
 				},
 				{
 					// Point - should be skipped
 					Geometry:   orb.Point{121.52, 25.02},
-					Properties: map[string]interface{}{"class": "bus_stop"},
+					Properties: map[string]any{"class": "bus_stop"},
 				},
 				{
 					// MultiLineString - should be included
@@ -554,14 +554,14 @@ func TestMVTParser_ParseTile_MultipleGeometryTypes(t *testing.T) {
 						{{121.53, 25.03}, {121.54, 25.04}},
 						{{121.55, 25.05}, {121.56, 25.06}},
 					},
-					Properties: map[string]interface{}{"class": "secondary"},
+					Properties: map[string]any{"class": "secondary"},
 				},
 				{
 					// Polygon - should be skipped
 					Geometry: orb.Polygon{
 						{{121.57, 25.07}, {121.58, 25.07}, {121.58, 25.08}, {121.57, 25.07}},
 					},
-					Properties: map[string]interface{}{"class": "parking"},
+					Properties: map[string]any{"class": "parking"},
 				},
 			},
 		},
