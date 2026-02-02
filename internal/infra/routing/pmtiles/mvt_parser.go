@@ -126,20 +126,11 @@ func (p *MVTParser) parseFeatureID(id any) uint64 {
 
 	switch fid := id.(type) {
 	case float64:
-		if fid < 0 || fid > math.MaxUint64 {
-			return 0
-		}
-		return uint64(fid)
+		return normalizeFloatID(fid)
 	case int:
-		if fid < 0 {
-			return 0
-		}
-		return uint64(fid)
+		return normalizeIntID(fid)
 	case int64:
-		if fid < 0 {
-			return 0
-		}
-		return uint64(fid)
+		return normalizeSignedID(fid)
 	case uint:
 		return uint64(fid)
 	case uint64:
@@ -147,6 +138,30 @@ func (p *MVTParser) parseFeatureID(id any) uint64 {
 	default:
 		return 0
 	}
+}
+
+func normalizeSignedID(fid int64) uint64 {
+	if fid < 0 {
+		return 0
+	}
+
+	return uint64(fid)
+}
+
+func normalizeIntID(fid int) uint64 {
+	if fid < 0 {
+		return 0
+	}
+
+	return uint64(fid)
+}
+
+func normalizeFloatID(fid float64) uint64 {
+	if fid < 0 || fid > math.MaxUint64 {
+		return 0
+	}
+
+	return uint64(fid)
 }
 
 // getStringProperty gets a string property from feature properties
