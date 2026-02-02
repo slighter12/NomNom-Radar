@@ -456,7 +456,7 @@ func TestTileCache_Concurrent(t *testing.T) {
 	close(errChan)
 
 	// Check for errors
-	var errors []error
+	errors := make([]error, 0, cap(errChan))
 	for err := range errChan {
 		errors = append(errors, err)
 	}
@@ -522,7 +522,7 @@ func TestTileCache_ConcurrentSameTile(t *testing.T) {
 	close(errChan)
 
 	// Check for errors
-	var errors []error
+	errors := make([]error, 0, cap(errChan))
 	for err := range errChan {
 		errors = append(errors, err)
 	}
