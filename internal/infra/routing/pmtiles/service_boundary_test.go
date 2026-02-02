@@ -163,10 +163,12 @@ func TestPMTilesService_TileBoundary_GraphMerge(t *testing.T) {
 	var node1ID, node2ID NodeID
 	for id := range graph1.Nodes {
 		node1ID = id
+
 		break
 	}
 	for id := range graph2.Nodes {
 		node2ID = id
+
 		break
 	}
 

@@ -126,6 +126,7 @@ func parseSourcePath(source string) (bucketPath, tilesetName string) {
 		dir := filepath.Dir(path)
 		filename := filepath.Base(path)
 		tilesetName = strings.TrimSuffix(filename, ".pmtiles")
+
 		return "file://" + dir, tilesetName
 	}
 
@@ -136,6 +137,7 @@ func parseSourcePath(source string) (bucketPath, tilesetName string) {
 			bucketPath = source[:lastSlash]
 			filename := source[lastSlash+1:]
 			tilesetName = strings.TrimSuffix(filename, ".pmtiles")
+
 			return bucketPath, tilesetName
 		}
 	}
@@ -144,6 +146,7 @@ func parseSourcePath(source string) (bucketPath, tilesetName string) {
 	dir := filepath.Dir(source)
 	filename := filepath.Base(source)
 	tilesetName = strings.TrimSuffix(filename, ".pmtiles")
+
 	return "file://" + dir, tilesetName
 }
 

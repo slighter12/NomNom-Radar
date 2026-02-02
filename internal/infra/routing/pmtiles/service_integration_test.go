@@ -29,6 +29,7 @@ func testPMTilesPath() string {
 		}
 		wd = filepath.Dir(wd)
 	}
+
 	return ""
 }
 
@@ -37,6 +38,7 @@ func skipIfNoTestFile(t *testing.T) string {
 	if path == "" {
 		t.Skip("walking.pmtiles not found, skipping integration test")
 	}
+
 	return path
 }
 
@@ -57,6 +59,7 @@ func createTestService(t *testing.T) usecase.RoutingUsecase {
 
 	svc, err := NewPMTilesRoutingService(params)
 	require.NoError(t, err)
+
 	return svc
 }
 
@@ -258,6 +261,7 @@ func TestPMTilesService_InspectFile(t *testing.T) {
 		data, err := pmSvc.fetchTile(ctx, tile)
 		if err != nil {
 			t.Logf("Zoom %d: tile %s - not found", z, tileKey(tile))
+
 			continue
 		}
 
@@ -327,6 +331,7 @@ func TestPMTilesService_TileDataSize(t *testing.T) {
 
 		if err != nil {
 			t.Logf("Tile %s (%s): fetch error - %v", tp.name, tileKey(tile), err)
+
 			continue
 		}
 

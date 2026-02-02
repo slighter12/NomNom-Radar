@@ -545,7 +545,7 @@ func TestMVTParser_ParseTile_MultipleGeometryTypes(t *testing.T) {
 				},
 				{
 					// Point - should be skipped
-					Geometry: orb.Point{121.52, 25.02},
+					Geometry:   orb.Point{121.52, 25.02},
 					Properties: map[string]interface{}{"class": "bus_stop"},
 				},
 				{

@@ -487,6 +487,7 @@ func TestSessionService_DetectAnomalousActivity_ExcessiveSessions(t *testing.T) 
 	for _, a := range anomalies {
 		if a.Type == "excessive_sessions" {
 			hasExcessiveAnomaly = true
+
 			break
 		}
 	}
@@ -531,6 +532,7 @@ func TestSessionService_DetectAnomalousActivity_LongLivedSession(t *testing.T) {
 	for _, a := range anomalies {
 		if a.Type == "long_lived_session" {
 			hasLongLivedAnomaly = true
+
 			break
 		}
 	}

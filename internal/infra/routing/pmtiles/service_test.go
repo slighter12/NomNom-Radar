@@ -249,6 +249,7 @@ func countEdges(g *RoadGraph) int {
 	for _, edges := range g.Edges {
 		count += len(edges)
 	}
+
 	return count
 }
 
@@ -275,6 +276,7 @@ func listMVTLayers(data []byte) ([]layerInfo, error) {
 			featureCount: len(layer.Features),
 		})
 	}
+
 	return result, nil
 }
 
