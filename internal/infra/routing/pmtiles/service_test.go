@@ -48,68 +48,107 @@ func TestParseSourcePath(t *testing.T) {
 		name            string
 		source          string
 		expectedBucket  string
+		expectedPrefix  string
 		expectedTileset string
 	}{
 		{
 			name:            "file:// prefix with absolute path",
 			source:          "file:///path/to/walking.pmtiles",
 			expectedBucket:  "file:///path/to",
+			expectedPrefix:  "",
 			expectedTileset: "walking",
 		},
 		{
 			name:            "file:// prefix with nested path",
 			source:          "file:///home/user/data/tiles/roads.pmtiles",
 			expectedBucket:  "file:///home/user/data/tiles",
+			expectedPrefix:  "",
 			expectedTileset: "roads",
 		},
 		{
 			name:            "local path without prefix",
 			source:          "/path/to/walking.pmtiles",
 			expectedBucket:  "file:///path/to",
+			expectedPrefix:  "",
 			expectedTileset: "walking",
 		},
 		{
-			name:            "relative path without prefix",
-			source:          "data/walking.pmtiles",
-			expectedBucket:  "file://data",
+			name:            "root path file",
+			source:          "/walking.pmtiles",
+			expectedBucket:  "file:///",
+			expectedPrefix:  "",
+			expectedTileset: "walking",
+		},
+		{
+			name:            "file:// root path",
+			source:          "file:///walking.pmtiles",
+			expectedBucket:  "file:///",
+			expectedPrefix:  "",
 			expectedTileset: "walking",
 		},
 		{
 			name:            "https URL",
 			source:          "https://example.com/tiles/walking.pmtiles",
 			expectedBucket:  "https://example.com/tiles",
+			expectedPrefix:  "",
 			expectedTileset: "walking",
 		},
 		{
 			name:            "http URL",
 			source:          "http://localhost:8080/data/roads.pmtiles",
 			expectedBucket:  "http://localhost:8080/data",
+			expectedPrefix:  "",
 			expectedTileset: "roads",
 		},
 		{
 			name:            "https URL with port",
 			source:          "https://tiles.example.com:8443/v1/walking.pmtiles",
 			expectedBucket:  "https://tiles.example.com:8443/v1",
+			expectedPrefix:  "",
 			expectedTileset: "walking",
 		},
 		{
 			name:            "filename without .pmtiles extension",
 			source:          "/path/to/tileset",
 			expectedBucket:  "file:///path/to",
+			expectedPrefix:  "",
 			expectedTileset: "tileset",
 		},
 		{
-			name:            "current directory file",
-			source:          "walking.pmtiles",
-			expectedBucket:  "file://.",
+			name:            "gs:// GCS bucket root",
+			source:          "gs://my-bucket/walking.pmtiles",
+			expectedBucket:  "gs://my-bucket",
+			expectedPrefix:  "",
+			expectedTileset: "walking",
+		},
+		{
+			name:            "gs:// GCS bucket with subdirectory",
+			source:          "gs://my-bucket/subdir/walking.pmtiles",
+			expectedBucket:  "gs://my-bucket",
+			expectedPrefix:  "subdir",
+			expectedTileset: "walking",
+		},
+		{
+			name:            "gs:// GCS bucket with nested subdirectories",
+			source:          "gs://my-bucket/path/to/tiles/walking.pmtiles",
+			expectedBucket:  "gs://my-bucket",
+			expectedPrefix:  "path/to/tiles",
+			expectedTileset: "walking",
+		},
+		{
+			name:            "s3:// AWS bucket with subdirectory",
+			source:          "s3://my-bucket/folder/walking.pmtiles",
+			expectedBucket:  "s3://my-bucket",
+			expectedPrefix:  "folder",
 			expectedTileset: "walking",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			bucket, tileset := parseSourcePath(tt.source)
+			bucket, prefix, tileset := parseSourcePath(tt.source)
 			assert.Equal(t, tt.expectedBucket, bucket, "bucket mismatch")
+			assert.Equal(t, tt.expectedPrefix, prefix, "prefix mismatch")
 			assert.Equal(t, tt.expectedTileset, tileset, "tileset mismatch")
 		})
 	}
@@ -411,4 +450,98 @@ func TestHaversineFallbackService_IsReady(t *testing.T) {
 	svc := newHaversineFallbackService(logger)
 
 	assert.True(t, svc.IsReady())
+}
+
+// TestGCSBlobRead tests that GCS URLs can be parsed and read correctly.
+// This test requires:
+//   - PMTILES_GCS_SOURCE env var set to a valid gs:// PMTiles URL
+//   - Valid GCP credentials (ADC, service account, etc.)
+//
+// Example:
+//
+//	PMTILES_GCS_SOURCE=gs://my-bucket/walking.pmtiles go test -run TestGCSBlobRead -v
+func TestGCSBlobRead(t *testing.T) {
+	gcsSource := os.Getenv("PMTILES_GCS_SOURCE")
+	if gcsSource == "" {
+		t.Skip("Skipping GCS test: PMTILES_GCS_SOURCE env var not set")
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	// Test parseSourcePath with actual GCS URL
+	bucketPath, prefix, tilesetName := parseSourcePath(gcsSource)
+	t.Logf("Parsed GCS source: bucket=%s, prefix=%s, tileset=%s", bucketPath, prefix, tilesetName)
+
+	assert.True(t, len(bucketPath) > 0, "bucket path should not be empty")
+	assert.True(t, len(tilesetName) > 0, "tileset name should not be empty")
+	assert.Contains(t, bucketPath, "gs://", "bucket path should contain gs://")
+
+	// Test creating PMTiles service with GCS source
+	params := PMTilesServiceParams{
+		Config: &config.PMTilesConfig{
+			Enabled:   true,
+			Source:    gcsSource,
+			RoadLayer: "transportation",
+			ZoomLevel: 14,
+		},
+		Logger: logger,
+	}
+
+	svc, err := NewPMTilesRoutingService(params)
+	require.NoError(t, err, "Failed to create PMTiles service with GCS source")
+	require.NotNil(t, svc)
+
+	assert.True(t, svc.IsReady(), "PMTiles service should be ready")
+
+	t.Log("GCS PMTiles service initialized successfully")
+}
+
+// TestGCSBlobRead_Routing tests actual routing with a GCS-hosted PMTiles file.
+// This test requires:
+//   - PMTILES_GCS_SOURCE env var set to a valid gs:// PMTiles URL
+//   - Valid GCP credentials (ADC, service account, etc.)
+//   - The PMTiles file should cover the test coordinates (Taipei area by default)
+func TestGCSBlobRead_Routing(t *testing.T) {
+	gcsSource := os.Getenv("PMTILES_GCS_SOURCE")
+	if gcsSource == "" {
+		t.Skip("Skipping GCS routing test: PMTILES_GCS_SOURCE env var not set")
+	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	params := PMTilesServiceParams{
+		Config: &config.PMTilesConfig{
+			Enabled:   true,
+			Source:    gcsSource,
+			RoadLayer: "transportation",
+			ZoomLevel: 14,
+		},
+		Logger: logger,
+	}
+
+	svc, err := NewPMTilesRoutingService(params)
+	require.NoError(t, err)
+	require.NotNil(t, svc)
+
+	ctx := context.Background()
+
+	// Test coordinates in Taipei area
+	source := usecase.Coordinate{Lat: 25.0330, Lng: 121.5654}
+	targets := []usecase.Coordinate{
+		{Lat: 25.0478, Lng: 121.5170}, // ~5.5km away
+	}
+
+	result, err := svc.OneToMany(ctx, source, targets)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result.Results, 1)
+
+	t.Logf("Route result: distance=%.2f km, duration=%.2f min, reachable=%v",
+		result.Results[0].DistanceKm,
+		result.Results[0].DurationMin,
+		result.Results[0].IsReachable)
+
+	// The result should have valid distance (either from road network or Haversine fallback)
+	assert.Greater(t, result.Results[0].DistanceKm, 0.0, "distance should be positive")
+	assert.Greater(t, result.Results[0].DurationMin, 0.0, "duration should be positive")
 }

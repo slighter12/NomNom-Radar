@@ -7,6 +7,8 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -20,6 +22,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/protomaps/go-pmtiles/pmtiles"
 	"go.uber.org/fx"
+
+	// Register GCS blob driver for gs:// URLs
+	_ "gocloud.dev/blob/gcsblob"
 )
 
 // pmtilesRoutingService implements RoutingUsecase using PMTiles for tile data
@@ -70,17 +75,17 @@ func NewPMTilesRoutingService(params PMTilesServiceParams) (usecase.RoutingUseca
 		zoomLevel = 14 // Default zoom level for routing
 	}
 
-	// Parse source to extract bucket directory and tileset name
-	// The PMTiles server expects a bucket (directory) and looks for {name}.pmtiles files
-	bucketPath, tilesetName := parseSourcePath(cfg.Source)
+	// Parse source to extract bucket URL, prefix (subdirectory), and tileset name
+	// The PMTiles server expects a bucket URL and optional prefix for subdirectories
+	bucketURL, prefix, tilesetName := parseSourcePath(cfg.Source)
 
 	// Create a silent logger for pmtiles (it requires *log.Logger)
 	silentLogger := log.New(io.Discard, "", 0)
 
 	// Create PMTiles server - handles local files, HTTP, and cloud storage
-	// bucketPath is the directory, tilesetName is derived from filename
+	// bucketURL is the bucket/directory, prefix is the subdirectory path
 	cacheSize := 64 // Cache up to 64 tiles in memory
-	server, err := pmtiles.NewServer(bucketPath, "", silentLogger, cacheSize, "")
+	server, err := pmtiles.NewServer(bucketURL, prefix, silentLogger, cacheSize, "")
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create PMTiles server")
 	}
@@ -114,40 +119,91 @@ func tileKey(tile maptile.Tile) string {
 	return fmt.Sprintf("%d/%d/%d", tile.Z, tile.X, tile.Y)
 }
 
-// parseSourcePath extracts the bucket directory and tileset name from a source path.
+// parseSourcePath extracts the bucket URL, prefix (subdirectory), and tileset name from a source path.
+// Supports: file://, gs://, http://, https://, and local file paths.
+//
+// For cloud storage (gs://), the prefix is used to support subdirectories since
+// gocloud.dev only uses the Host as bucket name and ignores the Path.
+//
+// Returns:
+//   - bucketURL: The base bucket URL (e.g., "gs://my-bucket", "file:///path/to")
+//   - prefix: Subdirectory path for cloud storage (empty for file:// and http://)
+//   - tilesetName: The tileset name without .pmtiles extension
+//
 // Examples:
-//   - "file:///path/to/walking.pmtiles" -> ("file:///path/to", "walking")
-//   - "/path/to/walking.pmtiles" -> ("file:///path/to", "walking")
-//   - "https://example.com/tiles/walking.pmtiles" -> ("https://example.com/tiles", "walking")
-func parseSourcePath(source string) (bucketPath, tilesetName string) {
-	// Handle file:// prefix
-	if after, ok := strings.CutPrefix(source, "file://"); ok {
-		path := after
-		dir := filepath.Dir(path)
-		filename := filepath.Base(path)
+//   - "file:///path/to/walking.pmtiles" -> ("file:///path/to", "", "walking")
+//   - "/path/to/walking.pmtiles" -> ("file:///path/to", "", "walking")
+//   - "/walking.pmtiles" -> ("file:///", "", "walking")
+//   - "https://example.com/tiles/walking.pmtiles" -> ("https://example.com/tiles", "", "walking")
+//   - "gs://my-bucket/walking.pmtiles" -> ("gs://my-bucket", "", "walking")
+//   - "gs://my-bucket/subdir/walking.pmtiles" -> ("gs://my-bucket", "subdir", "walking")
+//   - "gs://my-bucket/path/to/tiles/walking.pmtiles" -> ("gs://my-bucket", "path/to/tiles", "walking")
+func parseSourcePath(source string) (bucketURL, prefix, tilesetName string) {
+	// Handle local file path without scheme (e.g., "/path/to/file.pmtiles")
+	if !strings.Contains(source, "://") {
+		absPath, err := filepath.Abs(source)
+		if err != nil {
+			// Fallback to original path if Abs fails
+			absPath = source
+		}
+		// Convert to forward slashes for URL compatibility
+		source = "file://" + filepath.ToSlash(absPath)
+	}
+
+	// Parse as URL
+	u, err := url.Parse(source)
+	if err != nil {
+		// Fallback: treat as local path
+		dir := filepath.Dir(source)
+		filename := filepath.Base(source)
 		tilesetName = strings.TrimSuffix(filename, ".pmtiles")
 
-		return "file://" + dir, tilesetName
+		return "file://" + dir, "", tilesetName
 	}
 
-	// Handle HTTP/HTTPS URLs
-	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
-		lastSlash := strings.LastIndex(source, "/")
-		if lastSlash > 0 {
-			bucketPath = source[:lastSlash]
-			filename := source[lastSlash+1:]
-			tilesetName = strings.TrimSuffix(filename, ".pmtiles")
+	// Extract tileset name from path (filename without .pmtiles extension)
+	tilesetName = strings.TrimSuffix(path.Base(u.Path), ".pmtiles")
 
-			return bucketPath, tilesetName
+	// Extract directory portion
+	dirPath := path.Dir(u.Path)
+
+	// Handle cloud storage (gs://, s3://) - need to separate bucket from prefix
+	if u.Scheme == "gs" || u.Scheme == "s3" || u.Scheme == "azblob" {
+		// For cloud storage, the bucket is just scheme://host
+		// Any path becomes the prefix
+		bucketURL = u.Scheme + "://" + u.Host
+
+		// dirPath is the prefix (subdirectory)
+		// Clean up: remove leading slash, handle root case
+		if dirPath == "/" || dirPath == "." || dirPath == "" {
+			prefix = ""
+		} else {
+			// Remove leading slash from prefix
+			prefix = strings.TrimPrefix(dirPath, "/")
 		}
+
+		return bucketURL, prefix, tilesetName
 	}
 
-	// Handle local file path without prefix
-	dir := filepath.Dir(source)
-	filename := filepath.Base(source)
-	tilesetName = strings.TrimSuffix(filename, ".pmtiles")
+	// For file:// and http(s)://, include the full path in bucketURL
+	u.Path = dirPath
 
-	return "file://" + dir, tilesetName
+	// Handle root path files (e.g., file:///walking.pmtiles)
+	// path.Dir("/walking.pmtiles") returns "/", which should stay as "/"
+	if u.Scheme == "file" && u.Path == "/" {
+		// Keep the root path for file:// URLs
+		bucketURL = u.String()
+		return bucketURL, "", tilesetName
+	}
+
+	// Clean up path - path.Dir may leave "." for edge cases
+	if u.Path == "." {
+		u.Path = ""
+	}
+
+	bucketURL = u.String()
+
+	return bucketURL, "", tilesetName
 }
 
 // OneToMany calculates routes from one source to multiple targets
