@@ -90,7 +90,9 @@ jobs:
           pull: true
           provenance: false
           sbom: false
-          tags: ${{ env.REGISTRY }}/radar:${{ steps.set-vars.outputs.TAG }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.set-vars.outputs.IMAGE_NAME }}/radar:${{ steps.set-vars.outputs.TAG }}
+            ${{ env.REGISTRY }}/${{ steps.set-vars.outputs.IMAGE_NAME }}/radar:latest
           build-args: |
             VERSION=${{ steps.set-vars.outputs.TAG }}
             BUILT=${{ github.event.head_commit.timestamp }}
@@ -110,7 +112,9 @@ jobs:
           pull: true
           provenance: false
           sbom: false
-          tags: ${{ env.REGISTRY }}/geoworker:${{ steps.set-vars.outputs.TAG }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.set-vars.outputs.IMAGE_NAME }}/geoworker:${{ steps.set-vars.outputs.TAG }}
+            ${{ env.REGISTRY }}/${{ steps.set-vars.outputs.IMAGE_NAME }}/geoworker:latest
           build-args: |
             VERSION=${{ steps.set-vars.outputs.TAG }}
             BUILT=${{ github.event.head_commit.timestamp }}
