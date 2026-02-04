@@ -22,10 +22,21 @@ import (
 	"github.com/pkg/errors"
 	"github.com/protomaps/go-pmtiles/pmtiles"
 	"go.uber.org/fx"
-
-	// Register GCS blob driver for gs:// URLs
-	_ "gocloud.dev/blob/gcsblob"
+	_ "gocloud.dev/blob/gcsblob" // Register GCS blob driver for gs:// URLs
 )
+
+// isCloudStorageScheme checks if the given URL scheme uses cloud storage bucket semantics.
+// For these schemes, gocloud.dev only uses the Host as bucket name and ignores the Path,
+// so we need to separate the bucket URL from the prefix (subdirectory path).
+// Add new schemes here to support additional cloud providers compatible with gocloud.dev.
+func isCloudStorageScheme(scheme string) bool {
+	switch scheme {
+	case "gs", "s3", "azblob": // Google Cloud Storage, Amazon S3, Azure Blob Storage
+		return true
+	default:
+		return false
+	}
+}
 
 // pmtilesRoutingService implements RoutingUsecase using PMTiles for tile data
 type pmtilesRoutingService struct {
@@ -140,68 +151,92 @@ func tileKey(tile maptile.Tile) string {
 //   - "gs://my-bucket/path/to/tiles/walking.pmtiles" -> ("gs://my-bucket", "path/to/tiles", "walking")
 func parseSourcePath(source string) (bucketURL, prefix, tilesetName string) {
 	// Handle local file path without scheme (e.g., "/path/to/file.pmtiles")
-	if !strings.Contains(source, "://") {
-		absPath, err := filepath.Abs(source)
-		if err != nil {
-			// Fallback to original path if Abs fails
-			absPath = source
-		}
-		// Convert to forward slashes for URL compatibility
-		source = "file://" + filepath.ToSlash(absPath)
-	}
+	source = normalizeSourceToFileURL(source)
 
 	// Parse as URL
-	u, err := url.Parse(source)
+	parsedURL, err := url.Parse(source)
 	if err != nil {
 		// Fallback: treat as local path
-		dir := filepath.Dir(source)
-		filename := filepath.Base(source)
-		tilesetName = strings.TrimSuffix(filename, ".pmtiles")
-
-		return "file://" + dir, "", tilesetName
+		return parseLocalPath(source)
 	}
 
 	// Extract tileset name from path (filename without .pmtiles extension)
-	tilesetName = strings.TrimSuffix(path.Base(u.Path), ".pmtiles")
+	tilesetName = strings.TrimSuffix(path.Base(parsedURL.Path), ".pmtiles")
 
 	// Extract directory portion
-	dirPath := path.Dir(u.Path)
+	dirPath := path.Dir(parsedURL.Path)
 
-	// Handle cloud storage (gs://, s3://) - need to separate bucket from prefix
-	if u.Scheme == "gs" || u.Scheme == "s3" || u.Scheme == "azblob" {
-		// For cloud storage, the bucket is just scheme://host
-		// Any path becomes the prefix
-		bucketURL = u.Scheme + "://" + u.Host
-
-		// dirPath is the prefix (subdirectory)
-		// Clean up: remove leading slash, handle root case
-		if dirPath == "/" || dirPath == "." || dirPath == "" {
-			prefix = ""
-		} else {
-			// Remove leading slash from prefix
-			prefix = strings.TrimPrefix(dirPath, "/")
-		}
-
-		return bucketURL, prefix, tilesetName
+	// Handle cloud storage - need to separate bucket from prefix
+	if isCloudStorageScheme(parsedURL.Scheme) {
+		return parseCloudStoragePath(parsedURL, dirPath, tilesetName)
 	}
 
 	// For file:// and http(s)://, include the full path in bucketURL
-	u.Path = dirPath
+	return parseStandardURLPath(parsedURL, dirPath, tilesetName)
+}
+
+// normalizeSourceToFileURL converts a local file path to a file:// URL if needed.
+func normalizeSourceToFileURL(source string) string {
+	if strings.Contains(source, "://") {
+		return source
+	}
+
+	absPath, err := filepath.Abs(source)
+	if err != nil {
+		// Fallback to original path if Abs fails
+		absPath = source
+	}
+	// Convert to forward slashes for URL compatibility
+	return "file://" + filepath.ToSlash(absPath)
+}
+
+// parseLocalPath handles parsing when URL parsing fails.
+func parseLocalPath(source string) (bucketURL, prefix, tilesetName string) {
+	dir := filepath.Dir(source)
+	filename := filepath.Base(source)
+	tilesetName = strings.TrimSuffix(filename, ".pmtiles")
+
+	return "file://" + dir, "", tilesetName
+}
+
+// parseCloudStoragePath handles cloud storage URLs (gs://, s3://, azblob://).
+func parseCloudStoragePath(parsedURL *url.URL, dirPath, tilesetName string) (bucketURL, prefix, tileset string) {
+	// For cloud storage, the bucket is just scheme://host
+	// Any path becomes the prefix
+	bucketURL = parsedURL.Scheme + "://" + parsedURL.Host
+
+	// dirPath is the prefix (subdirectory)
+	// Clean up: remove leading slash, handle root case
+	switch dirPath {
+	case "/", ".", "":
+		prefix = ""
+	default:
+		// Remove leading slash from prefix
+		prefix = strings.TrimPrefix(dirPath, "/")
+	}
+
+	return bucketURL, prefix, tilesetName
+}
+
+// parseStandardURLPath handles file:// and http(s):// URLs.
+func parseStandardURLPath(parsedURL *url.URL, dirPath, tilesetName string) (bucketURL, prefix, tileset string) {
+	parsedURL.Path = dirPath
 
 	// Handle root path files (e.g., file:///walking.pmtiles)
 	// path.Dir("/walking.pmtiles") returns "/", which should stay as "/"
-	if u.Scheme == "file" && u.Path == "/" {
+	if parsedURL.Scheme == "file" && parsedURL.Path == "/" {
 		// Keep the root path for file:// URLs
-		bucketURL = u.String()
+		bucketURL = parsedURL.String()
+
 		return bucketURL, "", tilesetName
 	}
 
 	// Clean up path - path.Dir may leave "." for edge cases
-	if u.Path == "." {
-		u.Path = ""
+	if parsedURL.Path == "." {
+		parsedURL.Path = ""
 	}
 
-	bucketURL = u.String()
+	bucketURL = parsedURL.String()
 
 	return bucketURL, "", tilesetName
 }
