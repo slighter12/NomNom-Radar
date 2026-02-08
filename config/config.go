@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/knadh/koanf/parsers/yaml"
@@ -222,11 +223,14 @@ func LoadWithEnv[T any](currEnv string, configPath ...string) (*T, error) {
 		return nil, errors.Wrapf(err, "read %s config failed", currEnv)
 	}
 
+	existingConfigMap := koanfInstance.Raw()
+
 	// Load environment variables
 	if err := koanfInstance.Load(env.Provider(".", env.Opt{
 		TransformFunc: func(k, v string) (string, any) {
-			// Convert ENV_VAR_NAME to env.var.name
-			key := strings.ReplaceAll(strings.ToLower(k), "_", ".")
+			// Convert ENV_VAR_NAME to path and align each segment with existing YAML keys.
+			// Example: POSTGRES_SSLMODE -> postgres.sslMode (not postgres.sslmode)
+			key := canonicalizeEnvKey(k, existingConfigMap)
 
 			return key, v
 		},
@@ -264,6 +268,61 @@ func New() (*Config, error) {
 	cfg.Postgres.Replicas = buildReplicasFromEnv()
 
 	return cfg, nil
+}
+
+func canonicalizeEnvKey(rawKey string, existing map[string]any) string {
+	segments := strings.Split(strings.ToLower(rawKey), "_")
+	canonical := make([]string, 0, len(segments))
+	current := existing
+
+	for _, segment := range segments {
+		if segment == "" {
+			continue
+		}
+
+		if matched, next, ok := findExistingSegment(current, segment); ok {
+			canonical = append(canonical, matched)
+			current = next
+			continue
+		}
+
+		canonical = append(canonical, segment)
+		current = nil
+	}
+
+	return strings.Join(canonical, ".")
+}
+
+func findExistingSegment(current map[string]any, segment string) (matched string, next map[string]any, ok bool) {
+	if len(current) == 0 {
+		return "", nil, false
+	}
+
+	needle := normalizeToken(segment)
+	for k, v := range current {
+		if normalizeToken(k) != needle {
+			continue
+		}
+
+		child, _ := v.(map[string]any)
+		return k, child, true
+	}
+
+	return "", nil, false
+}
+
+func normalizeToken(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+
+	for _, r := range s {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			continue
+		}
+		b.WriteRune(unicode.ToLower(r))
+	}
+
+	return b.String()
 }
 
 // buildReplicasFromEnv builds the replicas slice from environment variables.

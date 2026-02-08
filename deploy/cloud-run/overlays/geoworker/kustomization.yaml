@@ -20,7 +20,7 @@ patches:
         value: "5"
       - op: replace
         path: /spec/template/spec/containerConcurrency
-        value: 1
+        value: 20
       - op: replace
         path: /spec/template/spec/timeoutSeconds
         value: 300
