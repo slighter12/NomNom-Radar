@@ -66,6 +66,6 @@ COPY --from=geoworker-builder /app/geoworker /app/geoworker
 COPY --from=geoworker-builder /app/config/config_demo.yaml /app/config/config.yaml
 
 WORKDIR /app
-EXPOSE 8081
+EXPOSE 8080
 
 ENTRYPOINT ["/app/geoworker"]
