@@ -55,6 +55,28 @@ go mod download
 
 Make sure you have PostgreSQL with PostGIS extension installed and running.
 
+**Supabase Deployment - Required PostGIS Setup:**
+
+If you're deploying on Supabase, run the following SQL in the SQL Editor to properly configure PostGIS in the `extensions` schema:
+
+```sql
+-- 1. Drop existing PostGIS extension (WARNING: This will also drop geometry columns in your tables!)
+DROP EXTENSION IF EXISTS postgis CASCADE;
+
+-- 2. Create a clean extensions schema
+CREATE SCHEMA IF NOT EXISTS extensions;
+GRANT USAGE ON SCHEMA extensions TO postgres, anon, authenticated, service_role;
+
+-- 3. Set search path (so applications can find it without code changes)
+ALTER DATABASE postgres SET search_path TO "$user", public, extensions;
+ALTER ROLE authenticated SET search_path TO "$user", public, extensions;
+ALTER ROLE anon SET search_path TO "$user", public, extensions;
+ALTER ROLE service_role SET search_path TO "$user", public, extensions;
+
+-- 4. Reinstall PostGIS in the new schema
+CREATE EXTENSION postgis SCHEMA extensions;
+```
+
 4. **Configure environment variables:**
 
 Copy the example config and update with your settings:
