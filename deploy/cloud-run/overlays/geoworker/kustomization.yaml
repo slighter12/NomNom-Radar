@@ -26,4 +26,4 @@ patches:
         value: 300
       - op: replace
         path: /spec/template/spec/containers/0/resources/limits/memory
-        value: 512Mi
+        value: 1Gi
