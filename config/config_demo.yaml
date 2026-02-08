@@ -27,12 +27,7 @@ postgres:
     username: "user"
     password: "password"
     timeout: "10s"
-  replicas:
-    - host: "localhost"
-      port: "5433"
-      username: "readonly_user"
-      password: "password"
-      timeout: "10s"
+  # replicas are configured dynamically via environment variables (POSTGRES_REPLICAS_0_HOST, POSTGRES_REPLICAS_0_PORT, etc.)
   maxIdleConns: 25
   maxOpenConns: 50
   connMaxLifetime: "5m"

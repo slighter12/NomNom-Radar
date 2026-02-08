@@ -3,9 +3,11 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/env/v2"
 	"github.com/knadh/koanf/providers/file"
@@ -232,8 +234,17 @@ func LoadWithEnv[T any](currEnv string, configPath ...string) (*T, error) {
 		return nil, errors.Wrap(err, "load env variables failed")
 	}
 
-	// Unmarshal into the config struct
-	if err := koanfInstance.Unmarshal("", cfg); err != nil {
+	// Unmarshal into the config struct (case-insensitive to match env vars)
+	if err := koanfInstance.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
+		DecoderConfig: &mapstructure.DecoderConfig{
+			Result:           cfg,
+			WeaklyTypedInput: true,
+			MatchName: func(mapKey, fieldName string) bool {
+				// Case-insensitive matching for env var overrides
+				return strings.EqualFold(mapKey, fieldName)
+			},
+		},
+	}); err != nil {
 		return nil, errors.Wrapf(err, "unmarshal %s config failed", currEnv)
 	}
 
@@ -241,5 +252,42 @@ func LoadWithEnv[T any](currEnv string, configPath ...string) (*T, error) {
 }
 
 func New() (*Config, error) {
-	return LoadWithEnv[Config]("config", "config", "../connfig", "../../config")
+	cfg, err := LoadWithEnv[Config]("config", "config", "../config", "../../config")
+	if err != nil {
+		return nil, err
+	}
+
+	// Build replicas from environment variables (POSTGRES_REPLICAS_0_HOST, POSTGRES_REPLICAS_0_PORT, etc.)
+	cfg.Postgres.Replicas = buildReplicasFromEnv()
+
+	return cfg, nil
+}
+
+// buildReplicasFromEnv builds the replicas slice from environment variables.
+// Environment variable format: POSTGRES_REPLICAS_{index}_{field}
+// Example: POSTGRES_REPLICAS_0_HOST, POSTGRES_REPLICAS_0_PORT, POSTGRES_REPLICAS_0_USERNAME, POSTGRES_REPLICAS_0_PASSWORD
+func buildReplicasFromEnv() []postgres.ConnectionConfig {
+	var replicas []postgres.ConnectionConfig
+
+	for i := 0; ; i++ {
+		prefix := "POSTGRES_REPLICAS_" + strconv.Itoa(i) + "_"
+
+		host := os.Getenv(prefix + "HOST")
+		port := os.Getenv(prefix + "PORT")
+		if host == "" || port == "" {
+			// No more replicas or incomplete configuration.
+			break
+		}
+
+		replica := postgres.ConnectionConfig{
+			Host:     host,
+			Port:     port,
+			UserName: os.Getenv(prefix + "USERNAME"),
+			Password: os.Getenv(prefix + "PASSWORD"),
+		}
+
+		replicas = append(replicas, replica)
+	}
+
+	return replicas
 }

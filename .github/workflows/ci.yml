@@ -44,7 +44,7 @@ jobs:
   build-and-push:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/gcp_cloud_run')
     needs: checks
     steps:
       - name: Checkout the repository
