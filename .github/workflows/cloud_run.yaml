@@ -45,13 +45,15 @@ jobs:
 
       - name: Prepare service YAML
         run: |
-          sed -i "s|IMAGE_PLACEHOLDER|${{ steps.image.outputs.name }}|g" \
-            deploy/cloud-run/${{ inputs.target }}.yaml
+          # Build final YAML using kubectl's built-in kustomize
+          kubectl kustomize deploy/cloud-run/overlays/${{ inputs.target }} > /tmp/service.yaml
+          # Replace image placeholder
+          sed -i "s|IMAGE_PLACEHOLDER|${{ steps.image.outputs.name }}|g" /tmp/service.yaml
 
       - name: Deploy to Cloud Run
         id: deploy
         run: |
-          gcloud run services replace deploy/cloud-run/${{ inputs.target }}.yaml \
+          gcloud run services replace /tmp/service.yaml \
             --region=${{ env.REGION }}
 
           # radar should allow unauthenticated access

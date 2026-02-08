@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: Service
+      name: service
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: geoworker
+      - op: replace
+        path: /metadata/annotations/run.googleapis.com~1ingress
+        value: internal
+      - op: replace
+        path: /spec/template/metadata/annotations/autoscaling.knative.dev~1maxScale
+        value: "5"
+      - op: replace
+        path: /spec/template/spec/containerConcurrency
+        value: 1
+      - op: replace
+        path: /spec/template/spec/timeoutSeconds
+        value: 300
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 512Mi
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "1"
