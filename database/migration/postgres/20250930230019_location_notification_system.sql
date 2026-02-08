@@ -2,6 +2,8 @@
 -- SQL in this section is executed when the migration is applied.
 
 -- Step 1: Enable PostGIS extension for geospatial queries
+-- For Supabase: PostGIS should be pre-installed in 'extensions' schema via README setup script
+-- For local dev: This will create it in the default schema (usually 'public')
 CREATE EXTENSION IF NOT EXISTS postgis;
 
 -- Step 2: Extend existing addresses table with location notification features

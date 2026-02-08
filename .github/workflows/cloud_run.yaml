@@ -74,6 +74,8 @@ jobs:
           kubectl kustomize deploy/cloud-run/overlays/${{ inputs.target }} > /tmp/service.yaml
           # Replace image placeholder
           sed -i "s|IMAGE_PLACEHOLDER|${{ steps.image.outputs.name }}|g" /tmp/service.yaml
+          # Replace service account placeholder
+          sed -i "s|SERVICE_ACCOUNT_PLACEHOLDER|${{ secrets.GCP_SA_EMAIL }}|g" /tmp/service.yaml
 
       - name: Deploy to Cloud Run
         id: deploy
