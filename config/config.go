@@ -283,11 +283,10 @@ func canonicalizeEnvKey(rawKey string, existing map[string]any) string {
 		if matched, next, ok := findExistingSegment(current, segment); ok {
 			canonical = append(canonical, matched)
 			current = next
-			continue
+		} else {
+			canonical = append(canonical, segment)
+			current = nil
 		}
-
-		canonical = append(canonical, segment)
-		current = nil
 	}
 
 	return strings.Join(canonical, ".")
@@ -299,30 +298,31 @@ func findExistingSegment(current map[string]any, segment string) (matched string
 	}
 
 	needle := normalizeToken(segment)
-	for k, v := range current {
-		if normalizeToken(k) != needle {
+	for key, value := range current {
+		if normalizeToken(key) != needle {
 			continue
 		}
 
-		child, _ := v.(map[string]any)
-		return k, child, true
+		child, _ := value.(map[string]any)
+
+		return key, child, true
 	}
 
 	return "", nil, false
 }
 
 func normalizeToken(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
+	var normalized strings.Builder
+	normalized.Grow(len(s))
 
 	for _, r := range s {
 		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
 			continue
 		}
-		b.WriteRune(unicode.ToLower(r))
+		normalized.WriteRune(unicode.ToLower(r))
 	}
 
-	return b.String()
+	return normalized.String()
 }
 
 // buildReplicasFromEnv builds the replicas slice from environment variables.
