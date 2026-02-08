@@ -60,7 +60,7 @@ jobs:
 
           # Build connection string and run migration
           PG_URI="postgres://${PG_USER}:${PG_PASS}@${PG_HOST}:${PG_PORT}/${PG_DB}?sslmode=require"
-          goose postgres "${PG_URI}" -dir ./database/migration/postgres up
+          $(go env GOPATH)/bin/goose postgres "${PG_URI}" -dir ./database/migration/postgres up
 
       - name: Set image name
         id: image

@@ -43,7 +43,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 # =============================================================================
 # Runtime stage for radar (main API server)
 # =============================================================================
-FROM gcr.io/distroless/static-debian11:nonroot AS radar
+FROM gcr.io/distroless/static-debian13:nonroot AS radar
 
 COPY --from=radar-builder /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=radar-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
@@ -58,7 +58,7 @@ ENTRYPOINT ["/app/radar"]
 # =============================================================================
 # Runtime stage for geoworker
 # =============================================================================
-FROM gcr.io/distroless/static-debian11:nonroot AS geoworker
+FROM gcr.io/distroless/static-debian13:nonroot AS geoworker
 
 COPY --from=geoworker-builder /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=geoworker-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
