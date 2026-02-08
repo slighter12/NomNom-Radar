@@ -65,7 +65,7 @@ func (repo *deviceRepository) FindDeviceByID(ctx context.Context, id uuid.UUID) 
 			return nil, repository.ErrDeviceNotFound
 		}
 
-		return nil, errors.Wrap(err, "failed to find device by ID")
+		return nil, errors.WithStack(err)
 	}
 
 	return toDeviceDomain(deviceM), nil
@@ -79,7 +79,7 @@ func (repo *deviceRepository) FindDevicesByUser(ctx context.Context, userID uuid
 		Find()
 
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to find devices by user")
+		return nil, errors.WithStack(err)
 	}
 
 	devices := make([]*entity.UserDevice, 0, len(deviceModels))
@@ -101,7 +101,7 @@ func (repo *deviceRepository) FindActiveDevicesByUser(ctx context.Context, userI
 		Find()
 
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to find active devices by user")
+		return nil, errors.WithStack(err)
 	}
 
 	devices := make([]*entity.UserDevice, 0, len(deviceModels))
@@ -123,7 +123,7 @@ func (repo *deviceRepository) UpdateFCMToken(ctx context.Context, deviceID uuid.
 			return repository.ErrDuplicateDevice
 		}
 
-		return errors.Wrap(err, "failed to update FCM token")
+		return errors.WithStack(err)
 	}
 
 	if result.RowsAffected == 0 {
@@ -140,7 +140,7 @@ func (repo *deviceRepository) DeleteDevice(ctx context.Context, id uuid.UUID) er
 		Delete()
 
 	if err != nil {
-		return errors.Wrap(err, "failed to delete device")
+		return errors.WithStack(err)
 	}
 
 	if result.RowsAffected == 0 {

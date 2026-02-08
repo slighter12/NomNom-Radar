@@ -117,11 +117,11 @@ func (e *Engine) LoadData(dataDir string) error {
 	// Load metadata
 	metadata, err := loader.LoadMetadata(dataDir)
 	if err != nil {
-		e.logger.Warn("Failed to load routing metadata", "error", err)
+		e.logger.Warn("Failed to load routing metadata", slog.Any("error", err))
 		// Continue without metadata - it's not strictly required
 	} else {
 		if err := metadata.Validate(); err != nil {
-			e.logger.Warn("Routing metadata validation failed", "error", err)
+			e.logger.Warn("Routing metadata validation failed", slog.Any("error", err))
 		}
 		e.metadata = metadata
 	}
@@ -130,7 +130,7 @@ func (e *Engine) LoadData(dataDir string) error {
 	csvLoader := loader.NewCSVLoader(dataDir)
 	graphData, err := csvLoader.Load()
 	if err != nil {
-		return errors.Wrap(err, "failed to load graph data")
+		return errors.WithStack(err)
 	}
 
 	e.vertices = graphData.Vertices

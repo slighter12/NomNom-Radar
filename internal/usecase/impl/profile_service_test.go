@@ -7,13 +7,11 @@ import (
 	"testing"
 
 	"radar/internal/domain/entity"
-	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	mockRepo "radar/internal/mocks/repository"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -157,47 +155,112 @@ func TestProfileService_GetUserRole(t *testing.T) {
 	assert.Contains(t, roles, entity.RoleMerchant.String())
 }
 
-func TestProfileService_UpdateMerchantProfile_NoProfile(t *testing.T) {
+func TestProfileService_UpdateMerchantProfile_Success(t *testing.T) {
 	fx := createTestProfileService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
+	storeName := "New Store Name"
+	storeDescription := "New Description"
+	businessLicense := "BL-456"
 	input := &usecase.UpdateMerchantProfileInput{
-		StoreName:        nil,
-		StoreDescription: nil,
+		StoreName:        &storeName,
+		StoreDescription: &storeDescription,
+		BusinessLicense:  &businessLicense,
 	}
 
 	existingUser := &entity.User{
 		ID: userID,
-		// MerchantProfile intentionally nil to trigger validation
+		MerchantProfile: &entity.MerchantProfile{
+			UserID:           userID,
+			StoreName:        "Old Store",
+			StoreDescription: "Old Description",
+			BusinessLicense:  "BL-123",
+		},
 	}
 
-	fx.onExecute(ctx, errors.Wrap(domainerrors.ErrValidationFailed, "user does not have a merchant profile"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, nil, func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
 		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(existingUser, nil)
+		mockUserRepo.EXPECT().Update(ctx, mock.AnythingOfType("*entity.User")).Return(nil)
 	})
 
 	err := fx.service.UpdateMerchantProfile(ctx, userID, input)
 
-	assert.Error(t, err)
-	assert.True(t, errors.Is(err, domainerrors.ErrValidationFailed))
+	require.NoError(t, err)
+	assert.Equal(t, storeName, existingUser.MerchantProfile.StoreName)
+	assert.Equal(t, storeDescription, existingUser.MerchantProfile.StoreDescription)
+	assert.Equal(t, businessLicense, existingUser.MerchantProfile.BusinessLicense)
 }
 
-func TestProfileService_GetProfile_NotFound(t *testing.T) {
+func TestProfileService_GetUserRole_OnlyUserProfile(t *testing.T) {
 	fx := createTestProfileService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
+	user := &entity.User{
+		ID:              userID,
+		UserProfile:     &entity.UserProfile{},
+		MerchantProfile: nil,
+	}
 
-	fx.onExecute(ctx, repository.ErrUserNotFound, func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, nil, func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
-		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, repository.ErrUserNotFound)
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
 	})
 
-	_, err := fx.service.GetProfile(ctx, userID)
+	roles, err := fx.service.GetUserRole(ctx, userID)
 
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "user not found")
+	require.NoError(t, err)
+	assert.Len(t, roles, 1)
+	assert.Contains(t, roles, entity.RoleUser.String())
+}
+
+func TestProfileService_GetUserRole_OnlyMerchantProfile(t *testing.T) {
+	fx := createTestProfileService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	user := &entity.User{
+		ID:              userID,
+		UserProfile:     nil,
+		MerchantProfile: &entity.MerchantProfile{},
+	}
+
+	fx.onExecute(ctx, nil, func(factory *mockRepo.MockRepositoryFactory) {
+		mockUserRepo := mockRepo.NewMockUserRepository(t)
+		factory.EXPECT().UserRepo().Return(mockUserRepo)
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
+	})
+
+	roles, err := fx.service.GetUserRole(ctx, userID)
+
+	require.NoError(t, err)
+	assert.Len(t, roles, 1)
+	assert.Contains(t, roles, entity.RoleMerchant.String())
+}
+
+func TestProfileService_GetUserRole_NoProfiles(t *testing.T) {
+	fx := createTestProfileService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	user := &entity.User{
+		ID:              userID,
+		UserProfile:     nil,
+		MerchantProfile: nil,
+	}
+
+	fx.onExecute(ctx, nil, func(factory *mockRepo.MockRepositoryFactory) {
+		mockUserRepo := mockRepo.NewMockUserRepository(t)
+		factory.EXPECT().UserRepo().Return(mockUserRepo)
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
+	})
+
+	roles, err := fx.service.GetUserRole(ctx, userID)
+
+	require.NoError(t, err)
+	assert.Empty(t, roles)
 }

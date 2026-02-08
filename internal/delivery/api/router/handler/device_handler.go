@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"radar/internal/delivery/http/middleware"
-	"radar/internal/delivery/http/response"
+	"radar/internal/delivery/api/middleware"
+	"radar/internal/delivery/api/response"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
@@ -74,7 +74,7 @@ func (h *DeviceHandler) RegisterDevice(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusCreated, device, "Device registered successfully")
+	return response.Success(c, http.StatusCreated, device)
 }
 
 // GetUserDevices handles retrieving all user devices
@@ -89,7 +89,7 @@ func (h *DeviceHandler) GetUserDevices(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusOK, devices, "User devices retrieved successfully")
+	return response.Success(c, http.StatusOK, devices)
 }
 
 // UpdateFCMToken handles updating FCM token for a device
@@ -117,7 +117,7 @@ func (h *DeviceHandler) UpdateFCMToken(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusOK, map[string]string{"message": "FCM token updated successfully"}, "FCM token updated successfully")
+	return response.Success(c, http.StatusOK, map[string]string{"message": "FCM token updated successfully"})
 }
 
 // DeactivateDevice handles deactivating a device
@@ -136,5 +136,5 @@ func (h *DeviceHandler) DeactivateDevice(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusOK, map[string]string{"message": "Device deactivated successfully"}, "Device deactivated successfully")
+	return response.Success(c, http.StatusOK, map[string]string{"message": "Device deactivated successfully"})
 }

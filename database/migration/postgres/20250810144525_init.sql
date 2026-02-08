@@ -49,7 +49,7 @@ CREATE TABLE users (
 CREATE INDEX idx_users_deleted_at ON users(deleted_at);
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-COMMENT ON COLUMN users.deleted_at IS 
+COMMENT ON COLUMN users.deleted_at IS
 'Soft delete timestamp for user account. When set, all related data (addresses, devices, subscriptions) should be treated as deleted in queries.';
 
 -- Table: user_authentications

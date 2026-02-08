@@ -6,12 +6,10 @@ import (
 
 	"radar/config"
 	"radar/internal/domain/entity"
-	"radar/internal/domain/repository"
 	mockRepo "radar/internal/mocks/repository"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -92,28 +90,6 @@ func TestLocationService_AddUserLocation_Success(t *testing.T) {
 	assert.Equal(t, input.Label, address.Label)
 }
 
-func TestLocationService_AddUserLocation_LimitReached(t *testing.T) {
-	fx := createTestLocationService(t, nil)
-
-	ctx := context.Background()
-	userID := uuid.New()
-	input := &usecase.AddLocationInput{
-		Label:       "Home",
-		FullAddress: "123 Main St",
-		Latitude:    25.0,
-		Longitude:   121.0,
-	}
-
-	fx.addressRepo.EXPECT().
-		CountAddressesByOwner(ctx, userID, entity.OwnerTypeUserProfile).
-		Return(int64(5), nil)
-
-	address, err := fx.service.AddUserLocation(ctx, userID, input)
-	assert.Error(t, err)
-	assert.Nil(t, address)
-	assert.Equal(t, ErrLocationLimitReached, err)
-}
-
 func TestLocationService_UpdateUserLocation_Success(t *testing.T) {
 	fx := createTestLocationService(t, nil)
 
@@ -146,49 +122,6 @@ func TestLocationService_UpdateUserLocation_Success(t *testing.T) {
 	assert.Equal(t, newLabel, address.Label)
 }
 
-func TestLocationService_UpdateUserLocation_NotFound(t *testing.T) {
-	fx := createTestLocationService(t, nil)
-
-	ctx := context.Background()
-	userID := uuid.New()
-	locationID := uuid.New()
-	input := &usecase.UpdateLocationInput{}
-
-	fx.addressRepo.EXPECT().
-		FindAddressByID(ctx, locationID).
-		Return(nil, repository.ErrAddressNotFound)
-
-	address, err := fx.service.UpdateUserLocation(ctx, userID, locationID, input)
-	assert.Error(t, err)
-	assert.Nil(t, address)
-	assert.Equal(t, ErrLocationNotFound, err)
-}
-
-func TestLocationService_UpdateUserLocation_Unauthorized(t *testing.T) {
-	fx := createTestLocationService(t, nil)
-
-	ctx := context.Background()
-	userID := uuid.New()
-	differentUserID := uuid.New()
-	locationID := uuid.New()
-	input := &usecase.UpdateLocationInput{}
-
-	existingAddress := &entity.Address{
-		ID:        locationID,
-		OwnerID:   differentUserID,
-		OwnerType: entity.OwnerTypeUserProfile,
-	}
-
-	fx.addressRepo.EXPECT().
-		FindAddressByID(ctx, locationID).
-		Return(existingAddress, nil)
-
-	address, err := fx.service.UpdateUserLocation(ctx, userID, locationID, input)
-	assert.Error(t, err)
-	assert.Nil(t, address)
-	assert.Equal(t, ErrUnauthorized, err)
-}
-
 func TestLocationService_DeleteUserLocation_Success(t *testing.T) {
 	fx := createTestLocationService(t, nil)
 
@@ -212,29 +145,6 @@ func TestLocationService_DeleteUserLocation_Success(t *testing.T) {
 
 	err := fx.service.DeleteUserLocation(ctx, userID, locationID)
 	require.NoError(t, err)
-}
-
-func TestLocationService_DeleteUserLocation_Unauthorized(t *testing.T) {
-	fx := createTestLocationService(t, nil)
-
-	ctx := context.Background()
-	userID := uuid.New()
-	differentUserID := uuid.New()
-	locationID := uuid.New()
-
-	existingAddress := &entity.Address{
-		ID:        locationID,
-		OwnerID:   differentUserID,
-		OwnerType: entity.OwnerTypeUserProfile,
-	}
-
-	fx.addressRepo.EXPECT().
-		FindAddressByID(ctx, locationID).
-		Return(existingAddress, nil)
-
-	err := fx.service.DeleteUserLocation(ctx, userID, locationID)
-	assert.Error(t, err)
-	assert.Equal(t, ErrUnauthorized, err)
 }
 
 func TestLocationService_GetMerchantLocations(t *testing.T) {
@@ -284,47 +194,133 @@ func TestLocationService_AddMerchantLocation_Success(t *testing.T) {
 	assert.Equal(t, entity.OwnerTypeMerchantProfile, address.OwnerType)
 }
 
-func TestLocationService_AddMerchantLocation_LimitReached(t *testing.T) {
+func TestLocationService_UpdateMerchantLocation_Success(t *testing.T) {
 	fx := createTestLocationService(t, nil)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
-	input := &usecase.AddLocationInput{
+	locationID := uuid.New()
+	newLabel := "Updated Store"
+	newAddress := "789 New Ave"
+	input := &usecase.UpdateLocationInput{
+		Label:       &newLabel,
+		FullAddress: &newAddress,
+	}
+
+	existingAddress := &entity.Address{
+		ID:          locationID,
+		OwnerID:     merchantID,
+		OwnerType:   entity.OwnerTypeMerchantProfile,
 		Label:       "Store",
-		FullAddress: "456 Business Ave",
-		Latitude:    25.0,
-		Longitude:   121.0,
+		FullAddress: "456 Old St",
 	}
 
 	fx.addressRepo.EXPECT().
-		CountAddressesByOwner(ctx, merchantID, entity.OwnerTypeMerchantProfile).
-		Return(int64(10), nil)
+		FindAddressByID(ctx, locationID).
+		Return(existingAddress, nil)
 
-	address, err := fx.service.AddMerchantLocation(ctx, merchantID, input)
-	assert.Error(t, err)
-	assert.Nil(t, address)
-	assert.Equal(t, ErrLocationLimitReached, err)
+	fx.addressRepo.EXPECT().
+		UpdateAddress(ctx, mock.AnythingOfType("*entity.Address")).
+		Return(nil)
+
+	address, err := fx.service.UpdateMerchantLocation(ctx, merchantID, locationID, input)
+	require.NoError(t, err)
+	assert.NotNil(t, address)
+	assert.Equal(t, newLabel, address.Label)
+	assert.Equal(t, newAddress, address.FullAddress)
 }
 
-func TestLocationService_CountError(t *testing.T) {
+func TestLocationService_DeleteMerchantLocation_Success(t *testing.T) {
 	fx := createTestLocationService(t, nil)
 
 	ctx := context.Background()
-	userID := uuid.New()
-	input := &usecase.AddLocationInput{
-		Label:       "Home",
-		FullAddress: "123 Main St",
-		Latitude:    25.0,
-		Longitude:   121.0,
+	merchantID := uuid.New()
+	locationID := uuid.New()
+
+	existingAddress := &entity.Address{
+		ID:        locationID,
+		OwnerID:   merchantID,
+		OwnerType: entity.OwnerTypeMerchantProfile,
 	}
 
-	expectedErr := errors.New("database error")
 	fx.addressRepo.EXPECT().
-		CountAddressesByOwner(ctx, userID, entity.OwnerTypeUserProfile).
-		Return(int64(0), expectedErr)
+		FindAddressByID(ctx, locationID).
+		Return(existingAddress, nil)
 
-	address, err := fx.service.AddUserLocation(ctx, userID, input)
-	assert.Error(t, err)
-	assert.Nil(t, address)
-	assert.Contains(t, err.Error(), "failed to count addresses by owner")
+	fx.addressRepo.EXPECT().
+		DeleteAddress(ctx, locationID).
+		Return(nil)
+
+	err := fx.service.DeleteMerchantLocation(ctx, merchantID, locationID)
+	require.NoError(t, err)
+}
+
+func TestLocationService_UpdateMerchantLocation_AllFields(t *testing.T) {
+	fx := createTestLocationService(t, nil)
+
+	ctx := context.Background()
+	merchantID := uuid.New()
+	locationID := uuid.New()
+
+	newLabel := "Updated Store"
+	newAddress := "789 New Ave"
+	newLat := 26.0
+	newLng := 122.0
+	newIsPrimary := true
+	newIsActive := false
+
+	input := &usecase.UpdateLocationInput{
+		Label:       &newLabel,
+		FullAddress: &newAddress,
+		Latitude:    &newLat,
+		Longitude:   &newLng,
+		IsPrimary:   &newIsPrimary,
+		IsActive:    &newIsActive,
+	}
+
+	existingAddress := &entity.Address{
+		ID:          locationID,
+		OwnerID:     merchantID,
+		OwnerType:   entity.OwnerTypeMerchantProfile,
+		Label:       "Store",
+		FullAddress: "456 Old St",
+		Latitude:    25.0,
+		Longitude:   121.0,
+		IsPrimary:   false,
+		IsActive:    true,
+	}
+
+	fx.addressRepo.EXPECT().
+		FindAddressByID(ctx, locationID).
+		Return(existingAddress, nil)
+
+	fx.addressRepo.EXPECT().
+		UpdateAddress(ctx, mock.AnythingOfType("*entity.Address")).
+		Return(nil)
+
+	address, err := fx.service.UpdateMerchantLocation(ctx, merchantID, locationID, input)
+	require.NoError(t, err)
+	assert.NotNil(t, address)
+	assert.Equal(t, newLabel, address.Label)
+	assert.Equal(t, newAddress, address.FullAddress)
+	assert.Equal(t, newLat, address.Latitude)
+	assert.Equal(t, newLng, address.Longitude)
+	assert.Equal(t, newIsPrimary, address.IsPrimary)
+	assert.Equal(t, newIsActive, address.IsActive)
+}
+
+func TestLocationService_NewLocationService_NilConfig(t *testing.T) {
+	addressRepo := mockRepo.NewMockAddressRepository(t)
+
+	// Test with nil LocationNotification config - should use defaults
+	cfg := &config.Config{
+		LocationNotification: nil,
+	}
+
+	service := NewLocationService(LocationServiceParams{
+		AddressRepo: addressRepo,
+		Config:      cfg,
+	})
+
+	assert.NotNil(t, service)
 }

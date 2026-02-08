@@ -66,7 +66,7 @@ func (repo *subscriptionRepository) FindSubscriptionByID(ctx context.Context, id
 			return nil, repository.ErrSubscriptionNotFound
 		}
 
-		return nil, errors.Wrap(err, "failed to find subscription by ID")
+		return nil, errors.WithStack(err)
 	}
 
 	return toSubscriptionDomain(subscriptionM), nil
@@ -86,7 +86,7 @@ func (repo *subscriptionRepository) FindSubscriptionByUserAndMerchant(ctx contex
 			return nil, repository.ErrSubscriptionNotFound
 		}
 
-		return nil, errors.Wrap(err, "failed to find subscription by user and merchant")
+		return nil, errors.WithStack(err)
 	}
 
 	return toSubscriptionDomain(subscriptionM), nil
@@ -100,7 +100,7 @@ func (repo *subscriptionRepository) FindSubscriptionsByUser(ctx context.Context,
 		Find()
 
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to find subscriptions by user")
+		return nil, errors.WithStack(err)
 	}
 
 	subscriptions := make([]*entity.UserMerchantSubscription, 0, len(subscriptionModels))
@@ -119,7 +119,7 @@ func (repo *subscriptionRepository) FindSubscriptionsByMerchant(ctx context.Cont
 		Find()
 
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to find subscriptions by merchant")
+		return nil, errors.WithStack(err)
 	}
 
 	subscriptions := make([]*entity.UserMerchantSubscription, 0, len(subscriptionModels))
@@ -137,7 +137,7 @@ func (repo *subscriptionRepository) UpdateSubscriptionStatus(ctx context.Context
 		Update(repo.q.UserMerchantSubscriptionModel.IsActive, isActive)
 
 	if err != nil {
-		return errors.Wrap(err, "failed to update subscription status")
+		return errors.WithStack(err)
 	}
 
 	if result.RowsAffected == 0 {
@@ -154,7 +154,7 @@ func (repo *subscriptionRepository) UpdateNotificationRadius(ctx context.Context
 		Update(repo.q.UserMerchantSubscriptionModel.NotificationRadius, radius)
 
 	if err != nil {
-		return errors.Wrap(err, "failed to update notification radius")
+		return errors.WithStack(err)
 	}
 
 	if result.RowsAffected == 0 {
@@ -171,7 +171,7 @@ func (repo *subscriptionRepository) DeleteSubscription(ctx context.Context, id u
 		Delete()
 
 	if err != nil {
-		return errors.Wrap(err, "failed to delete subscription")
+		return errors.WithStack(err)
 	}
 
 	if result.RowsAffected == 0 {
@@ -192,7 +192,7 @@ func (repo *subscriptionRepository) FindSubscribersWithinRadius(ctx context.Cont
 		addressQuery.UserProfileID.EqCol(subscriptionQuery.UserID),
 		addressQuery.IsActive.Is(true),
 		addressQuery.DeletedAt.IsNull(),
-	).UnderlyingDB().Where("ST_DWithin(location, ST_SetSRID(ST_MakePoint(?, ?), 4326), notification_radius)", merchantLon, merchantLat)
+	).UnderlyingDB().Where("ST_DWithin(location::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, notification_radius)", merchantLon, merchantLat)
 
 	var subscriptionModels []*model.UserMerchantSubscriptionModel
 	err := subscriptionQuery.WithContext(ctx).
@@ -206,7 +206,7 @@ func (repo *subscriptionRepository) FindSubscribersWithinRadius(ctx context.Cont
 		Find(&subscriptionModels).Error
 
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to find subscribers within radius")
+		return nil, errors.WithStack(err)
 	}
 
 	subscriptions := make([]*entity.UserMerchantSubscription, 0, len(subscriptionModels))
@@ -243,11 +243,11 @@ func (repo *subscriptionRepository) FindSubscriberAddressesWithinRadius(ctx cont
 			subscriptionQuery.IsActive.Is(true),
 			subscriptionQuery.DeletedAt.IsNull(),
 		).UnderlyingDB().
-		Where("ST_DWithin(addresses.location, ST_SetSRID(ST_MakePoint(?, ?), 4326), user_merchant_subscriptions.notification_radius)", merchantLon, merchantLat).
+		Where("ST_DWithin(addresses.location::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, user_merchant_subscriptions.notification_radius)", merchantLon, merchantLat).
 		Find(&addressModels).Error
 
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to find subscriber addresses within radius")
+		return nil, errors.WithStack(err)
 	}
 
 	addresses := make([]*entity.SubscriberAddress, 0, len(addressModels))
@@ -279,7 +279,7 @@ func (repo *subscriptionRepository) FindDevicesForUsers(ctx context.Context, use
 		Find()
 
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to find devices for users")
+		return nil, errors.WithStack(err)
 	}
 
 	devices := make([]*entity.UserDevice, 0, len(deviceModels))
@@ -288,6 +288,50 @@ func (repo *subscriptionRepository) FindDevicesForUsers(ctx context.Context, use
 	}
 
 	return devices, nil
+}
+
+// FindSubscriberAddressesByUserIDs retrieves addresses for specific user IDs who subscribe to a merchant.
+// Returns addresses bundled with their subscription notification radius.
+func (repo *subscriptionRepository) FindSubscriberAddressesByUserIDs(ctx context.Context, merchantID uuid.UUID, userIDs []uuid.UUID) ([]*entity.SubscriberAddress, error) {
+	if len(userIDs) == 0 {
+		return []*entity.SubscriberAddress{}, nil
+	}
+
+	// uuid.UUID implements driver.Valuer, so we convert slice for type safety with gen.Field.In
+	ids := make([]driver.Valuer, len(userIDs))
+	for i, id := range userIDs {
+		ids[i] = id
+	}
+
+	addressQuery := repo.q.AddressModel
+	subscriptionQuery := repo.q.UserMerchantSubscriptionModel
+
+	var addressModels []*subscriberAddressModel
+	err := addressQuery.WithContext(ctx).
+		Distinct().
+		Select(addressQuery.ALL, subscriptionQuery.NotificationRadius).
+		Join(subscriptionQuery, subscriptionQuery.UserID.EqCol(addressQuery.UserProfileID)).
+		Where(
+			addressQuery.UserProfileID.In(ids...),
+			addressQuery.IsActive.Is(true),
+			addressQuery.DeletedAt.IsNull(),
+			subscriptionQuery.MerchantID.Eq(merchantID),
+			subscriptionQuery.IsActive.Is(true),
+			subscriptionQuery.DeletedAt.IsNull(),
+		).
+		UnderlyingDB().
+		Find(&addressModels).Error
+
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	addresses := make([]*entity.SubscriberAddress, 0, len(addressModels))
+	for _, addressM := range addressModels {
+		addresses = append(addresses, toSubscriberAddressDomain(addressM))
+	}
+
+	return addresses, nil
 }
 
 // --- Mapper Functions ---
