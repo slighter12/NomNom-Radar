@@ -239,6 +239,9 @@ func LoadWithEnv[T any](currEnv string, configPath ...string) (*T, error) {
 		DecoderConfig: &mapstructure.DecoderConfig{
 			Result:           cfg,
 			WeaklyTypedInput: true,
+			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				mapstructure.StringToTimeDurationHookFunc(),
+			),
 			MatchName: func(mapKey, fieldName string) bool {
 				// Case-insensitive matching for env var overrides
 				return strings.EqualFold(mapKey, fieldName)

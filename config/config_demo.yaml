@@ -71,11 +71,23 @@ qrcode:
   baseUrl: "https://demo-app.com/subscribe"
 
 routing:
-  maxSnapDistanceKm: 0.5 # Maximum 500m for GPS coordinate snapping
-  defaultSpeedKmh: 30.0 # Default 30 km/h for duration estimation
-  dataPath: "./data/routing" # Path to CH graph data files
-  enabled: false # Disabled by default, use Haversine fallback
-  maxQueryRadiusKm: 10.0 # Maximum 10 km query radius
-  oneToManyWorkers: 20 # Concurrent workers for batch queries
-  preFilterRadiusMultiplier: 1.3 # Pre-filter using Haversine * 1.3
-  gridCellSizeKm: 1.0 # 1 km grid cells for spatial index
+  maxSnapDistanceKm: 0.5          # Maximum 500m for GPS coordinate snapping
+  defaultSpeedKmh: 30.0           # Default 30 km/h for duration estimation
+  dataPath: "./data/routing"      # Path to CH graph data files
+  enabled: false                  # Disabled by default, use Haversine fallback
+  maxQueryRadiusKm: 10.0          # Maximum 10 km query radius
+  oneToManyWorkers: 20            # Concurrent workers for batch queries
+  preFilterRadiusMultiplier: 1.3  # Pre-filter using Haversine * 1.3
+  gridCellSizeKm: 1.0             # 1 km grid cells for spatial index
+
+pubsub:
+  provider: "local"               # "local" for development, "google" for production
+  projectId: ""                   # Google Cloud project ID (for google provider)
+  topicId: ""                     # Pub/Sub topic ID (for google provider)
+  localEndpoint: "http://localhost:8081/push"  # Local worker endpoint (for local provider)
+
+pmtiles:
+  enabled: false                  # Enable PMTiles-based routing in geoworker
+  source: "http://localhost:8080/map.pmtiles"  # PMTiles source URL
+  roadLayer: "transportation"     # MVT road layer name
+  zoomLevel: 14                   # Zoom level for tile queries
