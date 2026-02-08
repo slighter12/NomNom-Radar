@@ -252,7 +252,7 @@ func LoadWithEnv[T any](currEnv string, configPath ...string) (*T, error) {
 }
 
 func New() (*Config, error) {
-	cfg, err := LoadWithEnv[Config]("config", "config", "../connfig", "../../config")
+	cfg, err := LoadWithEnv[Config]("config", "config", "../config", "../../config")
 	if err != nil {
 		return nil, err
 	}
@@ -273,14 +273,15 @@ func buildReplicasFromEnv() []postgres.ConnectionConfig {
 		prefix := "POSTGRES_REPLICAS_" + strconv.Itoa(i) + "_"
 
 		host := os.Getenv(prefix + "HOST")
-		if host == "" {
-			// No more replicas
+		port := os.Getenv(prefix + "PORT")
+		if host == "" || port == "" {
+			// No more replicas or incomplete configuration.
 			break
 		}
 
 		replica := postgres.ConnectionConfig{
 			Host:     host,
-			Port:     os.Getenv(prefix + "PORT"),
+			Port:     port,
 			UserName: os.Getenv(prefix + "USERNAME"),
 			Password: os.Getenv(prefix + "PASSWORD"),
 		}
