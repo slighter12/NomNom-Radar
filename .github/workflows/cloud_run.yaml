@@ -43,28 +43,27 @@ jobs:
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           echo "name=${{ env.REGISTRY }}/${OWNER}/${{ inputs.target }}:${{ inputs.tag }}" >> $GITHUB_OUTPUT
 
+      - name: Prepare service YAML
+        run: |
+          sed -i "s|IMAGE_PLACEHOLDER|${{ steps.image.outputs.name }}|g" \
+            deploy/cloud-run/${{ inputs.target }}.yaml
+
       - name: Deploy to Cloud Run
         id: deploy
-        uses: 'google-github-actions/deploy-cloudrun@v2'
-        with:
-          service: ${{ inputs.target }}
-          region: ${{ env.REGION }}
-          image: ${{ steps.image.outputs.name }}
-          env_vars: |
-            PMTILES_SOURCE=${{ secrets.PMTILES_SOURCE }}
-            POSTGRES_HOST=${{ secrets.POSTGRES_HOST }}
-            POSTGRES_PORT=${{ secrets.POSTGRES_PORT }}
-            POSTGRES_USER=${{ secrets.POSTGRES_USER }}
-            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-            POSTGRES_DATABASE=${{ secrets.POSTGRES_DATABASE }}
-            SECRETKEY_ACCESS=${{ secrets.SECRETKEY_ACCESS }}
-            SECRETKEY_REFRESH=${{ secrets.SECRETKEY_REFRESH }}
-            FIREBASE_PROJECTID=${{ secrets.FIREBASE_PROJECTID }}
-            PUBSUB_PROVIDER=${{ secrets.PUBSUB_PROVIDER }}
-            PUBSUB_PROJECTID=${{ secrets.PUBSUB_PROJECTID }}
-            PUBSUB_TOPICID=${{ secrets.PUBSUB_TOPICID }}
-          # radar: public API, geoworker: Pub/Sub only (requires IAM auth)
-          flags: ${{ inputs.target == 'radar' && '--allow-unauthenticated' || '' }}
+        run: |
+          gcloud run services replace deploy/cloud-run/${{ inputs.target }}.yaml \
+            --region=${{ env.REGION }}
+
+          # radar should allow unauthenticated access
+          if [ "${{ inputs.target }}" = "radar" ]; then
+            gcloud run services add-iam-policy-binding ${{ inputs.target }} \
+              --region=${{ env.REGION }} \
+              --member="allUsers" \
+              --role="roles/run.invoker"
+          fi
 
       - name: Show Output
-        run: echo ${{ steps.deploy.outputs.url }}
+        run: |
+          gcloud run services describe ${{ inputs.target }} \
+            --region=${{ env.REGION }} \
+            --format='value(status.url)'

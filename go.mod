@@ -3,9 +3,10 @@ module radar
 go 1.25.6
 
 require (
-	cloud.google.com/go/pubsub/v2 v2.3.0
+	cloud.google.com/go/pubsub/v2 v2.4.0
 	firebase.google.com/go/v4 v4.19.0
 	github.com/go-playground/validator/v10 v10.30.1
+	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/knadh/koanf/parsers/yaml v1.1.0
@@ -15,14 +16,14 @@ require (
 	github.com/labstack/echo/v4 v4.15.0
 	github.com/paulmach/orb v0.12.0
 	github.com/pkg/errors v0.9.1
-	github.com/protomaps/go-pmtiles v1.29.1
+	github.com/protomaps/go-pmtiles v1.30.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/slighter12/go-lib/database/postgres v1.0.0
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/fx v1.24.0
 	gocloud.dev v0.44.0
 	golang.org/x/crypto v0.47.0
-	google.golang.org/api v0.264.0
+	google.golang.org/api v0.265.0
 	gorm.io/gen v0.3.27
 	gorm.io/gorm v1.31.1
 	gorm.io/plugin/dbresolver v1.6.2
@@ -76,7 +77,6 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-sql-driver/mysql v1.9.3 // indirect
-	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
@@ -118,7 +118,7 @@ require (
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
-	go.mongodb.org/mongo-driver v1.17.8 // indirect
+	go.mongodb.org/mongo-driver v1.17.9 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.40.0 // indirect
