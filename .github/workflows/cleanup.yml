@@ -11,11 +11,14 @@ permissions:
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [radar, geoworker]
     steps:
       - name: Set variables
         run: |
-          echo "OWNER=${GITHUB_REPOSITORY_OWNER}" >> $GITHUB_ENV
-          echo "PACKAGE_NAME=$(echo ${GITHUB_REPOSITORY#*/} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "OWNER=$(echo ${GITHUB_REPOSITORY_OWNER} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "PACKAGE_NAME=${{ matrix.package }}" >> $GITHUB_ENV
 
       - name: Cleanup GHCR images
         env:

@@ -23,6 +23,8 @@ config.yaml
 # Routing data (managed via deployment, not git)
 data/routing/
 *.osm.pbf
+*.geojson
+*.pmtiles
 
 # Test binaries (built with `go test -c`)
 *.test

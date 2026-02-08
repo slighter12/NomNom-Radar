@@ -1,0 +1,71 @@
+name: Deploy to Cloud Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Deploy target'
+        required: true
+        type: choice
+        options:
+          - radar
+          - geoworker
+      tag:
+        description: 'Image tag (default: latest)'
+        required: false
+        default: 'latest'
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: asia-east1
+  REGISTRY: ghcr.io
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: 'read'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Google Auth
+        id: auth
+        uses: 'google-github-actions/auth@v2'
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+      - name: Set image name
+        id: image
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "name=${{ env.REGISTRY }}/${OWNER}/${{ inputs.target }}:${{ inputs.tag }}" >> $GITHUB_OUTPUT
+
+      - name: Prepare service YAML
+        run: |
+          # Build final YAML using kubectl's built-in kustomize
+          kubectl kustomize deploy/cloud-run/overlays/${{ inputs.target }} > /tmp/service.yaml
+          # Replace image placeholder
+          sed -i "s|IMAGE_PLACEHOLDER|${{ steps.image.outputs.name }}|g" /tmp/service.yaml
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        run: |
+          gcloud run services replace /tmp/service.yaml \
+            --region=${{ env.REGION }}
+
+          # radar should allow unauthenticated access
+          if [ "${{ inputs.target }}" = "radar" ]; then
+            gcloud run services add-iam-policy-binding ${{ inputs.target }} \
+              --region=${{ env.REGION }} \
+              --member="allUsers" \
+              --role="roles/run.invoker"
+          fi
+
+      - name: Show Output
+        run: |
+          gcloud run services describe ${{ inputs.target }} \
+            --region=${{ env.REGION }} \
+            --format='value(status.url)'
