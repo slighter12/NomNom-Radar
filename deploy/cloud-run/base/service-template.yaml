@@ -30,6 +30,10 @@ spec:
               memory: 256Mi
               cpu: "0.5"
           env:
+            # Force app server port to match Cloud Run container port.
+            - name: HTTP_PORT
+              value: "8080"
+
             # ========== Postgres Configuration ==========
             # Master connection
             - name: POSTGRES_MASTER_HOST
