@@ -4,11 +4,9 @@ on:
   push:
     branches:
       - main
-      - gcp_cloud_run
   pull_request:
     branches:
       - main
-      - gcp_cloud_run
   workflow_dispatch:
 
 env:
@@ -44,7 +42,7 @@ jobs:
   build-and-push:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/gcp_cloud_run')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: checks
     steps:
       - name: Checkout the repository
