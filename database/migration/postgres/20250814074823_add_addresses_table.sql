@@ -19,7 +19,7 @@ CREATE TABLE addresses (
     label TEXT NOT NULL,
     -- The full, human-readable street address.
     full_address TEXT NOT NULL,
-    
+
     -- Geographic coordinates for distance calculations.
     latitude DECIMAL(10, 8) NOT NULL,
     longitude DECIMAL(11, 8) NOT NULL,
@@ -29,10 +29,10 @@ CREATE TABLE addresses (
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    
+
     -- Ensure valid owner and coordinate constraints
     CHECK (
-        (user_profile_id IS NOT NULL)::int + 
+        (user_profile_id IS NOT NULL)::int +
         (merchant_profile_id IS NOT NULL)::int = 1
     ),
     CHECK (latitude BETWEEN -90 AND 90),
@@ -45,12 +45,12 @@ CREATE INDEX idx_addresses_user_profile ON addresses(user_profile_id) WHERE user
 CREATE INDEX idx_addresses_merchant_profile ON addresses(merchant_profile_id) WHERE merchant_profile_id IS NOT NULL;
 
 -- Partial unique indexes to enforce that each owner can have AT MOST ONE primary address.
-CREATE UNIQUE INDEX idx_addresses_user_primary 
-    ON addresses(user_profile_id) 
+CREATE UNIQUE INDEX idx_addresses_user_primary
+    ON addresses(user_profile_id)
     WHERE is_primary = TRUE AND user_profile_id IS NOT NULL;
 
-CREATE UNIQUE INDEX idx_addresses_merchant_primary 
-    ON addresses(merchant_profile_id) 
+CREATE UNIQUE INDEX idx_addresses_merchant_primary
+    ON addresses(merchant_profile_id)
     WHERE is_primary = TRUE AND merchant_profile_id IS NOT NULL;
 
 -- Step 4: Bind the updated_at trigger to the new table.

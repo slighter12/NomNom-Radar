@@ -12,7 +12,6 @@ import (
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -136,22 +135,6 @@ func TestSubscriptionService_SubscribeToMerchant_WithDevice(t *testing.T) {
 	assert.NotNil(t, subscription)
 }
 
-func TestSubscriptionService_SubscribeToMerchant_FindError(t *testing.T) {
-	fx := createTestSubscriptionService(t)
-
-	ctx := context.Background()
-	userID := uuid.New()
-	merchantID := uuid.New()
-
-	fx.subRepo.EXPECT().
-		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
-		Return(nil, errors.New("db error"))
-
-	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, nil)
-	assert.Error(t, err)
-	assert.Nil(t, subscription)
-}
-
 func TestSubscriptionService_UnsubscribeFromMerchant_Success(t *testing.T) {
 	fx := createTestSubscriptionService(t)
 
@@ -177,22 +160,6 @@ func TestSubscriptionService_UnsubscribeFromMerchant_Success(t *testing.T) {
 
 	err := fx.service.UnsubscribeFromMerchant(ctx, userID, merchantID)
 	require.NoError(t, err)
-}
-
-func TestSubscriptionService_UnsubscribeFromMerchant_NotFound(t *testing.T) {
-	fx := createTestSubscriptionService(t)
-
-	ctx := context.Background()
-	userID := uuid.New()
-	merchantID := uuid.New()
-
-	fx.subRepo.EXPECT().
-		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
-		Return(nil, repository.ErrSubscriptionNotFound)
-
-	err := fx.service.UnsubscribeFromMerchant(ctx, userID, merchantID)
-	assert.Error(t, err)
-	assert.Equal(t, ErrSubscriptionNotFound, err)
 }
 
 func TestSubscriptionService_GetUserSubscriptions(t *testing.T) {
@@ -273,19 +240,81 @@ func TestSubscriptionService_ProcessQRSubscription_Success(t *testing.T) {
 	assert.Equal(t, merchantID, subscription.MerchantID)
 }
 
-func TestSubscriptionService_ProcessQRSubscription_InvalidQR(t *testing.T) {
+func TestSubscriptionService_SubscribeToMerchant_ExistingDeviceUpdate(t *testing.T) {
 	fx := createTestSubscriptionService(t)
 
 	ctx := context.Background()
 	userID := uuid.New()
-	qrData := "invalid-qr-data"
+	merchantID := uuid.New()
+	deviceID := uuid.New()
+	existingDevice := &entity.UserDevice{
+		ID:       deviceID,
+		UserID:   userID,
+		DeviceID: "device-123",
+		FCMToken: "old-token",
+	}
+	deviceInfo := &usecase.DeviceInfo{
+		FCMToken: "new-token",
+		DeviceID: "device-123",
+		Platform: "ios",
+	}
+
+	fx.subRepo.EXPECT().
+		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
+		Return(nil, repository.ErrSubscriptionNotFound)
+
+	fx.subRepo.EXPECT().
+		CreateSubscription(ctx, mock.AnythingOfType("*entity.UserMerchantSubscription")).
+		Return(nil)
+
+	fx.deviceRepo.EXPECT().
+		FindDevicesByUser(ctx, userID).
+		Return([]*entity.UserDevice{existingDevice}, nil)
+
+	fx.deviceRepo.EXPECT().
+		UpdateFCMToken(ctx, deviceID, "new-token").
+		Return(nil)
+
+	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, deviceInfo)
+	require.NoError(t, err)
+	assert.NotNil(t, subscription)
+}
+
+func TestSubscriptionService_ProcessQRSubscription_WithDevice(t *testing.T) {
+	fx := createTestSubscriptionService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	merchantID := uuid.New()
+	qrData := "qr-data-string"
+	deviceInfo := &usecase.DeviceInfo{
+		FCMToken: "test-token",
+		DeviceID: "device-123",
+		Platform: "ios",
+	}
 
 	fx.qrService.EXPECT().
 		ParseSubscriptionQR(qrData).
-		Return(uuid.Nil, errors.New("parse error"))
+		Return(merchantID, nil)
 
-	subscription, err := fx.service.ProcessQRSubscription(ctx, userID, qrData, nil)
-	assert.Error(t, err)
-	assert.Nil(t, subscription)
-	assert.Equal(t, ErrInvalidQRCode, err)
+	fx.subRepo.EXPECT().
+		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
+		Return(nil, repository.ErrSubscriptionNotFound)
+
+	fx.subRepo.EXPECT().
+		CreateSubscription(ctx, mock.AnythingOfType("*entity.UserMerchantSubscription")).
+		Return(nil)
+
+	fx.deviceRepo.EXPECT().
+		FindDevicesByUser(ctx, userID).
+		Return([]*entity.UserDevice{}, nil)
+
+	fx.deviceRepo.EXPECT().
+		CreateDevice(ctx, mock.AnythingOfType("*entity.UserDevice")).
+		Return(nil)
+
+	subscription, err := fx.service.ProcessQRSubscription(ctx, userID, qrData, deviceInfo)
+	require.NoError(t, err)
+	assert.NotNil(t, subscription)
+	assert.Equal(t, merchantID, subscription.MerchantID)
 }

@@ -3,9 +3,12 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/env/v2"
 	"github.com/knadh/koanf/providers/file"
@@ -61,6 +64,12 @@ type Config struct {
 
 	// Routing configuration for the routing engine
 	Routing *RoutingConfig `json:"routing" yaml:"routing"`
+
+	// PubSub configuration for event publishing
+	PubSub *PubSubConfig `json:"pubsub" yaml:"pubsub"`
+
+	// PMTiles configuration for serverless routing
+	PMTiles *PMTilesConfig `json:"pmtiles" yaml:"pmtiles"`
 }
 
 type GoogleOAuthConfig struct {
@@ -87,7 +96,6 @@ type PasswordStrengthConfig struct {
 type Log struct {
 	Pretty       bool          `json:"pretty" yaml:"pretty"`
 	Level        string        `json:"level" yaml:"level"`
-	Path         string        `json:"path" yaml:"path"`
 	MaxAge       time.Duration `json:"maxAge" yaml:"maxAge"`
 	RotationTime time.Duration `json:"rotationTime" yaml:"rotationTime"`
 }
@@ -145,6 +153,36 @@ type RoutingConfig struct {
 	GridCellSizeKm float64 `json:"gridCellSizeKm" yaml:"gridCellSizeKm"`
 }
 
+// PubSubConfig defines Pub/Sub configuration for event publishing
+type PubSubConfig struct {
+	// Provider type: "local" for local HTTP or "google" for Google Pub/Sub
+	Provider string `json:"provider" yaml:"provider"`
+
+	// Google Cloud project ID (for google provider)
+	ProjectID string `json:"projectId" yaml:"projectId"`
+
+	// Pub/Sub topic ID (for google provider)
+	TopicID string `json:"topicId" yaml:"topicId"`
+
+	// Local HTTP endpoint for development (for local provider)
+	LocalEndpoint string `json:"localEndpoint" yaml:"localEndpoint"`
+}
+
+// PMTilesConfig defines PMTiles routing configuration
+type PMTilesConfig struct {
+	// Enable PMTiles-based routing
+	Enabled bool `json:"enabled" yaml:"enabled"`
+
+	// PMTiles source URL (local file path, HTTP URL, or GCS URL)
+	Source string `json:"source" yaml:"source"`
+
+	// Road layer name in the MVT tiles
+	RoadLayer string `json:"roadLayer" yaml:"roadLayer"`
+
+	// Zoom level for tile queries
+	ZoomLevel int `json:"zoomLevel" yaml:"zoomLevel"`
+}
+
 // LoadWithEnv loads .yaml files through koanf.
 func LoadWithEnv[T any](currEnv string, configPath ...string) (*T, error) {
 	cfg := new(T)
@@ -185,11 +223,14 @@ func LoadWithEnv[T any](currEnv string, configPath ...string) (*T, error) {
 		return nil, errors.Wrapf(err, "read %s config failed", currEnv)
 	}
 
+	existingConfigMap := koanfInstance.Raw()
+
 	// Load environment variables
 	if err := koanfInstance.Load(env.Provider(".", env.Opt{
 		TransformFunc: func(k, v string) (string, any) {
-			// Convert ENV_VAR_NAME to env.var.name
-			key := strings.ReplaceAll(strings.ToLower(k), "_", ".")
+			// Convert ENV_VAR_NAME to path and align each segment with existing YAML keys.
+			// Example: POSTGRES_SSLMODE -> postgres.sslMode (not postgres.sslmode)
+			key := canonicalizeEnvKey(k, existingConfigMap)
 
 			return key, v
 		},
@@ -197,8 +238,20 @@ func LoadWithEnv[T any](currEnv string, configPath ...string) (*T, error) {
 		return nil, errors.Wrap(err, "load env variables failed")
 	}
 
-	// Unmarshal into the config struct
-	if err := koanfInstance.Unmarshal("", cfg); err != nil {
+	// Unmarshal into the config struct (case-insensitive to match env vars)
+	if err := koanfInstance.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
+		DecoderConfig: &mapstructure.DecoderConfig{
+			Result:           cfg,
+			WeaklyTypedInput: true,
+			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				mapstructure.StringToTimeDurationHookFunc(),
+			),
+			MatchName: func(mapKey, fieldName string) bool {
+				// Case-insensitive matching for env var overrides
+				return strings.EqualFold(mapKey, fieldName)
+			},
+		},
+	}); err != nil {
 		return nil, errors.Wrapf(err, "unmarshal %s config failed", currEnv)
 	}
 
@@ -206,5 +259,97 @@ func LoadWithEnv[T any](currEnv string, configPath ...string) (*T, error) {
 }
 
 func New() (*Config, error) {
-	return LoadWithEnv[Config]("config", "config", "../connfig", "../../config")
+	cfg, err := LoadWithEnv[Config]("config", "config", "../config", "../../config")
+	if err != nil {
+		return nil, err
+	}
+
+	// Build replicas from environment variables (POSTGRES_REPLICAS_0_HOST, POSTGRES_REPLICAS_0_PORT, etc.)
+	cfg.Postgres.Replicas = buildReplicasFromEnv()
+
+	return cfg, nil
+}
+
+func canonicalizeEnvKey(rawKey string, existing map[string]any) string {
+	segments := strings.Split(strings.ToLower(rawKey), "_")
+	canonical := make([]string, 0, len(segments))
+	current := existing
+
+	for _, segment := range segments {
+		if segment == "" {
+			continue
+		}
+
+		if matched, next, ok := findExistingSegment(current, segment); ok {
+			canonical = append(canonical, matched)
+			current = next
+		} else {
+			canonical = append(canonical, segment)
+			current = nil
+		}
+	}
+
+	return strings.Join(canonical, ".")
+}
+
+func findExistingSegment(current map[string]any, segment string) (matched string, next map[string]any, ok bool) {
+	if len(current) == 0 {
+		return "", nil, false
+	}
+
+	needle := normalizeToken(segment)
+	for key, value := range current {
+		if normalizeToken(key) != needle {
+			continue
+		}
+
+		child, _ := value.(map[string]any)
+
+		return key, child, true
+	}
+
+	return "", nil, false
+}
+
+func normalizeToken(s string) string {
+	var normalized strings.Builder
+	normalized.Grow(len(s))
+
+	for _, r := range s {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			continue
+		}
+		normalized.WriteRune(unicode.ToLower(r))
+	}
+
+	return normalized.String()
+}
+
+// buildReplicasFromEnv builds the replicas slice from environment variables.
+// Environment variable format: POSTGRES_REPLICAS_{index}_{field}
+// Example: POSTGRES_REPLICAS_0_HOST, POSTGRES_REPLICAS_0_PORT, POSTGRES_REPLICAS_0_USERNAME, POSTGRES_REPLICAS_0_PASSWORD
+func buildReplicasFromEnv() []postgres.ConnectionConfig {
+	var replicas []postgres.ConnectionConfig
+
+	for i := 0; ; i++ {
+		prefix := "POSTGRES_REPLICAS_" + strconv.Itoa(i) + "_"
+
+		host := os.Getenv(prefix + "HOST")
+		port := os.Getenv(prefix + "PORT")
+		if host == "" || port == "" {
+			// No more replicas or incomplete configuration.
+			break
+		}
+
+		replica := postgres.ConnectionConfig{
+			Host:     host,
+			Port:     port,
+			UserName: os.Getenv(prefix + "USERNAME"),
+			Password: os.Getenv(prefix + "PASSWORD"),
+		}
+
+		replicas = append(replicas, replica)
+	}
+
+	return replicas
 }

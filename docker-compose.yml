@@ -91,6 +91,31 @@ services:
     networks:
       - radar-network
 
+  # Geo Worker for async notification processing
+  geoworker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: geoworker
+    container_name: radar-geoworker
+    ports:
+      - "8081:8081"
+    environment:
+      - PUBSUB_PROVIDER=local
+      - PMTILES_SOURCE=/app/data/map.pmtiles
+      - PMTILES_ENABLED=true
+      - PMTILES_ROADLAYER=transportation
+      - PMTILES_ZOOMLEVEL=14
+    volumes:
+      - ./data/pmtiles:/app/data
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+    networks:
+      - radar-network
+    profiles:
+      - dev
+
 volumes:
   postgres_master_data:
     driver: local

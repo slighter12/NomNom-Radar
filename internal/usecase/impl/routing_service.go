@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"radar/config"
+	deliverycontext "radar/internal/delivery/context"
 	"radar/internal/infra/routing/ch"
 	"radar/internal/usecase"
 
@@ -76,13 +77,13 @@ func NewRoutingService(params RoutingServiceParams) usecase.RoutingUsecase {
 		// Try to load routing data
 		if err := svc.engine.LoadData(cfg.DataPath); err != nil {
 			logger.Warn("Failed to load CH routing data, using Haversine fallback",
-				"dataPath", cfg.DataPath,
-				"error", err,
+				slog.String("dataPath", cfg.DataPath),
+				slog.Any("error", err),
 			)
 			svc.engine = nil
 		} else {
 			logger.Info("CH routing engine loaded successfully",
-				"dataPath", cfg.DataPath,
+				slog.String("dataPath", cfg.DataPath),
 			)
 		}
 	} else {
@@ -90,6 +91,11 @@ func NewRoutingService(params RoutingServiceParams) usecase.RoutingUsecase {
 	}
 
 	return svc
+}
+
+// log returns a request-scoped logger if available, otherwise falls back to the service's logger.
+func (s *routingService) log(ctx context.Context) *slog.Logger {
+	return deliverycontext.GetLoggerOrDefault(ctx, s.logger)
 }
 
 // buildEngineConfig creates a CH engine config with sensible defaults
@@ -172,7 +178,7 @@ func (s *routingService) oneToManyCH(ctx context.Context, source usecase.Coordin
 	chResults, err := s.engine.OneToMany(ctx, chSource, chTargets)
 	if err != nil {
 		// Fallback to Haversine on CH engine error
-		s.logger.Warn("CH engine OneToMany failed, falling back to Haversine", "error", err)
+		s.log(ctx).Warn("CH engine OneToMany failed, falling back to Haversine", slog.Any("error", err))
 
 		return s.oneToManyHaversine(ctx, source, targets)
 	}
@@ -268,7 +274,7 @@ func (s *routingService) CalculateDistance(ctx context.Context, source, target u
 		chResult, chErr := s.engine.ShortestPath(ctx, chSource, chTarget)
 		if chErr != nil {
 			// Fallback to Haversine on error (log but don't fail)
-			s.logger.Warn("CH ShortestPath failed, using Haversine fallback", "error", chErr)
+			s.log(ctx).Warn("CH ShortestPath failed, using Haversine fallback", slog.Any("error", chErr))
 			result := s.calculateHaversineDistance(source, target)
 
 			return &result, nil

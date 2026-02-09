@@ -20,13 +20,10 @@ patches:
         value: "10"
       - op: replace
         path: /spec/template/spec/containerConcurrency
-        value: 80
+        value: 200
       - op: replace
         path: /spec/template/spec/timeoutSeconds
         value: 60
       - op: replace
         path: /spec/template/spec/containers/0/resources/limits/memory
-        value: 256Mi
-      - op: replace
-        path: /spec/template/spec/containers/0/resources/limits/cpu
-        value: "0.5"
+        value: 1Gi

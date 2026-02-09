@@ -96,9 +96,10 @@ linters:
         - e *echo.Echo
         - lc fx.Lifecycle
     wrapcheck:
-      extra-ignore-sigs:
-        - .JSON(
-        - .WrapMessage(
+      ignore-package-globs:
+        - github.com/labstack/echo/v4
+        - radar/internal/delivery/api/response
+        - radar/internal/domain/errors
   exclusions:
     generated: lax
     presets:
@@ -129,7 +130,7 @@ linters:
         path: internal/delivery/http/router/.*\.go
       - linters:
           - wrapcheck
-        path: internal/delivery/http/validator/.*\.go
+        path: internal/delivery/api/validator/.*\.go
       - linters:
           - lll
         source: "^//go:generate "

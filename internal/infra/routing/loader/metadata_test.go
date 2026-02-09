@@ -60,7 +60,7 @@ func TestLoadMetadata_NotFound(t *testing.T) {
 
 	_, err := LoadMetadata(tmpDir)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "not found")
+	assert.Contains(t, err.Error(), "no such file or directory")
 }
 
 func TestLoadMetadata_InvalidJSON(t *testing.T) {
@@ -71,7 +71,7 @@ func TestLoadMetadata_InvalidJSON(t *testing.T) {
 
 	_, err = LoadMetadata(tmpDir)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "parse")
+	assert.Contains(t, err.Error(), "invalid character")
 }
 
 func TestRoutingMetadata_Validate(t *testing.T) {

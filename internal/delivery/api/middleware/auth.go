@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"radar/config"
-	"radar/internal/delivery/http/response"
+	"radar/internal/delivery/api/response"
 	"radar/internal/domain/entity"
 	"radar/internal/domain/service"
 

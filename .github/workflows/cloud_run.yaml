@@ -23,7 +23,7 @@ on:
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: asia-east1
-  REGISTRY: ghcr.io
+  REGISTRY: asia-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/radar
 
 jobs:
   deploy:
@@ -44,6 +44,8 @@ jobs:
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
 
       - name: Run Database Migration
         if: ${{ inputs.run_migration }}
@@ -52,11 +54,11 @@ jobs:
           go install github.com/pressly/goose/v3/cmd/goose@latest
 
           # Fetch database credentials from Secret Manager
-          PG_HOST=$(gcloud secrets versions access latest --secret="postgres-master-host")
-          PG_PORT=$(gcloud secrets versions access latest --secret="postgres-master-port")
-          PG_USER=$(gcloud secrets versions access latest --secret="postgres-master-username")
-          PG_PASS=$(gcloud secrets versions access latest --secret="postgres-master-password")
-          PG_DB=$(gcloud secrets versions access latest --secret="postgres-database")
+          PG_HOST=$(gcloud secrets versions access latest --secret="postgres-master-host" --project="${{ env.PROJECT_ID }}")
+          PG_PORT=$(gcloud secrets versions access latest --secret="postgres-master-port" --project="${{ env.PROJECT_ID }}")
+          PG_USER=$(gcloud secrets versions access latest --secret="postgres-master-username" --project="${{ env.PROJECT_ID }}")
+          PG_PASS=$(gcloud secrets versions access latest --secret="postgres-master-password" --project="${{ env.PROJECT_ID }}")
+          PG_DB=$(gcloud secrets versions access latest --secret="postgres-database" --project="${{ env.PROJECT_ID }}")
 
           # Build connection string and run migration
           PG_URI="postgres://${PG_USER}:${PG_PASS}@${PG_HOST}:${PG_PORT}/${PG_DB}?sslmode=require"
@@ -74,16 +76,20 @@ jobs:
           kubectl kustomize deploy/cloud-run/overlays/${{ inputs.target }} > /tmp/service.yaml
           # Replace image placeholder
           sed -i "s|IMAGE_PLACEHOLDER|${{ steps.image.outputs.name }}|g" /tmp/service.yaml
+          # Replace service account placeholder
+          sed -i "s|SERVICE_ACCOUNT_PLACEHOLDER|${{ secrets.GCP_SA_EMAIL }}|g" /tmp/service.yaml
 
       - name: Deploy to Cloud Run
         id: deploy
         run: |
           gcloud run services replace /tmp/service.yaml \
+            --project=${{ env.PROJECT_ID }} \
             --region=${{ env.REGION }}
 
           # radar should allow unauthenticated access
           if [ "${{ inputs.target }}" = "radar" ]; then
             gcloud run services add-iam-policy-binding ${{ inputs.target }} \
+              --project=${{ env.PROJECT_ID }} \
               --region=${{ env.REGION }} \
               --member="allUsers" \
               --role="roles/run.invoker"
@@ -92,5 +98,6 @@ jobs:
       - name: Show Output
         run: |
           gcloud run services describe ${{ inputs.target }} \
+            --project=${{ env.PROJECT_ID }} \
             --region=${{ env.REGION }} \
             --format='value(status.url)'
