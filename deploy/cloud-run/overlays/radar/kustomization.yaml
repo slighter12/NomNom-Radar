@@ -15,15 +15,18 @@ patches:
       - op: replace
         path: /metadata/annotations/run.googleapis.com~1ingress
         value: all
+      - op: add
+        path: /metadata/annotations/run.googleapis.com~1invoker-iam-disabled
+        value: "true"
       - op: replace
         path: /spec/template/metadata/annotations/autoscaling.knative.dev~1maxScale
         value: "10"
       - op: replace
         path: /spec/template/spec/containerConcurrency
-        value: 200
+        value: 500
       - op: replace
         path: /spec/template/spec/timeoutSeconds
         value: 60
       - op: replace
         path: /spec/template/spec/containers/0/resources/limits/memory
-        value: 1Gi
+        value: 512Mi

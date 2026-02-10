@@ -47,12 +47,14 @@ jobs:
     steps:
       - name: Checkout the repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set environment variables
         id: set-vars
         run: |
-          if git describe --tags --abbrev=0 2>/dev/null; then
-            echo "TAG=$(git describe --tags --abbrev=0)" >> $GITHUB_OUTPUT
+          if TAG=$(git describe --tags --exact-match 2>/dev/null); then
+            echo "TAG=$TAG" >> $GITHUB_OUTPUT
           else
             echo "TAG=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
           fi
@@ -67,21 +69,57 @@ jobs:
           cache-dependency-path: go.mod
           check-latest: true
 
+      - name: Detect changed paths
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          base: ${{ github.event.before }}
+          ref: ${{ github.sha }}
+          filters: |
+            shared:
+              - 'Dockerfile'
+              - '.dockerignore'
+              - 'go.mod'
+              - 'go.sum'
+              - 'config/**'
+              - 'internal/**'
+            radar:
+              - 'cmd/radar/**'
+            geoworker:
+              - 'cmd/geoworker/**'
+
+      - name: Compute build flags
+        id: build-flags
+        run: |
+          SHARED="${{ steps.changes.outputs.shared }}"
+          echo "any=$([ "$SHARED" = 'true' ] || [ '${{ steps.changes.outputs.radar }}' = 'true' ] || [ '${{ steps.changes.outputs.geoworker }}' = 'true' ] && echo true || echo false)" >> $GITHUB_OUTPUT
+          echo "radar=$([ "$SHARED" = 'true' ] || [ '${{ steps.changes.outputs.radar }}' = 'true' ] && echo true || echo false)" >> $GITHUB_OUTPUT
+          echo "geoworker=$([ "$SHARED" = 'true' ] || [ '${{ steps.changes.outputs.geoworker }}' = 'true' ] && echo true || echo false)" >> $GITHUB_OUTPUT
+
+      - name: Skip build (no image-impacting changes)
+        if: steps.build-flags.outputs.any != 'true'
+        run: echo "No image-impacting changes detected. Skipping Docker builds."
+
       - name: Set up Docker Buildx
+        if: steps.build-flags.outputs.any == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Google Auth
+        if: steps.build-flags.outputs.any == 'true'
         uses: google-github-actions/auth@v2
         with:
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
       - name: Set up Cloud SDK
+        if: steps.build-flags.outputs.any == 'true'
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Configure Docker auth for Artifact Registry
+        if: steps.build-flags.outputs.any == 'true'
         run: gcloud auth configure-docker asia-east1-docker.pkg.dev --quiet
 
       - name: Build and push Radar image
+        if: steps.build-flags.outputs.radar == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -104,6 +142,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=radar-${{ steps.setup-go.outputs.go-version }}
 
       - name: Build and push Geoworker image
+        if: steps.build-flags.outputs.geoworker == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .

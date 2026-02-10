@@ -16,6 +16,7 @@ LICENSE
 *.test
 *.out
 go.work
+*_test.go
 
 # IDE
 .vscode/
