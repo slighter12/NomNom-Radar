@@ -93,7 +93,7 @@ func (l *gormSlogLogger) Trace(ctx context.Context, begin time.Time, sqlAndRowsF
 	if l.shouldLogSlow(elapsed) {
 		baseAttrs := l.buildQueryAttrs(sqlAndRowsFn, elapsed)
 		attrs := slices.Clone(baseAttrs)
-		attrs = append(attrs, slog.Duration("slowThreshold", l.slowThreshold))
+		attrs = append(attrs, slog.Duration("slow_threshold", l.slowThreshold))
 		l.logger.LogAttrs(ctx, slog.LevelWarn, "GORM slow query", attrs...)
 
 		return

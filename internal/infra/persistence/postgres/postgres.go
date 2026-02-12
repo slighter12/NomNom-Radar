@@ -93,15 +93,15 @@ func monitorDBPool(ctx context.Context, logger *slog.Logger, sqlDB *sql.DB, inte
 
 			if waitDelta > 0 {
 				attrs := []slog.Attr{
-					slog.Int64("waitCountDelta", waitDelta),
-					slog.Duration("waitDurationDelta", waitDurationDelta),
-					slog.Duration("avgWait", waitDurationDelta/time.Duration(waitDelta)),
-					slog.Int("maxOpenConns", cur.MaxOpenConnections),
-					slog.Int("openConns", cur.OpenConnections),
-					slog.Int("inUseConns", cur.InUse),
-					slog.Int("idleConns", cur.Idle),
-					slog.Int64("waitCountTotal", cur.WaitCount),
-					slog.Duration("waitDurationTotal", cur.WaitDuration),
+					slog.Int64("wait_count_delta", waitDelta),
+					slog.Duration("wait_duration_delta", waitDurationDelta),
+					slog.Duration("avg_wait", waitDurationDelta/time.Duration(waitDelta)),
+					slog.Int("max_open_conns", cur.MaxOpenConnections),
+					slog.Int("open_conns", cur.OpenConnections),
+					slog.Int("in_use_conns", cur.InUse),
+					slog.Int("idle_conns", cur.Idle),
+					slog.Int64("wait_count_total", cur.WaitCount),
+					slog.Duration("wait_duration_total", cur.WaitDuration),
 				}
 				if waitDurationDelta >= dbPoolWarnDurationThreshold {
 					logger.LogAttrs(ctx, slog.LevelWarn, "Postgres pool wait detected", attrs...)

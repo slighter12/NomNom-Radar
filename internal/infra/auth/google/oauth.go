@@ -84,7 +84,7 @@ func (s *OAuthService) VerifyIDToken(ctx context.Context, idToken string) (*serv
 	}
 
 	s.log(ctx).Info("Google ID token verified successfully",
-		slog.String("userID", oauthUser.ID),
+		slog.String("user_id", oauthUser.ID),
 		slog.String("email", oauthUser.Email))
 
 	return oauthUser, nil

@@ -146,7 +146,7 @@ func (h *PushHandler) HandlePush(c echo.Context) error {
 	requestID := h.extractRequestID(ctx, &pushMsg, &event)
 
 	// Create request-scoped logger with requestID
-	reqLogger := h.logger.With(slog.String("requestID", requestID))
+	reqLogger := h.logger.With(slog.String("request_id", requestID))
 
 	// Update context with requestID and logger
 	ctx = deliverycontext.WithRequestID(ctx, requestID)

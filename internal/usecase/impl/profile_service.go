@@ -42,7 +42,7 @@ func (srv *profileService) log(ctx context.Context) *slog.Logger {
 
 // GetProfile retrieves the complete user profile including role-specific data.
 func (srv *profileService) GetProfile(ctx context.Context, userID uuid.UUID) (*entity.User, error) {
-	srv.log(ctx).Debug("Getting user profile", slog.Any("userID", userID))
+	srv.log(ctx).Debug("Getting user profile", slog.Any("user_id", userID))
 
 	var user *entity.User
 
@@ -71,7 +71,7 @@ func (srv *profileService) GetProfile(ctx context.Context, userID uuid.UUID) (*e
 
 // UpdateUserProfile updates the user profile data.
 func (srv *profileService) UpdateUserProfile(ctx context.Context, userID uuid.UUID, input *usecase.UpdateUserProfileInput) error {
-	srv.log(ctx).Info("Updating user profile", slog.Any("userID", userID))
+	srv.log(ctx).Info("Updating user profile", slog.Any("user_id", userID))
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
 		userRepo := repoFactory.UserRepo()
@@ -113,7 +113,7 @@ func (srv *profileService) UpdateUserProfile(ctx context.Context, userID uuid.UU
 
 // UpdateMerchantProfile updates the merchant profile data.
 func (srv *profileService) UpdateMerchantProfile(ctx context.Context, userID uuid.UUID, input *usecase.UpdateMerchantProfileInput) error {
-	srv.log(ctx).Info("Updating merchant profile", slog.Any("userID", userID))
+	srv.log(ctx).Info("Updating merchant profile", slog.Any("user_id", userID))
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
 		userRepo := repoFactory.UserRepo()
@@ -161,7 +161,7 @@ func (srv *profileService) UpdateMerchantProfile(ctx context.Context, userID uui
 
 // SwitchToMerchant converts a regular user to a merchant by creating a merchant profile.
 func (srv *profileService) SwitchToMerchant(ctx context.Context, userID uuid.UUID, input *usecase.SwitchToMerchantInput) error {
-	srv.log(ctx).Info("Switching user to merchant", slog.Any("userID", userID))
+	srv.log(ctx).Info("Switching user to merchant", slog.Any("user_id", userID))
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
 		userRepo := repoFactory.UserRepo()
@@ -200,14 +200,14 @@ func (srv *profileService) SwitchToMerchant(ctx context.Context, userID uuid.UUI
 
 		return errors.Wrap(err, "failed to switch user to merchant")
 	}
-	srv.log(ctx).Debug("user switched to merchant", slog.Any("userID", userID))
+	srv.log(ctx).Debug("user switched to merchant", slog.Any("user_id", userID))
 
 	return nil
 }
 
 // GetUserRole returns the roles associated with a user.
 func (srv *profileService) GetUserRole(ctx context.Context, userID uuid.UUID) ([]string, error) {
-	srv.log(ctx).Debug("Getting user roles", slog.Any("userID", userID))
+	srv.log(ctx).Debug("Getting user roles", slog.Any("user_id", userID))
 
 	var roles entity.Roles
 

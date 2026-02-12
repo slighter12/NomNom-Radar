@@ -39,7 +39,7 @@ func (m *RequestIDMiddleware) Process(next echo.HandlerFunc) echo.HandlerFunc {
 		c.Response().Header().Set(deliverycontext.HeaderXRequestID, requestID)
 
 		// Create a child logger with requestID
-		reqLogger := m.logger.With(slog.String("requestID", requestID))
+		reqLogger := m.logger.With(slog.String("request_id", requestID))
 
 		// Store requestID and logger in context.Context for service layer use
 		ctx := c.Request().Context()

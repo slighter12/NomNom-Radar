@@ -48,7 +48,7 @@ func (m *ErrorMiddleware) HandleHTTPError(err error, c echo.Context) {
 	// Default to internal error, log the error but return a generic message (do not expose internal details)
 	m.logger.Error("Unhandled error",
 		slog.Any("error", err),
-		slog.String("requestID", deliverycontext.GetRequestID(c)),
+		slog.String("request_id", deliverycontext.GetRequestID(c)),
 		slog.String("path", c.Request().URL.Path),
 		slog.String("method", c.Request().Method),
 	)
