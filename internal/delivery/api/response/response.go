@@ -5,9 +5,9 @@ import (
 
 	deliverycontext "radar/internal/delivery/context"
 	domainerrors "radar/internal/domain/errors"
+	"radar/internal/errors"
 
 	"github.com/labstack/echo/v4"
-	"github.com/pkg/errors"
 )
 
 // SuccessResponse defines the structure for successful responses
@@ -105,10 +105,9 @@ func InternalServerError(c echo.Context, errorCode string, message string) error
 
 // HandleAppError handles application errors, converting domain errors to appropriate HTTP responses
 func HandleAppError(c echo.Context, err error) error {
-	var appErr domainerrors.AppError
-	if errors.As(err, &appErr) {
+	if appErr, ok := errors.AsType[domainerrors.AppError](err); ok {
 		return Error(c, appErr.HTTPCode(), appErr.ErrorCode(), appErr.Message(), nil)
 	}
 
-	return errors.WithStack(err)
+	return errors.Wrap(err, "internal server error")
 }

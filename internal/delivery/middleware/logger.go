@@ -53,13 +53,13 @@ func (m *LoggerMiddleware) logRequest(c echo.Context, start time.Time, err error
 
 	// Prepare log fields
 	fields := []slog.Attr{
-		slog.String("request_id", deliverycontext.GetRequestID(c)),
+		slog.String("requestID", deliverycontext.GetRequestID(c)),
 		slog.String("method", req.Method),
-		slog.String("uri", req.URL.Path),
+		slog.String("path", req.URL.Path),
 		slog.Int("status", res.Status),
 		slog.Duration("latency", latency),
-		slog.String("remote_ip", c.RealIP()),
-		slog.String("user_agent", req.UserAgent()),
+		slog.String("remoteIP", c.RealIP()),
+		slog.String("userAgent", req.UserAgent()),
 		slog.String("time", start.Format(time.RFC3339)),
 	}
 

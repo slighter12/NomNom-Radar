@@ -17,11 +17,11 @@ import (
 	"radar/internal/domain/entity"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
+	"radar/internal/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/pkg/errors"
 	"go.uber.org/fx"
 	"google.golang.org/api/idtoken"
 )
@@ -57,9 +57,9 @@ func newRetryableError(err error) error {
 
 // isRetryableError checks if an error is retryable
 func isRetryableError(err error) bool {
-	var re *retryableError
+	_, ok := errors.AsType[*retryableError](err)
 
-	return errors.As(err, &re)
+	return ok
 }
 
 // PushHandler handles Pub/Sub push messages for geo processing
@@ -141,14 +141,14 @@ func (h *PushHandler) HandlePush(c echo.Context) error {
 		return c.NoContent(http.StatusBadRequest)
 	}
 
-	// Extract request_id for distributed tracing
+	// Extract request ID for distributed tracing
 	// Priority: message attributes > event field > existing context
 	requestID := h.extractRequestID(ctx, &pushMsg, &event)
 
-	// Create request-scoped logger with request_id
-	reqLogger := h.logger.With(slog.String("request_id", requestID))
+	// Create request-scoped logger with requestID
+	reqLogger := h.logger.With(slog.String("requestID", requestID))
 
-	// Update context with request_id and logger
+	// Update context with requestID and logger
 	ctx = deliverycontext.WithRequestID(ctx, requestID)
 	ctx = deliverycontext.WithLogger(ctx, reqLogger)
 
@@ -181,9 +181,9 @@ func (h *PushHandler) HandlePush(c echo.Context) error {
 	return c.NoContent(http.StatusOK)
 }
 
-// extractRequestID extracts request_id from message attributes, event, or generates a new one
+// extractRequestID extracts request ID from message attributes, event, or generates a new one
 func (h *PushHandler) extractRequestID(ctx context.Context, pushMsg *PubSubMessage, event *service.NotificationEvent) string {
-	// 1. Try message attributes (from Pub/Sub)
+	// 1. Try message attribute request_id (from Pub/Sub)
 	if requestID, ok := pushMsg.Message.Attributes["request_id"]; ok && requestID != "" {
 		return requestID
 	}

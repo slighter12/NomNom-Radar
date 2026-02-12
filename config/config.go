@@ -80,7 +80,8 @@ type GoogleOAuthConfig struct {
 
 // AuthConfig defines authentication-related configuration
 type AuthConfig struct {
-	BcryptCost int `json:"bcryptCost" yaml:"bcryptCost"`
+	BcryptCost        int `json:"bcryptCost" yaml:"bcryptCost"`
+	MaxActiveSessions int `json:"maxActiveSessions" yaml:"maxActiveSessions"`
 }
 
 // PasswordStrengthConfig defines password strength requirements
@@ -94,10 +95,8 @@ type PasswordStrengthConfig struct {
 }
 
 type Log struct {
-	Pretty       bool          `json:"pretty" yaml:"pretty"`
-	Level        string        `json:"level" yaml:"level"`
-	MaxAge       time.Duration `json:"maxAge" yaml:"maxAge"`
-	RotationTime time.Duration `json:"rotationTime" yaml:"rotationTime"`
+	Pretty bool   `json:"pretty" yaml:"pretty"`
+	Level  string `json:"level" yaml:"level"`
 }
 
 // TestRoutesConfig defines configuration for testing endpoints

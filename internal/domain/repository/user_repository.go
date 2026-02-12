@@ -6,9 +6,9 @@ import (
 	"context"
 
 	"radar/internal/domain/entity"
+	"radar/internal/errors"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 )
 
 // ErrUserNotFound is a domain-specific error returned when a user is not found.
@@ -19,6 +19,9 @@ var ErrUserNotFound = errors.New("user not found")
 type UserRepository interface {
 	// FindByID retrieves a single user by their unique ID.
 	FindByID(ctx context.Context, id uuid.UUID) (*entity.User, error)
+
+	// AcquireSessionMutex locks the user row to serialize per-user session limit checks.
+	AcquireSessionMutex(ctx context.Context, id uuid.UUID) error
 
 	// FindByEmail retrieves a single user by their email address.
 	FindByEmail(ctx context.Context, email string) (*entity.User, error)

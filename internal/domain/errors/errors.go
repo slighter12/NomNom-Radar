@@ -3,7 +3,7 @@ package errors
 import (
 	"net/http"
 
-	"github.com/pkg/errors"
+	"radar/internal/errors"
 )
 
 // AppError defines the interface for application-specific errors

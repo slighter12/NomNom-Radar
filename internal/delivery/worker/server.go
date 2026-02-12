@@ -12,10 +12,10 @@ import (
 	"radar/internal/delivery/middleware"
 	"radar/internal/delivery/worker/handler"
 	"radar/internal/domain/lifecycle"
+	"radar/internal/errors"
 
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
-	"github.com/pkg/errors"
 	"go.uber.org/fx"
 )
 

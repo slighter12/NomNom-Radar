@@ -32,7 +32,7 @@ Follow these instructions to get a local copy up and running for development and
 
 ### Prerequisites
 
-* [Go](https://go.dev/doc/install) (e.g., v1.25 or later)
+* [Go](https://go.dev/doc/install) (e.g., v1.26 or later)
 * [Docker](https://www.docker.com/) and [Docker Compose](https://docs.docker.com/compose/)
 * A [Firebase](https://firebase.google.com/) project for push notifications.
 
