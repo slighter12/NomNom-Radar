@@ -5,8 +5,6 @@ env:
   log:
     pretty: true
     level: "info"
-    maxAge: 168h
-    rotationTime: 24h
 
 http:
   port: 4433
@@ -43,6 +41,7 @@ googleOAuth:
 
 auth:
   bcryptCost: 12
+  maxActiveSessions: 20
 
 passwordStrength:
   minLength: 8

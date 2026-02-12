@@ -2,9 +2,8 @@ package impl
 
 import (
 	"context"
-	"io"
-	"log/slog"
 	"testing"
+	"time"
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
@@ -41,7 +40,7 @@ func createTestUserService(t *testing.T) *userServiceFixtures {
 	hasher := mockSvc.NewMockPasswordHasher(t)
 	tokenService := mockSvc.NewMockTokenService(t)
 	googleAuthService := mockSvc.NewMockOAuthAuthService(t)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := newDiscardLogger()
 
 	service := NewUserService(UserServiceParams{
 		TxManager:         txManager,
@@ -51,6 +50,7 @@ func createTestUserService(t *testing.T) *userServiceFixtures {
 		Hasher:            hasher,
 		TokenService:      tokenService,
 		GoogleAuthService: googleAuthService,
+		Config:            newTestConfig(0),
 		Logger:            logger,
 	})
 
@@ -157,4 +157,148 @@ func TestUserService_RegisterUser_InvalidCredentials(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, output)
 	assert.True(t, errors.Is(err, domainerrors.ErrInvalidCredentials))
+}
+
+func TestUserService_Login_InvalidCredentials_DoesNotLoadUser(t *testing.T) {
+	fx := createTestUserService(t)
+
+	ctx := context.Background()
+	input := &usecase.LoginInput{
+		Email:    "test@example.com",
+		Password: "wrong-password",
+	}
+
+	authRecord := &entity.Authentication{
+		UserID:         uuid.New(),
+		Provider:       entity.ProviderTypeEmail,
+		ProviderUserID: input.Email,
+		PasswordHash:   "hashed-password",
+	}
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockAuthRepo := mockRepo.NewMockAuthRepository(t)
+
+			mockFactory.EXPECT().AuthRepo().Return(mockAuthRepo)
+			mockAuthRepo.EXPECT().
+				FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email).
+				Return(authRecord, nil)
+
+			require.NoError(t, fn(mockFactory))
+		}).
+		Return(nil).
+		Once()
+
+	fx.hasher.EXPECT().
+		Check(input.Password, authRecord.PasswordHash).
+		Return(false).
+		Once()
+
+	output, err := fx.service.Login(ctx, input)
+
+	require.Error(t, err)
+	assert.Nil(t, output)
+	assert.True(t, errors.Is(err, domainerrors.ErrInvalidCredentials))
+	fx.txManager.AssertNumberOfCalls(t, "Execute", 1)
+	fx.tokenService.AssertNotCalled(t, "GenerateTokens", mock.Anything, mock.Anything)
+	fx.refreshTokenRepo.AssertNotCalled(t, "CreateRefreshToken", mock.Anything, mock.Anything)
+}
+
+func TestUserService_Login_Success_LoadsUserAfterPasswordCheck(t *testing.T) {
+	fx := createTestUserService(t)
+
+	ctx := context.Background()
+	input := &usecase.LoginInput{
+		Email:    "test@example.com",
+		Password: "Password123!",
+	}
+
+	userID := uuid.New()
+	authRecord := &entity.Authentication{
+		UserID:         userID,
+		Provider:       entity.ProviderTypeEmail,
+		ProviderUserID: input.Email,
+		PasswordHash:   "hashed-password",
+	}
+	user := &entity.User{
+		ID:          userID,
+		Email:       input.Email,
+		Name:        "Test User",
+		UserProfile: &entity.UserProfile{UserID: userID},
+	}
+
+	var passwordChecked bool
+	var executeCalls int
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
+			executeCalls++
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+
+			switch executeCalls {
+			case 1:
+				mockAuthRepo := mockRepo.NewMockAuthRepository(t)
+				mockFactory.EXPECT().AuthRepo().Return(mockAuthRepo)
+				mockAuthRepo.EXPECT().
+					FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email).
+					Return(authRecord, nil)
+			case 2:
+				mockUserRepo := mockRepo.NewMockUserRepository(t)
+				mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+				mockUserRepo.EXPECT().
+					FindByID(ctx, userID).
+					Run(func(context.Context, uuid.UUID) {
+						assert.True(t, passwordChecked, "user query should happen after password check")
+					}).
+					Return(user, nil)
+			default:
+				return errors.New("unexpected execute call")
+			}
+
+			return fn(mockFactory)
+		}).
+		Twice()
+
+	fx.hasher.EXPECT().
+		Check(input.Password, authRecord.PasswordHash).
+		Run(func(string, string) {
+			passwordChecked = true
+		}).
+		Return(true).
+		Once()
+
+	fx.tokenService.EXPECT().
+		GenerateTokens(userID, []string{"user"}).
+		Return("access-token", "refresh-token", nil).
+		Once()
+	fx.tokenService.EXPECT().
+		HashToken("refresh-token").
+		Return("refresh-token-hash").
+		Once()
+	fx.tokenService.EXPECT().
+		GetRefreshTokenDuration().
+		Return(time.Hour).
+		Once()
+
+	fx.refreshTokenRepo.EXPECT().
+		CreateRefreshToken(ctx, mock.AnythingOfType("*entity.RefreshToken")).
+		Run(func(_ context.Context, token *entity.RefreshToken) {
+			assert.Equal(t, userID, token.UserID)
+			assert.Equal(t, "refresh-token-hash", token.TokenHash)
+			assert.False(t, token.ExpiresAt.IsZero())
+		}).
+		Return(nil).
+		Once()
+
+	output, err := fx.service.Login(ctx, input)
+
+	require.NoError(t, err)
+	require.NotNil(t, output)
+	assert.Equal(t, "access-token", output.AccessToken)
+	assert.Equal(t, "refresh-token", output.RefreshToken)
+	assert.Equal(t, userID, output.User.ID)
+	fx.txManager.AssertNumberOfCalls(t, "Execute", 2)
 }

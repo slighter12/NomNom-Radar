@@ -33,6 +33,11 @@ spec:
             # Force app server port to match Cloud Run container port.
             - name: HTTP_PORT
               value: "8080"
+            # Cloud Run should emit structured JSON logs for queryability.
+            - name: ENV_LOG_PRETTY
+              value: "false"
+            - name: ENV_LOG_LEVEL
+              value: "info"
 
             # ========== Postgres Configuration ==========
             # Master connection
@@ -65,8 +70,12 @@ spec:
             # SSL settings (Supabase requires "require" or "verify-full")
             - name: POSTGRES_SSLMODE
               value: "require"
+            - name: POSTGRES_MAXOPENCONNS
+              value: "25"
 
             # ========== Auth Configuration ==========
+            - name: AUTH_MAXACTIVESESSIONS
+              value: "10"
             - name: SECRETKEY_ACCESS
               valueFrom:
                 secretKeyRef:

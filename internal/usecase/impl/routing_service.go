@@ -77,13 +77,13 @@ func NewRoutingService(params RoutingServiceParams) usecase.RoutingUsecase {
 		// Try to load routing data
 		if err := svc.engine.LoadData(cfg.DataPath); err != nil {
 			logger.Warn("Failed to load CH routing data, using Haversine fallback",
-				slog.String("dataPath", cfg.DataPath),
+				slog.String("data_path", cfg.DataPath),
 				slog.Any("error", err),
 			)
 			svc.engine = nil
 		} else {
 			logger.Info("CH routing engine loaded successfully",
-				slog.String("dataPath", cfg.DataPath),
+				slog.String("data_path", cfg.DataPath),
 			)
 		}
 	} else {

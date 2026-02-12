@@ -12,10 +12,10 @@ import (
 	"radar/internal/delivery/middleware"
 	"radar/internal/delivery/worker/handler"
 	"radar/internal/domain/lifecycle"
+	"radar/internal/errors"
 
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
-	"github.com/pkg/errors"
 	"go.uber.org/fx"
 )
 
@@ -76,7 +76,7 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 // Serve starts the worker HTTP server
 func (s *workerServer) Serve(ctx context.Context) error {
 	hostPort := net.JoinHostPort("0.0.0.0", strconv.Itoa(s.cfg.HTTP.Port))
-	s.logger.Info("Starting Worker HTTP server", slog.String("hostPort", hostPort))
+	s.logger.Info("Starting Worker HTTP server", slog.String("host_port", hostPort))
 	if err := s.server.Start(hostPort); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return errors.WithStack(err)
 	}

@@ -55,7 +55,7 @@ func (m *LoggerMiddleware) logRequest(c echo.Context, start time.Time, err error
 	fields := []slog.Attr{
 		slog.String("request_id", deliverycontext.GetRequestID(c)),
 		slog.String("method", req.Method),
-		slog.String("uri", req.URL.Path),
+		slog.String("path", req.URL.Path),
 		slog.Int("status", res.Status),
 		slog.Duration("latency", latency),
 		slog.String("remote_ip", c.RealIP()),

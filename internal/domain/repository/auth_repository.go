@@ -6,9 +6,9 @@ import (
 	"context"
 
 	"radar/internal/domain/entity"
+	"radar/internal/errors"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 )
 
 // Domain-specific errors for authentication persistence.

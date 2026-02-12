@@ -7,12 +7,13 @@ import (
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
+	"radar/internal/errors"
 	"radar/internal/infra/persistence/model"
 	"radar/internal/infra/persistence/postgres/query"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // userRepository implements the domain.UserRepository interface using GORM.
@@ -49,6 +50,24 @@ func (repo *userRepository) FindByID(ctx context.Context, id uuid.UUID) (*entity
 
 	// Map the persistence model back to a pure domain entity before returning.
 	return toUserDomain(userM), nil
+}
+
+// AcquireSessionMutex locks the user row for the current transaction.
+func (repo *userRepository) AcquireSessionMutex(ctx context.Context, id uuid.UUID) error {
+	_, err := repo.q.UserModel.WithContext(ctx).
+		Select(repo.q.UserModel.ID).
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where(repo.q.UserModel.ID.Eq(id)).
+		First()
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return repository.ErrUserNotFound
+		}
+
+		return errors.WithStack(err)
+	}
+
+	return nil
 }
 
 // FindByEmail retrieves a single user by their email address, preloading profiles and addresses.

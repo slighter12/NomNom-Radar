@@ -39,6 +39,63 @@ func (_m *MockUserRepository) EXPECT() *MockUserRepository_Expecter {
 	return &MockUserRepository_Expecter{mock: &_m.Mock}
 }
 
+// AcquireSessionMutex provides a mock function for the type MockUserRepository
+func (_mock *MockUserRepository) AcquireSessionMutex(ctx context.Context, id uuid.UUID) error {
+	ret := _mock.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AcquireSessionMutex")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) error); ok {
+		r0 = returnFunc(ctx, id)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockUserRepository_AcquireSessionMutex_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AcquireSessionMutex'
+type MockUserRepository_AcquireSessionMutex_Call struct {
+	*mock.Call
+}
+
+// AcquireSessionMutex is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id uuid.UUID
+func (_e *MockUserRepository_Expecter) AcquireSessionMutex(ctx interface{}, id interface{}) *MockUserRepository_AcquireSessionMutex_Call {
+	return &MockUserRepository_AcquireSessionMutex_Call{Call: _e.mock.On("AcquireSessionMutex", ctx, id)}
+}
+
+func (_c *MockUserRepository_AcquireSessionMutex_Call) Run(run func(ctx context.Context, id uuid.UUID)) *MockUserRepository_AcquireSessionMutex_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockUserRepository_AcquireSessionMutex_Call) Return(err error) *MockUserRepository_AcquireSessionMutex_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockUserRepository_AcquireSessionMutex_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID) error) *MockUserRepository_AcquireSessionMutex_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Create provides a mock function for the type MockUserRepository
 func (_mock *MockUserRepository) Create(ctx context.Context, user *entity.User) error {
 	ret := _mock.Called(ctx, user)

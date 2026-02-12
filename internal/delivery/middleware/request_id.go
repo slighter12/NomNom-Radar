@@ -21,7 +21,7 @@ func NewRequestIDMiddleware(logger *slog.Logger) *RequestIDMiddleware {
 	}
 }
 
-// Process handles the generation or extraction of the Request ID and creates a logger with request_id
+// Process handles the generation or extraction of the Request ID and creates a logger with requestID
 func (m *RequestIDMiddleware) Process(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		// Attempt to get Request ID from request headers
@@ -38,10 +38,10 @@ func (m *RequestIDMiddleware) Process(next echo.HandlerFunc) echo.HandlerFunc {
 		// Add Request ID to response headers
 		c.Response().Header().Set(deliverycontext.HeaderXRequestID, requestID)
 
-		// Create a child logger with request_id
+		// Create a child logger with requestID
 		reqLogger := m.logger.With(slog.String("request_id", requestID))
 
-		// Store request_id and logger in context.Context for service layer use
+		// Store requestID and logger in context.Context for service layer use
 		ctx := c.Request().Context()
 		ctx = deliverycontext.WithRequestID(ctx, requestID)
 		ctx = deliverycontext.WithLogger(ctx, reqLogger)

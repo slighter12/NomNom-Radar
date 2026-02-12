@@ -140,6 +140,7 @@ func (s *jwtService) generateToken(userID uuid.UUID, roles []string, ttl time.Du
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
 			Subject:   userID.String(),
+			ID:        uuid.NewString(),
 		},
 		Type: tokenType,
 	}
