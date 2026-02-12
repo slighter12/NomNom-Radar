@@ -104,9 +104,9 @@ func monitorDBPool(ctx context.Context, logger *slog.Logger, sqlDB *sql.DB, inte
 					slog.Duration("waitDurationTotal", cur.WaitDuration),
 				}
 				if waitDurationDelta >= dbPoolWarnDurationThreshold {
-					logger.LogAttrs(context.Background(), slog.LevelWarn, "Postgres pool wait detected", attrs...)
+					logger.LogAttrs(ctx, slog.LevelWarn, "Postgres pool wait detected", attrs...)
 				} else {
-					logger.LogAttrs(context.Background(), slog.LevelDebug, "Postgres pool wait observed", attrs...)
+					logger.LogAttrs(ctx, slog.LevelDebug, "Postgres pool wait observed", attrs...)
 				}
 			}
 
