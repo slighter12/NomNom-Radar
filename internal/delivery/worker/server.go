@@ -17,6 +17,7 @@ import (
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"go.uber.org/fx"
+	"golang.org/x/net/http2"
 )
 
 type workerServer struct {
@@ -39,6 +40,10 @@ type ServerParams struct {
 func NewServer(params ServerParams) (delivery.Delivery, error) {
 	e := echo.New()
 	e.HideBanner = true
+	e.Server.ReadTimeout = params.Cfg.HTTP.Timeouts.ReadTimeout
+	e.Server.ReadHeaderTimeout = params.Cfg.HTTP.Timeouts.ReadHeaderTimeout
+	e.Server.WriteTimeout = params.Cfg.HTTP.Timeouts.WriteTimeout
+	e.Server.IdleTimeout = params.Cfg.HTTP.Timeouts.IdleTimeout
 
 	// Set up middleware in correct order
 	// 1. Recover middleware first (to catch panics early)
@@ -77,7 +82,10 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 func (s *workerServer) Serve(ctx context.Context) error {
 	hostPort := net.JoinHostPort("0.0.0.0", strconv.Itoa(s.cfg.HTTP.Port))
 	s.logger.Info("Starting Worker HTTP server", slog.String("host_port", hostPort))
-	if err := s.server.Start(hostPort); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	h2Server := &http2.Server{
+		IdleTimeout: s.cfg.HTTP.Timeouts.IdleTimeout,
+	}
+	if err := s.server.StartH2CServer(hostPort, h2Server); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return errors.WithStack(err)
 	}
 

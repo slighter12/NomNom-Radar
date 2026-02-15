@@ -19,6 +19,7 @@ import (
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"go.uber.org/fx"
+	"golang.org/x/net/http2"
 )
 
 type apiServer struct {
@@ -40,6 +41,10 @@ type ServerParams struct {
 func NewServer(params ServerParams) (delivery.Delivery, error) {
 	echoServer := echo.New()
 	echoServer.HideBanner = true
+	echoServer.Server.ReadTimeout = params.Cfg.HTTP.Timeouts.ReadTimeout
+	echoServer.Server.ReadHeaderTimeout = params.Cfg.HTTP.Timeouts.ReadHeaderTimeout
+	echoServer.Server.WriteTimeout = params.Cfg.HTTP.Timeouts.WriteTimeout
+	echoServer.Server.IdleTimeout = params.Cfg.HTTP.Timeouts.IdleTimeout
 
 	// Set up middleware in correct order
 	// 1. Recover middleware first (to catch panics early)
@@ -55,6 +60,9 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 
 	// 4. CORS middleware
 	echoServer.Use(echomiddleware.CORS())
+
+	// 5. Request body size limit
+	echoServer.Use(echomiddleware.BodyLimit(params.Cfg.HTTP.MaxRequestBodySize))
 
 	// Set up centralized error handler
 	errorMiddleware := apimiddleware.NewErrorMiddleware(params.Logger)
@@ -83,7 +91,10 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 func (s *apiServer) Serve(ctx context.Context) error {
 	hostPort := net.JoinHostPort("0.0.0.0", strconv.Itoa(s.cfg.HTTP.Port))
 	s.logger.Info("Starting API HTTP server", slog.String("host_port", hostPort))
-	if err := s.server.Start(hostPort); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	h2Server := &http2.Server{
+		IdleTimeout: s.cfg.HTTP.Timeouts.IdleTimeout,
+	}
+	if err := s.server.StartH2CServer(hostPort, h2Server); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return errors.WithStack(err)
 	}
 
