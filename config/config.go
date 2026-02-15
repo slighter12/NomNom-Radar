@@ -17,7 +17,10 @@ import (
 	"github.com/slighter12/go-lib/database/postgres"
 )
 
-const defaultPath = "."
+const (
+	defaultPath               = "."
+	defaultMaxRequestBodySize = "100KB"
+)
 
 type Config struct {
 	Env struct {
@@ -28,8 +31,9 @@ type Config struct {
 	} `json:"env" yaml:"env"`
 
 	HTTP struct {
-		Port     int `json:"port" yaml:"port"`
-		Timeouts struct {
+		Port               int    `json:"port" yaml:"port"`
+		MaxRequestBodySize string `json:"maxRequestBodySize" yaml:"maxRequestBodySize"`
+		Timeouts           struct {
 			ReadTimeout       time.Duration `json:"readTimeout" yaml:"readTimeout"`
 			ReadHeaderTimeout time.Duration `json:"readHeaderTimeout" yaml:"readHeaderTimeout"`
 			WriteTimeout      time.Duration `json:"writeTimeout" yaml:"writeTimeout"`
@@ -261,6 +265,10 @@ func New() (*Config, error) {
 	cfg, err := LoadWithEnv[Config]("config", "config", "../config", "../../config")
 	if err != nil {
 		return nil, err
+	}
+
+	if strings.TrimSpace(cfg.HTTP.MaxRequestBodySize) == "" {
+		cfg.HTTP.MaxRequestBodySize = defaultMaxRequestBodySize
 	}
 
 	// Build replicas from environment variables (POSTGRES_REPLICAS_0_HOST, POSTGRES_REPLICAS_0_PORT, etc.)

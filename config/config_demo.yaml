@@ -8,6 +8,7 @@ env:
 
 http:
   port: 4433
+  maxRequestBodySize: "100KB"
   timeouts:
     readTimeout: 30s
     readHeaderTimeout: 10s
