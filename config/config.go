@@ -31,9 +31,9 @@ type Config struct {
 	} `json:"env" yaml:"env"`
 
 	HTTP struct {
-		Port int `json:"port" yaml:"port"`
+		Port               int    `json:"port" yaml:"port"`
 		MaxRequestBodySize string `json:"maxRequestBodySize" yaml:"maxRequestBodySize"`
-		Timeouts struct {
+		Timeouts           struct {
 			ReadTimeout       time.Duration `json:"readTimeout" yaml:"readTimeout"`
 			ReadHeaderTimeout time.Duration `json:"readHeaderTimeout" yaml:"readHeaderTimeout"`
 			WriteTimeout      time.Duration `json:"writeTimeout" yaml:"writeTimeout"`
