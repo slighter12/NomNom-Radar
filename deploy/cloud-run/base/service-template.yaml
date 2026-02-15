@@ -10,6 +10,7 @@ spec:
       annotations:
         autoscaling.knative.dev/minScale: "0"
         autoscaling.knative.dev/maxScale: "10"
+        run.googleapis.com/execution-environment: gen2
     spec:
       serviceAccountName: SERVICE_ACCOUNT_PLACEHOLDER
       containerConcurrency: 80
@@ -40,6 +41,9 @@ spec:
               value: "info"
 
             # ========== Postgres Configuration ==========
+            # Preset for transaction pooler (Supabase/pgBouncer)
+            - name: POSTGRES_PRESET
+              value: "supabase_transaction"
             # Master connection
             - name: POSTGRES_MASTER_HOST
               valueFrom:

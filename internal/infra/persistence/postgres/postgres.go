@@ -35,11 +35,11 @@ func New(params Params) (*gorm.DB, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create PostgreSQL client")
 	}
+
+	// GORM settings (SkipDefaultTransaction, PrepareStmt) are now configured via go-lib preset
+	// Only keep logger here as it's app-specific
 	db = db.Session(&gorm.Session{
-		// Disable GORM's per-statement implicit transaction.
-		// We keep explicit transactions via txManager.Execute for multi-step atomic operations.
-		SkipDefaultTransaction: true,
-		Logger:                 newGormSlogLogger(params.Logger, params.Config),
+		Logger: newGormSlogLogger(params.Logger, params.Config),
 	})
 
 	sqlDB, err := db.DB()
