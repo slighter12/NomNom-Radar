@@ -15,8 +15,8 @@ CREATE INDEX CONCURRENTLY idx_addresses_user_profile_active
     WHERE deleted_at IS NULL AND user_profile_id IS NOT NULL;
 
 -- Drop old single-column indexes (replaced by partial indexes)
-DROP INDEX IF EXISTS idx_addresses_merchant_profile;
-DROP INDEX IF EXISTS idx_addresses_user_profile;
+DROP INDEX CONCURRENTLY IF EXISTS idx_addresses_merchant_profile;
+DROP INDEX CONCURRENTLY IF EXISTS idx_addresses_user_profile;
 
 -- +goose Down
 -- SQL in this section is executed when the migration is rolled back.
@@ -31,5 +31,5 @@ CREATE INDEX idx_addresses_user_profile
     WHERE user_profile_id IS NOT NULL;
 
 -- Drop new partial indexes
-DROP INDEX IF EXISTS idx_addresses_merchant_profile_active;
-DROP INDEX IF EXISTS idx_addresses_user_profile_active;
+DROP INDEX CONCURRENTLY IF EXISTS idx_addresses_merchant_profile_active;
+DROP INDEX CONCURRENTLY IF EXISTS idx_addresses_user_profile_active;
