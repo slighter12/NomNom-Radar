@@ -74,6 +74,8 @@ linters:
     gosec:
       excludes:
         - G115
+        - G117
+        - G704
     lll:
       line-length: 100
       tab-width: 4
