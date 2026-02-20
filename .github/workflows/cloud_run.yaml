@@ -21,9 +21,9 @@ on:
         default: false
 
 env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  PROJECT_ID: radar-469510
   REGION: asia-east1
-  REGISTRY: asia-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/radar
+  REGISTRY: asia-east1-docker.pkg.dev/radar-469510/radar
 
 jobs:
   deploy:
@@ -53,15 +53,8 @@ jobs:
           # Install goose
           go install github.com/pressly/goose/v3/cmd/goose@latest
 
-          # Fetch database credentials from Secret Manager
-          PG_HOST=$(gcloud secrets versions access latest --secret="postgres-master-host" --project="${{ env.PROJECT_ID }}")
-          PG_PORT=$(gcloud secrets versions access latest --secret="postgres-master-port" --project="${{ env.PROJECT_ID }}")
-          PG_USER=$(gcloud secrets versions access latest --secret="postgres-master-username" --project="${{ env.PROJECT_ID }}")
-          PG_PASS=$(gcloud secrets versions access latest --secret="postgres-master-password" --project="${{ env.PROJECT_ID }}")
-          PG_DB=$(gcloud secrets versions access latest --secret="postgres-database" --project="${{ env.PROJECT_ID }}")
-
-          # Build connection string and run migration
-          PG_URI="postgres://${PG_USER}:${PG_PASS}@${PG_HOST}:${PG_PORT}/${PG_DB}?sslmode=require"
+          # Fetch database DSN from Secret Manager and run migration
+          PG_URI=$(gcloud secrets versions access latest --secret="postgres-master-dsn" --project="${{ env.PROJECT_ID }}")
           $(go env GOPATH)/bin/goose postgres "${PG_URI}" -dir ./database/migration/postgres up
 
       - name: Set image name
@@ -78,7 +71,6 @@ jobs:
           sed -i "s|IMAGE_PLACEHOLDER|${{ steps.image.outputs.name }}|g" /tmp/service.yaml
           # Replace service account placeholder
           sed -i "s|SERVICE_ACCOUNT_PLACEHOLDER|${{ secrets.GCP_SA_EMAIL }}|g" /tmp/service.yaml
-
       - name: Deploy to Cloud Run
         id: deploy
         run: |

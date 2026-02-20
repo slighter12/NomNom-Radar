@@ -51,33 +51,12 @@ spec:
             # Preset for transaction pooler (Supabase/pgBouncer)
             - name: POSTGRES_PRESET
               value: "supabase_transaction"
-            # Master connection
-            - name: POSTGRES_MASTER_HOST
+            # Master connection (single DSN secret to reduce Secret Manager footprint)
+            - name: POSTGRES_MASTER_DSN
               valueFrom:
                 secretKeyRef:
                   key: latest
-                  name: postgres-master-host
-            - name: POSTGRES_MASTER_PORT
-              valueFrom:
-                secretKeyRef:
-                  key: latest
-                  name: postgres-master-port
-            - name: POSTGRES_MASTER_USERNAME
-              valueFrom:
-                secretKeyRef:
-                  key: latest
-                  name: postgres-master-username
-            - name: POSTGRES_MASTER_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  key: latest
-                  name: postgres-master-password
-            # Database settings
-            - name: POSTGRES_DATABASE
-              valueFrom:
-                secretKeyRef:
-                  key: latest
-                  name: postgres-database
+                  name: postgres-master-dsn
             # SSL settings (Supabase requires "require" or "verify-full")
             - name: POSTGRES_SSLMODE
               value: "require"
@@ -100,10 +79,7 @@ spec:
 
             # ========== Firebase Configuration ==========
             - name: FIREBASE_PROJECTID
-              valueFrom:
-                secretKeyRef:
-                  key: latest
-                  name: firebase-projectid
+              value: radar-469510
             - name: FIREBASE_CREDENTIALSPATH
               value: /secrets/firebase/service-account.json
 
@@ -111,10 +87,7 @@ spec:
             - name: PUBSUB_PROVIDER
               value: "google"
             - name: PUBSUB_PROJECTID
-              valueFrom:
-                secretKeyRef:
-                  key: latest
-                  name: pubsub-projectid
+              value: radar-469510
             - name: PUBSUB_TOPICID
               valueFrom:
                 secretKeyRef:

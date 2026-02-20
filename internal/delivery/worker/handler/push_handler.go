@@ -8,12 +8,9 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
-	"strings"
 	"time"
 
-	"radar/config"
 	deliverycontext "radar/internal/delivery/context"
-	"radar/internal/domain/constants"
 	"radar/internal/domain/entity"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
@@ -23,7 +20,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/fx"
-	"google.golang.org/api/idtoken"
 )
 
 // PubSubMessage represents the structure of a Pub/Sub push message
@@ -64,7 +60,6 @@ func isRetryableError(err error) bool {
 
 // PushHandler handles Pub/Sub push messages for geo processing
 type PushHandler struct {
-	verifyPushAuth   bool
 	logger           *slog.Logger
 	routingSvc       usecase.RoutingUsecase
 	notificationSvc  service.NotificationService
@@ -77,7 +72,6 @@ type PushHandler struct {
 type PushHandlerParams struct {
 	fx.In
 
-	Config           *config.Config
 	Logger           *slog.Logger
 	RoutingSvc       usecase.RoutingUsecase
 	NotificationSvc  service.NotificationService
@@ -88,13 +82,7 @@ type PushHandlerParams struct {
 
 // NewPushHandler creates a new Pub/Sub push handler
 func NewPushHandler(params PushHandlerParams) *PushHandler {
-	// Determine if we need to verify push auth based on config
-	verifyPushAuth := params.Config.PubSub != nil &&
-		params.Config.PubSub.Provider == constants.PubSubProviderGoogle &&
-		params.Config.Env.Env != constants.EnvDevelop
-
 	return &PushHandler{
-		verifyPushAuth:   verifyPushAuth,
 		logger:           params.Logger,
 		routingSvc:       params.RoutingSvc,
 		notificationSvc:  params.NotificationSvc,
@@ -107,15 +95,6 @@ func NewPushHandler(params PushHandlerParams) *PushHandler {
 // HandlePush handles incoming Pub/Sub push messages
 func (h *PushHandler) HandlePush(c echo.Context) error {
 	ctx := c.Request().Context()
-
-	// Verify Pub/Sub token in production for Google provider
-	if h.verifyPushAuth {
-		if err := verifyPubSubToken(c.Request()); err != nil {
-			h.logger.Warn("[Worker] Invalid Pub/Sub token", slog.Any("error", err))
-
-			return c.NoContent(http.StatusUnauthorized)
-		}
-	}
 
 	// Parse Pub/Sub message
 	var pushMsg PubSubMessage
@@ -493,49 +472,4 @@ func (h *PushHandler) saveNotificationResults(ctx context.Context, notificationI
 		slog.Int("total_failed", failed),
 		slog.Int("invalid_tokens", invalidTokensCount),
 	)
-}
-
-// verifyPubSubToken verifies the JWT token from Google Pub/Sub push requests
-// Reference: https://cloud.google.com/pubsub/docs/push#authenticating_standard_push_requests
-func verifyPubSubToken(req *http.Request) error {
-	// Get the Authorization header
-	authHeader := req.Header.Get("Authorization")
-	if authHeader == "" {
-		return errors.New("missing authorization header")
-	}
-
-	// Extract Bearer token
-	const bearerPrefix = "Bearer "
-	if !strings.HasPrefix(authHeader, bearerPrefix) {
-		return errors.New("invalid authorization header format")
-	}
-	token := strings.TrimPrefix(authHeader, bearerPrefix)
-
-	// Construct the expected audience (the push endpoint URL)
-	// The audience should be the URL of this endpoint
-	scheme := "https"
-	if req.TLS == nil {
-		scheme = "http" // For local development
-	}
-	audience := fmt.Sprintf("%s://%s%s", scheme, req.Host, req.URL.Path)
-
-	// Validate the token using Google's ID token validator
-	ctx := req.Context()
-	payload, err := idtoken.Validate(ctx, token, audience)
-	if err != nil {
-		return errors.Wrap(err, "failed to validate token")
-	}
-
-	// Verify the token is from Google Pub/Sub
-	// The issuer should be accounts.google.com
-	if payload.Issuer != "accounts.google.com" && payload.Issuer != "https://accounts.google.com" {
-		return errors.Errorf("invalid issuer: %s", payload.Issuer)
-	}
-
-	// Verify email is verified (if email claim exists)
-	if emailVerified, ok := payload.Claims["email_verified"].(bool); ok && !emailVerified {
-		return errors.New("email not verified")
-	}
-
-	return nil
 }
