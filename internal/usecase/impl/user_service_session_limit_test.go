@@ -402,7 +402,7 @@ func TestUserService_Login_EnforcesSessionLimit_Concurrent(t *testing.T) {
 	var limitExceededCount atomic.Int64
 	var otherErrorCount atomic.Int64
 
-	for i := 0; i < concurrentLogins; i++ {
+	for i := range concurrentLogins {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
