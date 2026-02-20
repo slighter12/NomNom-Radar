@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/go-viper/mapstructure/v2"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/env/v2"
 	"github.com/knadh/koanf/providers/file"
@@ -20,6 +21,7 @@ import (
 const (
 	defaultPath               = "."
 	defaultMaxRequestBodySize = "100KB"
+	postgresMasterDSNEnvKey   = "POSTGRES_MASTER_DSN"
 )
 
 type Config struct {
@@ -273,6 +275,9 @@ func New() (*Config, error) {
 
 	// Build replicas from environment variables (POSTGRES_REPLICAS_0_HOST, POSTGRES_REPLICAS_0_PORT, etc.)
 	cfg.Postgres.Replicas = buildReplicasFromEnv()
+	if err := applyPostgresMasterDSNFromEnv(cfg); err != nil {
+		return nil, err
+	}
 
 	return cfg, nil
 }
@@ -359,4 +364,31 @@ func buildReplicasFromEnv() []postgres.ConnectionConfig {
 	}
 
 	return replicas
+}
+
+func applyPostgresMasterDSNFromEnv(cfg *Config) error {
+	dsn := strings.TrimSpace(os.Getenv(postgresMasterDSNEnvKey))
+	if dsn == "" {
+		return nil
+	}
+
+	if cfg.Postgres == nil {
+		return errors.Errorf("%s is set but postgres config is nil", postgresMasterDSNEnvKey)
+	}
+
+	parsed, err := pgconn.ParseConfig(dsn)
+	if err != nil {
+		return errors.Wrapf(err, "parse %s", postgresMasterDSNEnvKey)
+	}
+
+	cfg.Postgres.Master.Host = parsed.Host
+	cfg.Postgres.Master.Port = strconv.FormatUint(uint64(parsed.Port), 10)
+	cfg.Postgres.Master.UserName = parsed.User
+	cfg.Postgres.Master.Password = parsed.Password
+
+	if strings.TrimSpace(parsed.Database) != "" {
+		cfg.Postgres.Database = parsed.Database
+	}
+
+	return nil
 }
