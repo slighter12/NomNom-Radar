@@ -35,6 +35,8 @@ type Config struct {
 	HTTP struct {
 		Port               int    `json:"port" yaml:"port"`
 		MaxRequestBodySize string `json:"maxRequestBodySize" yaml:"maxRequestBodySize"`
+		AllowedHost        string `json:"allowedHost" yaml:"allowedHost"`
+		CloudflareSecret   string `json:"cloudflareSecret" yaml:"cloudflareSecret"`
 		Timeouts           struct {
 			ReadTimeout       time.Duration `json:"readTimeout" yaml:"readTimeout"`
 			ReadHeaderTimeout time.Duration `json:"readHeaderTimeout" yaml:"readHeaderTimeout"`

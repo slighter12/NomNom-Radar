@@ -41,6 +41,10 @@ spec:
               value: "8080"
             - name: HTTP_MAXREQUESTBODYSIZE
               value: "100KB"
+            - name: HTTP_ALLOWEDHOST
+              value: "api.whereisvendor.com"
+            - name: HTTP_CLOUDFLARESECRET
+              value: "HTTP_CLOUDFLARESECRET_PLACEHOLDER"
             # Cloud Run should emit structured JSON logs for queryability.
             - name: ENV_LOG_PRETTY
               value: "false"

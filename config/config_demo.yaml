@@ -9,6 +9,8 @@ env:
 http:
   port: 4433
   maxRequestBodySize: "100KB"
+  allowedHost: "" # Optional host lock (example: api.whereisvendor.com)
+  cloudflareSecret: "" # Optional Cloudflare origin secret header value
   timeouts:
     readTimeout: 30s
     readHeaderTimeout: 10s

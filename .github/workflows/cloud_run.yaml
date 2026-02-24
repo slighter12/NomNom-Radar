@@ -65,12 +65,22 @@ jobs:
 
       - name: Prepare service YAML
         run: |
+          set -euo pipefail
+
+          if [ "${{ inputs.target }}" = "radar" ] && [ -z "${{ secrets.CLOUDFLARE_ORIGIN_SECRET }}" ]; then
+            echo "::error::Missing required GitHub secret: CLOUDFLARE_ORIGIN_SECRET"
+            exit 1
+          fi
+
           # Build final YAML using kubectl's built-in kustomize
           kubectl kustomize deploy/cloud-run/overlays/${{ inputs.target }} > /tmp/service.yaml
           # Replace image placeholder
           sed -i "s|IMAGE_PLACEHOLDER|${{ steps.image.outputs.name }}|g" /tmp/service.yaml
           # Replace service account placeholder
           sed -i "s|SERVICE_ACCOUNT_PLACEHOLDER|${{ secrets.GCP_SA_EMAIL }}|g" /tmp/service.yaml
+          # Replace Cloudflare origin secret placeholder from GitHub Secret
+          CLOUDFLARE_SECRET_ESCAPED=$(printf '%s' "${{ secrets.CLOUDFLARE_ORIGIN_SECRET }}" | sed -e 's/[\\/&]/\\&/g')
+          sed -i "s|HTTP_CLOUDFLARESECRET_PLACEHOLDER|${CLOUDFLARE_SECRET_ESCAPED}|g" /tmp/service.yaml
       - name: Deploy to Cloud Run
         id: deploy
         run: |
@@ -85,6 +95,66 @@ jobs:
               --region=${{ env.REGION }} \
               --member="allUsers" \
               --role="roles/run.invoker"
+          fi
+
+      - name: Sync Cloudflare Transform Rule Header
+        if: ${{ inputs.target == 'radar' }}
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          CF_RULE_ID: ${{ secrets.CLOUDFLARE_TRANSFORM_RULE_ID }}
+          CF_ORIGIN_SECRET: ${{ secrets.CLOUDFLARE_ORIGIN_SECRET }}
+          CF_SECRET_HEADER_NAME: X-Cloudflare-Secret
+        run: |
+          set -euo pipefail
+
+          for required in CF_API_TOKEN CF_ZONE_ID CF_RULE_ID CF_ORIGIN_SECRET; do
+            if [ -z "${!required}" ]; then
+              echo "::error::Missing required GitHub secret: ${required}"
+              exit 1
+            fi
+          done
+
+          ENTRYPOINT_RESPONSE=$(curl --silent --show-error --fail \
+            --request GET \
+            --url "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/rulesets/phases/http_request_late_transform/entrypoint" \
+            --header "Authorization: Bearer ${CF_API_TOKEN}" \
+            --header "Content-Type: application/json")
+
+          if [ "$(printf '%s' "${ENTRYPOINT_RESPONSE}" | jq -r '.success')" != "true" ]; then
+            echo "::error::Failed to fetch Cloudflare transform ruleset entrypoint"
+            printf '%s' "${ENTRYPOINT_RESPONSE}" | jq -c '.errors'
+            exit 1
+          fi
+
+          RULESET_ID=$(printf '%s' "${ENTRYPOINT_RESPONSE}" | jq -r '.result.id // empty')
+          if [ -z "${RULESET_ID}" ]; then
+            echo "::error::Cloudflare transform ruleset entrypoint id not found"
+            exit 1
+          fi
+
+          TARGET_RULE=$(printf '%s' "${ENTRYPOINT_RESPONSE}" | jq -c --arg rule_id "${CF_RULE_ID}" '.result.rules[] | select(.id == $rule_id)')
+          if [ -z "${TARGET_RULE}" ]; then
+            echo "::error::Cloudflare transform rule not found: ${CF_RULE_ID}"
+            exit 1
+          fi
+
+          UPDATED_RULE=$(printf '%s' "${TARGET_RULE}" | jq -c --arg header "${CF_SECRET_HEADER_NAME}" --arg secret "${CF_ORIGIN_SECRET}" '
+            .action = "rewrite"
+            | .action_parameters.headers[$header] = {"operation":"set","value":$secret}
+          ')
+
+          UPDATE_RESPONSE=$(curl --silent --show-error --fail \
+            --request PATCH \
+            --url "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/rulesets/${RULESET_ID}/rules/${CF_RULE_ID}" \
+            --header "Authorization: Bearer ${CF_API_TOKEN}" \
+            --header "Content-Type: application/json" \
+            --data "${UPDATED_RULE}")
+
+          if [ "$(printf '%s' "${UPDATE_RESPONSE}" | jq -r '.success')" != "true" ]; then
+            echo "::error::Failed to update Cloudflare transform rule header"
+            printf '%s' "${UPDATE_RESPONSE}" | jq -c '.errors'
+            exit 1
           fi
 
       - name: Show Output
