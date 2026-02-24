@@ -6,6 +6,7 @@ import (
 
 	"radar/config"
 	"radar/internal/domain/entity"
+	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
 	"radar/internal/usecase"
@@ -53,6 +54,10 @@ func NewSubscriptionService(params SubscriptionServiceParams) usecase.Subscripti
 
 // SubscribeToMerchant creates or reactivates a subscription to a merchant
 func (s *subscriptionService) SubscribeToMerchant(ctx context.Context, userID, merchantID uuid.UUID, deviceInfo *usecase.DeviceInfo) (*entity.UserMerchantSubscription, error) {
+	if userID == merchantID {
+		return nil, domainerrors.ErrSelfSubscriptionNotAllowed.WrapMessage("cannot subscribe to self")
+	}
+
 	// Check if subscription already exists
 	existingSub, err := s.subscriptionRepo.FindSubscriptionByUserAndMerchant(ctx, userID, merchantID)
 	if err != nil && !errors.Is(err, repository.ErrSubscriptionNotFound) {

@@ -252,6 +252,20 @@ var (
 		"",
 	)
 
+	ErrForbiddenHost = NewBaseError(
+		http.StatusForbidden,
+		"FORBIDDEN_HOST",
+		"存取被拒絕：請使用官方 API 網域",
+		"",
+	)
+
+	ErrForbiddenOrigin = NewBaseError(
+		http.StatusForbidden,
+		"FORBIDDEN_ORIGIN",
+		"存取被拒絕：來源驗證失敗",
+		"",
+	)
+
 	ErrNotFound = NewBaseError(
 		http.StatusNotFound,
 		"NOT_FOUND",
@@ -263,6 +277,13 @@ var (
 		http.StatusConflict,
 		"CONFLICT",
 		"資源衝突",
+		"",
+	)
+
+	ErrSelfSubscriptionNotAllowed = NewBaseError(
+		http.StatusBadRequest,
+		"SELF_SUBSCRIPTION_NOT_ALLOWED",
+		"不可訂閱自己",
 		"",
 	)
 )

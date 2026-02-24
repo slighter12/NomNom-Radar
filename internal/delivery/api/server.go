@@ -58,10 +58,14 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 	loggerMiddleware := middleware.NewLoggerMiddleware(params.Logger, params.Cfg)
 	echoServer.Use(loggerMiddleware.Handle)
 
-	// 4. CORS middleware
+	// 4. Domain guard middleware
+	domainGuard := apimiddleware.NewDomainGuardMiddleware(params.Cfg)
+	echoServer.Use(domainGuard.ValidateHost)
+
+	// 5. CORS middleware
 	echoServer.Use(echomiddleware.CORS())
 
-	// 5. Request body size limit
+	// 6. Request body size limit
 	echoServer.Use(echomiddleware.BodyLimit(params.Cfg.HTTP.MaxRequestBodySize))
 
 	// Set up centralized error handler
