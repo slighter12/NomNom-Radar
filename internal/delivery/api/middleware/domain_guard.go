@@ -52,6 +52,7 @@ func (m *DomainGuardMiddleware) ValidateHost(next echo.HandlerFunc) echo.Handler
 	}
 }
 
+// #nosec G101 -- This is a public HTTP header name, not a credential.
 const cloudflareSecretHeader = "X-Cloudflare-Secret"
 
 func appErrorResponse(c echo.Context, appErr domainerrors.AppError) error {
