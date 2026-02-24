@@ -77,9 +77,8 @@ func normalizeHost(rawHost string) string {
 
 	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
 		host = parsedHost
-	} else if strings.Count(host, ":") == 1 {
-		parts := strings.SplitN(host, ":", 2)
-		host = parts[0]
+	} else if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		host = strings.TrimPrefix(strings.TrimSuffix(host, "]"), "[")
 	}
 
 	return strings.ToLower(host)
