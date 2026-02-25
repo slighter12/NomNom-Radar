@@ -39,10 +39,10 @@ func createTestNotificationService(t *testing.T) notificationServiceFixtures {
 
 	routingSvc := NewRoutingService(RoutingServiceParams{
 		Config: &config.RoutingConfig{
-			MaxSnapDistanceKm: 1.0,
-			DefaultSpeedKmh:   10.0,
-			DataPath:          "./data/routing",
-			Enabled:           false, // Disabled to use Haversine fallback
+			MaxSnapDistanceM: 1000.0,
+			DefaultSpeedKmh:  10.0,
+			DataPath:         "./data/routing",
+			Enabled:          false, // Disabled to use Haversine fallback
 		},
 		Logger: nil,
 	})

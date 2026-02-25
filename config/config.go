@@ -135,8 +135,8 @@ type QRCodeConfig struct {
 
 // RoutingConfig defines routing engine configuration
 type RoutingConfig struct {
-	// Maximum distance in kilometers for GPS coordinate snapping to road network
-	MaxSnapDistanceKm float64 `json:"maxSnapDistanceKm" yaml:"maxSnapDistanceKm"`
+	// Maximum distance in meters for GPS coordinate snapping to road network
+	MaxSnapDistanceM float64 `json:"maxSnapDistanceM" yaml:"maxSnapDistanceM"`
 
 	// Default vehicle speed in km/h for duration estimation when routing data is unavailable
 	DefaultSpeedKmh float64 `json:"defaultSpeedKmh" yaml:"defaultSpeedKmh"`
@@ -147,8 +147,8 @@ type RoutingConfig struct {
 	// Enable routing engine (set to false to use Haversine fallback only)
 	Enabled bool `json:"enabled" yaml:"enabled"`
 
-	// Maximum query radius in kilometers for One-to-Many queries
-	MaxQueryRadiusKm float64 `json:"maxQueryRadiusKm" yaml:"maxQueryRadiusKm"`
+	// Maximum query radius in meters for One-to-Many queries
+	MaxQueryRadiusM float64 `json:"maxQueryRadiusM" yaml:"maxQueryRadiusM"`
 
 	// Number of concurrent workers for One-to-Many queries
 	OneToManyWorkers int `json:"oneToManyWorkers" yaml:"oneToManyWorkers"`

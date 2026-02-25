@@ -19,14 +19,14 @@ import (
 // routingService implements the RoutingUsecase interface
 const (
 	// fallback defaults to keep routing functional when config is missing/invalid
-	defaultSnapDistanceKm = 1.0
-	defaultSpeedKmh       = 30.0
+	defaultSnapDistanceM = 1000.0
+	defaultSpeedKmh      = 30.0
 )
 
 type routingService struct {
 	// Configuration
-	maxSnapDistanceKm float64 // Maximum distance for GPS coordinate snapping
-	defaultSpeedKmh   float64 // Default speed for duration estimation
+	maxSnapDistanceM float64 // Maximum distance for GPS coordinate snapping
+	defaultSpeedKmh  float64 // Default speed for duration estimation
 
 	// CH Engine (infrastructure layer)
 	engine *ch.Engine
@@ -53,9 +53,9 @@ func NewRoutingService(params RoutingServiceParams) usecase.RoutingUsecase {
 		logger = slog.Default()
 	}
 
-	snapDistance := defaultSnapDistanceKm
-	if cfg != nil && cfg.MaxSnapDistanceKm > 0 {
-		snapDistance = cfg.MaxSnapDistanceKm
+	snapDistance := defaultSnapDistanceM
+	if cfg != nil && cfg.MaxSnapDistanceM > 0 {
+		snapDistance = cfg.MaxSnapDistanceM
 	}
 
 	speedKmh := defaultSpeedKmh
@@ -64,9 +64,9 @@ func NewRoutingService(params RoutingServiceParams) usecase.RoutingUsecase {
 	}
 
 	svc := &routingService{
-		maxSnapDistanceKm: snapDistance,
-		defaultSpeedKmh:   speedKmh,
-		logger:            logger,
+		maxSnapDistanceM: snapDistance,
+		defaultSpeedKmh:  speedKmh,
+		logger:           logger,
 	}
 
 	// Initialize CH engine if enabled and data path is configured
@@ -101,9 +101,9 @@ func (s *routingService) log(ctx context.Context) *slog.Logger {
 // buildEngineConfig creates a CH engine config with sensible defaults
 func buildEngineConfig(cfg *config.RoutingConfig, snapDistance, speedKmh float64) ch.EngineConfig {
 	return ch.EngineConfig{
-		MaxSnapDistanceMeters:     snapDistance * 1000, // Convert km to meters
+		MaxSnapDistanceMeters:     snapDistance,
 		DefaultSpeedKmH:           speedKmh,
-		MaxQueryRadiusMeters:      getFloatWithDefault(cfg.MaxQueryRadiusKm*1000, 10000),
+		MaxQueryRadiusMeters:      getFloatWithDefault(cfg.MaxQueryRadiusM, 10000),
 		OneToManyWorkers:          getIntWithDefault(cfg.OneToManyWorkers, 20),
 		PreFilterRadiusMultiplier: getFloatWithDefault(cfg.PreFilterRadiusMultiplier, 1.3),
 		GridCellSizeKm:            getFloatWithDefault(cfg.GridCellSizeKm, 1.0),
@@ -229,7 +229,7 @@ func (s *routingService) oneToManyHaversine(ctx context.Context, source usecase.
 
 // FindNearestNode finds the nearest road network node to a given GPS coordinate
 func (s *routingService) FindNearestNode(ctx context.Context, coord usecase.Coordinate) (*usecase.NodeInfo, bool, error) {
-	if s.maxSnapDistanceKm <= 0 {
+	if s.maxSnapDistanceM <= 0 {
 		return nil, false, errors.New("invalid max snap distance configuration")
 	}
 
