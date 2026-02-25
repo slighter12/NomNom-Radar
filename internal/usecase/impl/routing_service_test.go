@@ -15,10 +15,10 @@ import (
 
 func TestNewRoutingService(t *testing.T) {
 	cfg := &config.RoutingConfig{
-		MaxSnapDistanceKm: 1.5,
-		DefaultSpeedKmh:   35.0,
-		DataPath:          "./data/routing",
-		Enabled:           false, // Disabled to avoid loading non-existent data
+		MaxSnapDistanceM: 1500.0,
+		DefaultSpeedKmh:  35.0,
+		DataPath:         "./data/routing",
+		Enabled:          false, // Disabled to avoid loading non-existent data
 	}
 
 	service := NewRoutingService(RoutingServiceParams{Config: cfg, Logger: nil})
@@ -35,7 +35,7 @@ func TestNewRoutingService_ZeroConfig(t *testing.T) {
 	impl := service.(*routingService)
 
 	assert.NotNil(t, service)
-	assert.Equal(t, defaultSnapDistanceKm, impl.maxSnapDistanceKm)
+	assert.Equal(t, defaultSnapDistanceM, impl.maxSnapDistanceM)
 	assert.Equal(t, defaultSpeedKmh, impl.defaultSpeedKmh)
 }
 
@@ -76,7 +76,7 @@ func TestRoutingService_CalculateDistance(t *testing.T) {
 
 func TestRoutingService_FindNearestNode(t *testing.T) {
 	cfg := &config.RoutingConfig{
-		MaxSnapDistanceKm: 1.0,
+		MaxSnapDistanceM: 1000.0,
 	}
 	service := NewRoutingService(RoutingServiceParams{Config: cfg, Logger: nil})
 
@@ -97,7 +97,7 @@ func TestRoutingService_FindNearestNode(t *testing.T) {
 
 func TestRoutingService_FindNearestNode_InvalidCoordinates(t *testing.T) {
 	cfg := &config.RoutingConfig{
-		MaxSnapDistanceKm: 1.0,
+		MaxSnapDistanceM: 1000.0,
 	}
 	service := NewRoutingService(RoutingServiceParams{Config: cfg, Logger: nil})
 

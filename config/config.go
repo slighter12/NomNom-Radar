@@ -135,8 +135,8 @@ type QRCodeConfig struct {
 
 // RoutingConfig defines routing engine configuration
 type RoutingConfig struct {
-	// Maximum distance in kilometers for GPS coordinate snapping to road network
-	MaxSnapDistanceKm float64 `json:"maxSnapDistanceKm" yaml:"maxSnapDistanceKm"`
+	// Maximum distance in meters for GPS coordinate snapping to road network
+	MaxSnapDistanceM float64 `json:"maxSnapDistanceM" yaml:"maxSnapDistanceM"`
 
 	// Default vehicle speed in km/h for duration estimation when routing data is unavailable
 	DefaultSpeedKmh float64 `json:"defaultSpeedKmh" yaml:"defaultSpeedKmh"`

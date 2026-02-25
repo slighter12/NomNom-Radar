@@ -73,7 +73,7 @@ qrcode:
   baseUrl: "https://demo-app.com/subscribe"
 
 routing:
-  maxSnapDistanceKm: 0.5          # Maximum 500m for GPS coordinate snapping
+  maxSnapDistanceM: 500.0         # Maximum 500m for GPS coordinate snapping
   defaultSpeedKmh: 30.0           # Default 30 km/h for duration estimation
   dataPath: "./data/routing"      # Path to CH graph data files
   enabled: false                  # Disabled by default, use Haversine fallback

@@ -173,7 +173,7 @@ go build -o bin/routing-cli ./cmd/routing
 routing:
   enabled: true
   data_path: "./data/routing"
-  max_snap_distance_km: 0.5        # Max GPS snap distance to road (500m)
+  max_snap_distance_m: 500         # Max GPS snap distance to road
   default_speed_kmh: 30            # Urban scooter speed for ETA
   query_pool_size: 8               # Concurrent query workers
   one_to_many_workers: 20          # Batch query workers
