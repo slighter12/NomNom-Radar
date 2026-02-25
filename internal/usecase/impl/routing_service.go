@@ -103,7 +103,7 @@ func buildEngineConfig(cfg *config.RoutingConfig, snapDistance, speedKmh float64
 	return ch.EngineConfig{
 		MaxSnapDistanceMeters:     snapDistance,
 		DefaultSpeedKmH:           speedKmh,
-		MaxQueryRadiusMeters:      getFloatWithDefault(cfg.MaxQueryRadiusKm*1000, 10000),
+		MaxQueryRadiusMeters:      getFloatWithDefault(cfg.MaxQueryRadiusM, 10000),
 		OneToManyWorkers:          getIntWithDefault(cfg.OneToManyWorkers, 20),
 		PreFilterRadiusMultiplier: getFloatWithDefault(cfg.PreFilterRadiusMultiplier, 1.3),
 		GridCellSizeKm:            getFloatWithDefault(cfg.GridCellSizeKm, 1.0),

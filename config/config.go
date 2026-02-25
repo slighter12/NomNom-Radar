@@ -147,8 +147,8 @@ type RoutingConfig struct {
 	// Enable routing engine (set to false to use Haversine fallback only)
 	Enabled bool `json:"enabled" yaml:"enabled"`
 
-	// Maximum query radius in kilometers for One-to-Many queries
-	MaxQueryRadiusKm float64 `json:"maxQueryRadiusKm" yaml:"maxQueryRadiusKm"`
+	// Maximum query radius in meters for One-to-Many queries
+	MaxQueryRadiusM float64 `json:"maxQueryRadiusM" yaml:"maxQueryRadiusM"`
 
 	// Number of concurrent workers for One-to-Many queries
 	OneToManyWorkers int `json:"oneToManyWorkers" yaml:"oneToManyWorkers"`

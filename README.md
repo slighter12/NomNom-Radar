@@ -175,6 +175,7 @@ routing:
   data_path: "./data/routing"
   max_snap_distance_m: 500         # Max GPS snap distance to road
   default_speed_kmh: 30            # Urban scooter speed for ETA
+  max_query_radius_m: 10000        # Max query radius for one-to-many
   query_pool_size: 8               # Concurrent query workers
   one_to_many_workers: 20          # Batch query workers
   pre_filter_radius_multiplier: 1.3
