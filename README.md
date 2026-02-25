@@ -181,6 +181,9 @@ routing:
   pre_filter_radius_multiplier: 1.3
 ```
 
+Migration note:
+- `maxQueryRadiusKm` has been renamed to `maxQueryRadiusM` (10 km = 10000 m).
+
 ### Architecture
 
 ```text
