@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -67,6 +68,8 @@ const (
 	defaultMenuItemsPageSize = 20
 	maxMenuItemsPageSize     = 100
 )
+
+var errInvalidOptionalHTTPURL = errors.New("invalid optional http url")
 
 type ListMerchantMenuItemsQueryParams struct {
 	PaginationQueryParams
@@ -362,13 +365,13 @@ func validateOptionalHTTPURL(rawURL *string) error {
 
 	parsedURL, err := url.ParseRequestURI(trimmed)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest)
+		return errInvalidOptionalHTTPURL
 	}
 	if parsedURL.Host == "" {
-		return echo.NewHTTPError(http.StatusBadRequest)
+		return errInvalidOptionalHTTPURL
 	}
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return echo.NewHTTPError(http.StatusBadRequest)
+		return errInvalidOptionalHTTPURL
 	}
 
 	return nil

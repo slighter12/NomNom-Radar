@@ -266,6 +266,7 @@ func TestMenuService_ListMerchantMenuItems_InvalidCategory(t *testing.T) {
 		MenuRepo: &menuRepositoryStub{
 			listMenuItemsByMerchantFunc: func(context.Context, uuid.UUID, repository.MenuItemListFilter) ([]*entity.MenuItem, int64, error) {
 				t.Fatal("repository should not be called for invalid category")
+
 				return nil, 0, nil
 			},
 		},
