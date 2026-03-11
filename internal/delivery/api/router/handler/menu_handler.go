@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -10,6 +9,7 @@ import (
 
 	"radar/internal/delivery/api/middleware"
 	"radar/internal/delivery/api/response"
+	"radar/internal/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
@@ -68,8 +68,6 @@ const (
 	defaultMenuItemsPageSize = 20
 	maxMenuItemsPageSize     = 100
 )
-
-var errInvalidOptionalHTTPURL = errors.New("invalid optional http url")
 
 type ListMerchantMenuItemsQueryParams struct {
 	PaginationQueryParams
@@ -365,13 +363,13 @@ func validateOptionalHTTPURL(rawURL *string) error {
 
 	parsedURL, err := url.ParseRequestURI(trimmed)
 	if err != nil {
-		return errInvalidOptionalHTTPURL
+		return errors.New("invalid URL format")
 	}
 	if parsedURL.Host == "" {
-		return errInvalidOptionalHTTPURL
+		return errors.New("URL host is required")
 	}
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return errInvalidOptionalHTTPURL
+		return errors.New("URL scheme must be http or https")
 	}
 
 	return nil
