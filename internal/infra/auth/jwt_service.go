@@ -9,10 +9,10 @@ import (
 
 	"radar/config"
 	"radar/internal/domain/service"
+	"radar/internal/errors"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 )
 
 // jwtService is a concrete implementation of the TokenService interface using the JWT standard.

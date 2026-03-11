@@ -8,17 +8,22 @@ import (
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
+	"radar/internal/errors"
 	"radar/internal/infra/persistence/model"
 	"radar/internal/infra/persistence/postgres/query"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"gorm.io/gorm"
 )
 
 // subscriptionRepository implements the repository.SubscriptionRepository interface.
 type subscriptionRepository struct {
 	q *query.Query
+}
+
+type subscriptionWithMerchantNameModel struct {
+	model.UserMerchantSubscriptionModel
+	MerchantName string `gorm:"column:merchant_name"`
 }
 
 // NewSubscriptionRepository is the constructor for subscriptionRepository.
@@ -38,10 +43,10 @@ func (repo *subscriptionRepository) CreateSubscription(ctx context.Context, subs
 			return repository.ErrDuplicateSubscription
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrUserCreationFailed.WrapMessage("invalid user or merchant reference")
+			return domainerrors.ErrSubscriptionCreationFailed.WrapMessage("invalid user or merchant reference")
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrUserCreationFailed.WrapMessage("missing required subscription information")
+			return domainerrors.ErrSubscriptionCreationFailed.WrapMessage("missing required subscription information")
 		}
 		// For other database errors, return a generic database error
 		return domainerrors.NewDatabaseExecuteError(err, "failed to create subscription")
@@ -56,56 +61,74 @@ func (repo *subscriptionRepository) CreateSubscription(ctx context.Context, subs
 }
 
 // FindSubscriptionByID retrieves a subscription by its unique ID.
-func (repo *subscriptionRepository) FindSubscriptionByID(ctx context.Context, id uuid.UUID) (*entity.UserMerchantSubscription, error) {
-	subscriptionM, err := repo.q.UserMerchantSubscriptionModel.WithContext(ctx).
-		Where(repo.q.UserMerchantSubscriptionModel.ID.Eq(id)).
-		First()
+func (repo *subscriptionRepository) FindSubscriptionByID(ctx context.Context, subscriptionID uuid.UUID) (*entity.UserMerchantSubscription, error) {
+	var subscriptionMs []subscriptionWithMerchantNameModel
+
+	sub := repo.q.UserMerchantSubscriptionModel
+	m := repo.q.MerchantProfileModel
+
+	err := sub.WithContext(ctx).
+		Select(sub.ALL, m.StoreName.As("merchant_name")).
+		LeftJoin(m, m.UserID.EqCol(sub.MerchantID)).
+		Where(sub.DeletedAt.IsNull(), sub.ID.Eq(subscriptionID)).
+		Scan(&subscriptionMs)
 
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, repository.ErrSubscriptionNotFound
-		}
-
 		return nil, errors.WithStack(err)
 	}
 
-	return toSubscriptionDomain(subscriptionM), nil
+	if len(subscriptionMs) == 0 {
+		return nil, repository.ErrSubscriptionNotFound
+	}
+
+	return toSubscriptionDomainWithMerchantName(&subscriptionMs[0]), nil
 }
 
 // FindSubscriptionByUserAndMerchant retrieves a subscription by user and merchant IDs.
 func (repo *subscriptionRepository) FindSubscriptionByUserAndMerchant(ctx context.Context, userID, merchantID uuid.UUID) (*entity.UserMerchantSubscription, error) {
-	subscriptionM, err := repo.q.UserMerchantSubscriptionModel.WithContext(ctx).
-		Where(
-			repo.q.UserMerchantSubscriptionModel.UserID.Eq(userID),
-			repo.q.UserMerchantSubscriptionModel.MerchantID.Eq(merchantID),
-		).
-		First()
+	var subscriptionMs []subscriptionWithMerchantNameModel
+
+	sub := repo.q.UserMerchantSubscriptionModel
+	m := repo.q.MerchantProfileModel
+
+	err := sub.WithContext(ctx).
+		Select(sub.ALL, m.StoreName.As("merchant_name")).
+		LeftJoin(m, m.UserID.EqCol(sub.MerchantID)).
+		Where(sub.DeletedAt.IsNull(), sub.UserID.Eq(userID), sub.MerchantID.Eq(merchantID)).
+		Scan(&subscriptionMs)
 
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, repository.ErrSubscriptionNotFound
-		}
-
 		return nil, errors.WithStack(err)
 	}
 
-	return toSubscriptionDomain(subscriptionM), nil
+	if len(subscriptionMs) == 0 {
+		return nil, repository.ErrSubscriptionNotFound
+	}
+
+	return toSubscriptionDomainWithMerchantName(&subscriptionMs[0]), nil
 }
 
 // FindSubscriptionsByUser retrieves all subscriptions for a specific user (excluding soft-deleted).
 func (repo *subscriptionRepository) FindSubscriptionsByUser(ctx context.Context, userID uuid.UUID) ([]*entity.UserMerchantSubscription, error) {
-	subscriptionModels, err := repo.q.UserMerchantSubscriptionModel.WithContext(ctx).
-		Where(repo.q.UserMerchantSubscriptionModel.UserID.Eq(userID)).
-		Order(repo.q.UserMerchantSubscriptionModel.SubscribedAt.Desc()).
-		Find()
+	var subscriptionModels []subscriptionWithMerchantNameModel
+
+	sub := repo.q.UserMerchantSubscriptionModel
+	m := repo.q.MerchantProfileModel
+
+	err := sub.WithContext(ctx).
+		Select(sub.ALL, m.StoreName.As("merchant_name")).
+		LeftJoin(m, m.UserID.EqCol(sub.MerchantID)).
+		Where(sub.DeletedAt.IsNull(), sub.UserID.Eq(userID)).
+		Order(sub.SubscribedAt.Desc()).
+		Scan(&subscriptionModels)
 
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
 	subscriptions := make([]*entity.UserMerchantSubscription, 0, len(subscriptionModels))
-	for _, subscriptionM := range subscriptionModels {
-		subscriptions = append(subscriptions, toSubscriptionDomain(subscriptionM))
+	for i := range subscriptionModels {
+		subscriptions = append(subscriptions, toSubscriptionDomainWithMerchantName(&subscriptionModels[i]))
 	}
 
 	return subscriptions, nil
@@ -113,27 +136,34 @@ func (repo *subscriptionRepository) FindSubscriptionsByUser(ctx context.Context,
 
 // FindSubscriptionsByMerchant retrieves all subscriptions for a specific merchant (excluding soft-deleted).
 func (repo *subscriptionRepository) FindSubscriptionsByMerchant(ctx context.Context, merchantID uuid.UUID) ([]*entity.UserMerchantSubscription, error) {
-	subscriptionModels, err := repo.q.UserMerchantSubscriptionModel.WithContext(ctx).
-		Where(repo.q.UserMerchantSubscriptionModel.MerchantID.Eq(merchantID)).
-		Order(repo.q.UserMerchantSubscriptionModel.SubscribedAt.Desc()).
-		Find()
+	var subscriptionModels []subscriptionWithMerchantNameModel
+
+	sub := repo.q.UserMerchantSubscriptionModel
+	m := repo.q.MerchantProfileModel
+
+	err := sub.WithContext(ctx).
+		Select(sub.ALL, m.StoreName.As("merchant_name")).
+		LeftJoin(m, m.UserID.EqCol(sub.MerchantID)).
+		Where(sub.DeletedAt.IsNull(), sub.MerchantID.Eq(merchantID)).
+		Order(sub.SubscribedAt.Desc()).
+		Scan(&subscriptionModels)
 
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
 	subscriptions := make([]*entity.UserMerchantSubscription, 0, len(subscriptionModels))
-	for _, subscriptionM := range subscriptionModels {
-		subscriptions = append(subscriptions, toSubscriptionDomain(subscriptionM))
+	for i := range subscriptionModels {
+		subscriptions = append(subscriptions, toSubscriptionDomainWithMerchantName(&subscriptionModels[i]))
 	}
 
 	return subscriptions, nil
 }
 
 // UpdateSubscriptionStatus updates the active status of a subscription.
-func (repo *subscriptionRepository) UpdateSubscriptionStatus(ctx context.Context, id uuid.UUID, isActive bool) error {
+func (repo *subscriptionRepository) UpdateSubscriptionStatus(ctx context.Context, subscriptionID uuid.UUID, isActive bool) error {
 	result, err := repo.q.UserMerchantSubscriptionModel.WithContext(ctx).
-		Where(repo.q.UserMerchantSubscriptionModel.ID.Eq(id)).
+		Where(repo.q.UserMerchantSubscriptionModel.ID.Eq(subscriptionID)).
 		Update(repo.q.UserMerchantSubscriptionModel.IsActive, isActive)
 
 	if err != nil {
@@ -148,9 +178,9 @@ func (repo *subscriptionRepository) UpdateSubscriptionStatus(ctx context.Context
 }
 
 // UpdateNotificationRadius updates the notification radius for a subscription.
-func (repo *subscriptionRepository) UpdateNotificationRadius(ctx context.Context, id uuid.UUID, radius float64) error {
+func (repo *subscriptionRepository) UpdateNotificationRadius(ctx context.Context, subscriptionID uuid.UUID, radius float64) error {
 	result, err := repo.q.UserMerchantSubscriptionModel.WithContext(ctx).
-		Where(repo.q.UserMerchantSubscriptionModel.ID.Eq(id)).
+		Where(repo.q.UserMerchantSubscriptionModel.ID.Eq(subscriptionID)).
 		Update(repo.q.UserMerchantSubscriptionModel.NotificationRadius, radius)
 
 	if err != nil {
@@ -165,9 +195,9 @@ func (repo *subscriptionRepository) UpdateNotificationRadius(ctx context.Context
 }
 
 // DeleteSubscription removes a subscription by its ID (soft delete).
-func (repo *subscriptionRepository) DeleteSubscription(ctx context.Context, id uuid.UUID) error {
+func (repo *subscriptionRepository) DeleteSubscription(ctx context.Context, subscriptionID uuid.UUID) error {
 	result, err := repo.q.UserMerchantSubscriptionModel.WithContext(ctx).
-		Where(repo.q.UserMerchantSubscriptionModel.ID.Eq(id)).
+		Where(repo.q.UserMerchantSubscriptionModel.ID.Eq(subscriptionID)).
 		Delete()
 
 	if err != nil {
@@ -351,6 +381,17 @@ func toSubscriptionDomain(data *model.UserMerchantSubscriptionModel) *entity.Use
 		SubscribedAt:       data.SubscribedAt,
 		UpdatedAt:          data.UpdatedAt,
 	}
+}
+
+func toSubscriptionDomainWithMerchantName(data *subscriptionWithMerchantNameModel) *entity.UserMerchantSubscription {
+	if data == nil {
+		return nil
+	}
+
+	subscription := toSubscriptionDomain(&data.UserMerchantSubscriptionModel)
+	subscription.MerchantName = data.MerchantName
+
+	return subscription
 }
 
 // fromSubscriptionDomain converts a domain UserMerchantSubscription entity to a GORM UserMerchantSubscriptionModel.

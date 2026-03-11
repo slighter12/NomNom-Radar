@@ -3,11 +3,12 @@ package pmtiles
 import (
 	"math"
 
+	"radar/internal/errors"
+
 	"github.com/paulmach/orb"
 	"github.com/paulmach/orb/encoding/mvt"
 	"github.com/paulmach/orb/geojson"
 	"github.com/paulmach/orb/maptile"
-	"github.com/pkg/errors"
 )
 
 // RoadSegment represents a road segment extracted from MVT data

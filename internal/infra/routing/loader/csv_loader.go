@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/pkg/errors"
+	"radar/internal/errors"
 )
 
 // Vertex represents a node in the road network graph

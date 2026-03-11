@@ -7,11 +7,11 @@ import (
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
+	"radar/internal/errors"
 	"radar/internal/infra/persistence/model"
 	"radar/internal/infra/persistence/postgres/query"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"go.uber.org/fx"
 	"gorm.io/gorm"
 )
@@ -40,10 +40,10 @@ func (repo *authRepository) CreateAuthentication(ctx context.Context, auth *enti
 			return domainerrors.ErrUserAlreadyExists.WrapMessage("authentication method already exists")
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrUserCreationFailed.WrapMessage("invalid user reference")
+			return domainerrors.ErrAuthCreationFailed.WrapMessage("invalid user reference")
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrUserCreationFailed.WrapMessage("missing required authentication information")
+			return domainerrors.ErrAuthCreationFailed.WrapMessage("missing required authentication information")
 		}
 		// For other database errors, return a generic database error
 		return domainerrors.NewDatabaseExecuteError(err, "failed to create authentication")
@@ -106,10 +106,10 @@ func (repo *authRepository) UpdateAuthentication(ctx context.Context, auth *enti
 			return domainerrors.ErrUserAlreadyExists.WrapMessage("authentication method already exists")
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrUserUpdateFailed.WrapMessage("invalid user reference")
+			return domainerrors.ErrAuthUpdateFailed.WrapMessage("invalid user reference")
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrUserUpdateFailed.WrapMessage("missing required authentication information")
+			return domainerrors.ErrAuthUpdateFailed.WrapMessage("missing required authentication information")
 		}
 		// For other database errors, return a generic database error
 		return domainerrors.NewDatabaseExecuteError(err, "failed to update authentication")

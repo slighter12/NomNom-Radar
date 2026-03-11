@@ -49,6 +49,17 @@ func createTestSubscriptionService(t *testing.T) subscriptionServiceFixtures {
 	}
 }
 
+func buildReloadedSubscription(userID, merchantID uuid.UUID, isActive bool, radius float64) *entity.UserMerchantSubscription {
+	return &entity.UserMerchantSubscription{
+		ID:                 uuid.New(),
+		UserID:             userID,
+		MerchantID:         merchantID,
+		MerchantName:       "Demo Merchant",
+		IsActive:           isActive,
+		NotificationRadius: radius,
+	}
+}
+
 func TestSubscriptionService_SubscribeToMerchant_NewSubscription(t *testing.T) {
 	fx := createTestSubscriptionService(t)
 
@@ -64,13 +75,16 @@ func TestSubscriptionService_SubscribeToMerchant_NewSubscription(t *testing.T) {
 		CreateSubscription(ctx, mock.AnythingOfType("*entity.UserMerchantSubscription")).
 		Return(nil)
 
+	reloadedSub := buildReloadedSubscription(userID, merchantID, true, 1000.0)
+	fx.subRepo.EXPECT().
+		FindSubscriptionByID(ctx, mock.Anything).
+		Return(reloadedSub, nil)
+
 	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, nil)
 	require.NoError(t, err)
 	assert.NotNil(t, subscription)
-	assert.Equal(t, userID, subscription.UserID)
-	assert.Equal(t, merchantID, subscription.MerchantID)
-	assert.True(t, subscription.IsActive)
-	assert.Equal(t, float64(1000.0), subscription.NotificationRadius)
+	assert.Equal(t, reloadedSub, subscription)
+	assert.Equal(t, "Demo Merchant", subscription.MerchantName)
 }
 
 func TestSubscriptionService_SubscribeToMerchant_ReactivateExisting(t *testing.T) {
@@ -96,10 +110,16 @@ func TestSubscriptionService_SubscribeToMerchant_ReactivateExisting(t *testing.T
 		UpdateSubscriptionStatus(ctx, subID, true).
 		Return(nil)
 
+	reloadedSub := buildReloadedSubscription(userID, merchantID, true, 1000.0)
+	reloadedSub.ID = subID
+	fx.subRepo.EXPECT().
+		FindSubscriptionByID(ctx, subID).
+		Return(reloadedSub, nil)
+
 	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, nil)
 	require.NoError(t, err)
-	assert.NotNil(t, subscription)
-	assert.True(t, subscription.IsActive)
+	assert.Equal(t, reloadedSub, subscription)
+	assert.Equal(t, "Demo Merchant", subscription.MerchantName)
 }
 
 func TestSubscriptionService_SubscribeToMerchant_WithDevice(t *testing.T) {
@@ -123,16 +143,21 @@ func TestSubscriptionService_SubscribeToMerchant_WithDevice(t *testing.T) {
 		Return(nil)
 
 	fx.deviceRepo.EXPECT().
-		FindDevicesByUser(ctx, userID).
-		Return([]*entity.UserDevice{}, nil)
+		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
+		Return(nil, repository.ErrDeviceNotFound)
 
 	fx.deviceRepo.EXPECT().
 		CreateDevice(ctx, mock.AnythingOfType("*entity.UserDevice")).
 		Return(nil)
 
+	reloadedSub := buildReloadedSubscription(userID, merchantID, true, 1000.0)
+	fx.subRepo.EXPECT().
+		FindSubscriptionByID(ctx, mock.Anything).
+		Return(reloadedSub, nil)
+
 	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, deviceInfo)
 	require.NoError(t, err)
-	assert.NotNil(t, subscription)
+	assert.Equal(t, reloadedSub, subscription)
 }
 
 func TestSubscriptionService_UnsubscribeFromMerchant_Success(t *testing.T) {
@@ -234,10 +259,14 @@ func TestSubscriptionService_ProcessQRSubscription_Success(t *testing.T) {
 		CreateSubscription(ctx, mock.AnythingOfType("*entity.UserMerchantSubscription")).
 		Return(nil)
 
+	reloadedSub := buildReloadedSubscription(userID, merchantID, true, 1000.0)
+	fx.subRepo.EXPECT().
+		FindSubscriptionByID(ctx, mock.Anything).
+		Return(reloadedSub, nil)
+
 	subscription, err := fx.service.ProcessQRSubscription(ctx, userID, qrData, nil)
 	require.NoError(t, err)
-	assert.NotNil(t, subscription)
-	assert.Equal(t, merchantID, subscription.MerchantID)
+	assert.Equal(t, reloadedSub, subscription)
 }
 
 func TestSubscriptionService_SubscribeToMerchant_ExistingDeviceUpdate(t *testing.T) {
@@ -268,16 +297,25 @@ func TestSubscriptionService_SubscribeToMerchant_ExistingDeviceUpdate(t *testing
 		Return(nil)
 
 	fx.deviceRepo.EXPECT().
-		FindDevicesByUser(ctx, userID).
-		Return([]*entity.UserDevice{existingDevice}, nil)
+		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
+		Return(existingDevice, nil)
 
 	fx.deviceRepo.EXPECT().
 		UpdateFCMToken(ctx, deviceID, "new-token").
 		Return(nil)
 
+	fx.deviceRepo.EXPECT().
+		FindDeviceByID(ctx, deviceID).
+		Return(existingDevice, nil)
+
+	reloadedSub := buildReloadedSubscription(userID, merchantID, true, 1000.0)
+	fx.subRepo.EXPECT().
+		FindSubscriptionByID(ctx, mock.Anything).
+		Return(reloadedSub, nil)
+
 	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, deviceInfo)
 	require.NoError(t, err)
-	assert.NotNil(t, subscription)
+	assert.Equal(t, reloadedSub, subscription)
 }
 
 func TestSubscriptionService_ProcessQRSubscription_WithDevice(t *testing.T) {
@@ -306,15 +344,19 @@ func TestSubscriptionService_ProcessQRSubscription_WithDevice(t *testing.T) {
 		Return(nil)
 
 	fx.deviceRepo.EXPECT().
-		FindDevicesByUser(ctx, userID).
-		Return([]*entity.UserDevice{}, nil)
+		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
+		Return(nil, repository.ErrDeviceNotFound)
 
 	fx.deviceRepo.EXPECT().
 		CreateDevice(ctx, mock.AnythingOfType("*entity.UserDevice")).
 		Return(nil)
 
+	reloadedSub := buildReloadedSubscription(userID, merchantID, true, 1000.0)
+	fx.subRepo.EXPECT().
+		FindSubscriptionByID(ctx, mock.Anything).
+		Return(reloadedSub, nil)
+
 	subscription, err := fx.service.ProcessQRSubscription(ctx, userID, qrData, deviceInfo)
 	require.NoError(t, err)
-	assert.NotNil(t, subscription)
-	assert.Equal(t, merchantID, subscription.MerchantID)
+	assert.Equal(t, reloadedSub, subscription)
 }

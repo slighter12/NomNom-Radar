@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"radar/internal/domain/entity"
+	domainerrors "radar/internal/domain/errors"
+	"radar/internal/domain/repository"
 	mockRepo "radar/internal/mocks/repository"
 	"radar/internal/usecase"
 
@@ -44,8 +46,8 @@ func TestDeviceService_RegisterDevice_NewDevice(t *testing.T) {
 	}
 
 	fx.deviceRepo.EXPECT().
-		FindDevicesByUser(ctx, userID).
-		Return([]*entity.UserDevice{}, nil)
+		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
+		Return(nil, repository.ErrDeviceNotFound)
 
 	fx.deviceRepo.EXPECT().
 		CreateDevice(ctx, mock.AnythingOfType("*entity.UserDevice")).
@@ -92,8 +94,8 @@ func TestDeviceService_RegisterDevice_UpdateExisting(t *testing.T) {
 	}
 
 	fx.deviceRepo.EXPECT().
-		FindDevicesByUser(ctx, userID).
-		Return([]*entity.UserDevice{existingDevice}, nil)
+		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
+		Return(existingDevice, nil)
 
 	fx.deviceRepo.EXPECT().
 		UpdateFCMToken(ctx, deviceID, "new-fcm-token").
@@ -107,6 +109,85 @@ func TestDeviceService_RegisterDevice_UpdateExisting(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, device)
 	assert.Equal(t, "new-fcm-token", device.FCMToken)
+}
+
+func TestDeviceService_RegisterDevice_NormalizesDeviceInfo(t *testing.T) {
+	fx := createTestDeviceService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	deviceInfo := &usecase.DeviceInfo{
+		FCMToken: "  normalized-token  ",
+		DeviceID: "  device-123  ",
+		Platform: "  IOS  ",
+	}
+
+	fx.deviceRepo.EXPECT().
+		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
+		Return(nil, repository.ErrDeviceNotFound)
+
+	fx.deviceRepo.EXPECT().
+		CreateDevice(ctx, mock.AnythingOfType("*entity.UserDevice")).
+		Run(func(_ context.Context, device *entity.UserDevice) {
+			assert.Equal(t, "normalized-token", device.FCMToken)
+			assert.Equal(t, "device-123", device.DeviceID)
+			assert.Equal(t, "ios", device.Platform)
+		}).
+		Return(nil)
+
+	device, err := fx.service.RegisterDevice(ctx, userID, deviceInfo)
+	require.NoError(t, err)
+	require.NotNil(t, device)
+	assert.Equal(t, "normalized-token", device.FCMToken)
+	assert.Equal(t, "device-123", device.DeviceID)
+	assert.Equal(t, "ios", device.Platform)
+}
+
+func TestDeviceService_RegisterDevice_InvalidDeviceInfo(t *testing.T) {
+	tests := []struct {
+		name       string
+		deviceInfo *usecase.DeviceInfo
+	}{
+		{
+			name:       "nil device info",
+			deviceInfo: nil,
+		},
+		{
+			name: "empty fcm token",
+			deviceInfo: &usecase.DeviceInfo{
+				FCMToken: "   ",
+				DeviceID: "device-123",
+				Platform: "ios",
+			},
+		},
+		{
+			name: "empty device id",
+			deviceInfo: &usecase.DeviceInfo{
+				FCMToken: "token-123",
+				DeviceID: "   ",
+				Platform: "ios",
+			},
+		},
+		{
+			name: "invalid platform",
+			deviceInfo: &usecase.DeviceInfo{
+				FCMToken: "token-123",
+				DeviceID: "device-123",
+				Platform: "web",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := createTestDeviceService(t)
+
+			device, err := fx.service.RegisterDevice(context.Background(), uuid.New(), tt.deviceInfo)
+			require.Error(t, err)
+			assert.Nil(t, device)
+			assert.ErrorIs(t, err, domainerrors.ErrValidationFailed)
+		})
+	}
 }
 
 func TestDeviceService_UpdateFCMToken_Success(t *testing.T) {

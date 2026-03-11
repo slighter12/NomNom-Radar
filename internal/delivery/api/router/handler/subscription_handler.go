@@ -55,12 +55,8 @@ func (h *SubscriptionHandler) SubscribeToMerchant(c echo.Context) error {
 	}
 
 	var req SubscribeRequest
-	if err := c.Bind(&req); err != nil {
-		return response.BindingError(c, "INVALID_INPUT", "Invalid subscription input")
-	}
-
-	if err := c.Validate(&req); err != nil {
-		return response.BadRequest(c, "VALIDATION_ERROR", err.Error())
+	if err := bindAndValidateRequest(c, &req, "Invalid subscription input"); err != nil {
+		return err
 	}
 
 	subscription, err := h.subscriptionUC.SubscribeToMerchant(c.Request().Context(), userID, req.MerchantID, req.DeviceInfo)
@@ -78,9 +74,9 @@ func (h *SubscriptionHandler) UnsubscribeFromMerchant(c echo.Context) error {
 		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
-	merchantID, err := uuid.Parse(c.Param("merchantId"))
+	merchantID, err := h.parseMerchantID(c)
 	if err != nil {
-		return response.BadRequest(c, "INVALID_ID", "Invalid merchant ID")
+		return err
 	}
 
 	if err := h.subscriptionUC.UnsubscribeFromMerchant(c.Request().Context(), userID, merchantID); err != nil {
@@ -132,12 +128,8 @@ func (h *SubscriptionHandler) ProcessQRSubscription(c echo.Context) error {
 	}
 
 	var req ProcessQRRequest
-	if err := c.Bind(&req); err != nil {
-		return response.BindingError(c, "INVALID_INPUT", "Invalid QR subscription input")
-	}
-
-	if err := c.Validate(&req); err != nil {
-		return response.BadRequest(c, "VALIDATION_ERROR", err.Error())
+	if err := bindAndValidateRequest(c, &req, "Invalid QR subscription input"); err != nil {
+		return err
 	}
 
 	subscription, err := h.subscriptionUC.ProcessQRSubscription(c.Request().Context(), userID, req.QRData, req.DeviceInfo)
@@ -146,4 +138,8 @@ func (h *SubscriptionHandler) ProcessQRSubscription(c echo.Context) error {
 	}
 
 	return response.Success(c, http.StatusCreated, subscription)
+}
+
+func (h *SubscriptionHandler) parseMerchantID(c echo.Context) (uuid.UUID, error) {
+	return bindMerchantIDPathParam(c, "Invalid merchant ID")
 }

@@ -9,20 +9,11 @@ import (
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
+	"radar/internal/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"go.uber.org/fx"
-)
-
-var (
-	// ErrSubscriptionNotFound is returned when a subscription is not found
-	ErrSubscriptionNotFound = errors.New("subscription not found")
-	// ErrInvalidRadius is returned when the notification radius is invalid
-	ErrInvalidRadius = errors.New("invalid notification radius")
-	// ErrInvalidQRCode is returned when the QR code is invalid
-	ErrInvalidQRCode = errors.New("invalid QR code")
 )
 
 type subscriptionService struct {
@@ -79,8 +70,6 @@ func (s *subscriptionService) reactivateSubscription(ctx context.Context, userID
 		if err := s.subscriptionRepo.UpdateSubscriptionStatus(ctx, sub.ID, true); err != nil {
 			return nil, errors.Wrap(err, "failed to update subscription status")
 		}
-		sub.IsActive = true
-		sub.UpdatedAt = time.Now()
 	}
 
 	// Register device if provided
@@ -90,7 +79,12 @@ func (s *subscriptionService) reactivateSubscription(ctx context.Context, userID
 		}
 	}
 
-	return sub, nil
+	updatedSubscription, err := s.subscriptionRepo.FindSubscriptionByID(ctx, sub.ID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to reload subscription after reactivation")
+	}
+
+	return updatedSubscription, nil
 }
 
 // createNewSubscription creates a new subscription
@@ -116,7 +110,12 @@ func (s *subscriptionService) createNewSubscription(ctx context.Context, userID,
 		}
 	}
 
-	return subscription, nil
+	createdSubscription, err := s.subscriptionRepo.FindSubscriptionByID(ctx, subscription.ID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to reload subscription after creation")
+	}
+
+	return createdSubscription, nil
 }
 
 // UnsubscribeFromMerchant deactivates a subscription (soft delete)
@@ -125,7 +124,7 @@ func (s *subscriptionService) UnsubscribeFromMerchant(ctx context.Context, userI
 	subscription, err := s.subscriptionRepo.FindSubscriptionByUserAndMerchant(ctx, userID, merchantID)
 	if err != nil {
 		if errors.Is(err, repository.ErrSubscriptionNotFound) {
-			return ErrSubscriptionNotFound
+			return domainerrors.ErrSubscriptionNotFound
 		}
 
 		return errors.Wrap(err, "failed to find subscription by user and merchant")
@@ -173,7 +172,7 @@ func (s *subscriptionService) ProcessQRSubscription(ctx context.Context, userID 
 	// Parse QR code to get merchant ID
 	merchantID, err := s.qrcodeService.ParseSubscriptionQR(qrData)
 	if err != nil {
-		return nil, ErrInvalidQRCode
+		return nil, domainerrors.ErrInvalidQRCode
 	}
 
 	// Subscribe to merchant
@@ -182,38 +181,9 @@ func (s *subscriptionService) ProcessQRSubscription(ctx context.Context, userID 
 
 // registerDevice is a helper function to register a device
 func (s *subscriptionService) registerDevice(ctx context.Context, userID uuid.UUID, deviceInfo *usecase.DeviceInfo) error {
-	// Check if device already exists for this user
-	devices, err := s.deviceRepo.FindDevicesByUser(ctx, userID)
+	_, err := upsertUserDevice(ctx, s.deviceRepo, userID, deviceInfo)
 	if err != nil {
-		return errors.Wrap(err, "failed to find devices by user")
-	}
-
-	// Look for existing device with same device_id
-	for _, device := range devices {
-		if device.DeviceID == deviceInfo.DeviceID {
-			// Update FCM token for existing device
-			if err := s.deviceRepo.UpdateFCMToken(ctx, device.ID, deviceInfo.FCMToken); err != nil {
-				return errors.Wrap(err, "failed to update FCM token")
-			}
-
-			return nil
-		}
-	}
-
-	// Create new device
-	device := &entity.UserDevice{
-		ID:        uuid.New(),
-		UserID:    userID,
-		FCMToken:  deviceInfo.FCMToken,
-		DeviceID:  deviceInfo.DeviceID,
-		Platform:  deviceInfo.Platform,
-		IsActive:  true,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-
-	if err := s.deviceRepo.CreateDevice(ctx, device); err != nil {
-		return errors.Wrap(err, "failed to create device")
+		return err
 	}
 
 	return nil

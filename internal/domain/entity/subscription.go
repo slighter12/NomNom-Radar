@@ -12,6 +12,7 @@ type UserMerchantSubscription struct {
 	ID                 uuid.UUID `json:"id"`                  // The Global Unique Identifier (GUID) for the subscription.
 	UserID             uuid.UUID `json:"user_id"`             // The ID of the user who subscribed.
 	MerchantID         uuid.UUID `json:"merchant_id"`         // The ID of the merchant being subscribed to.
+	MerchantName       string    `json:"merchant_name"`       // The merchant display name for frontend rendering.
 	IsActive           bool      `json:"is_active"`           // Indicates if this subscription is active.
 	NotificationRadius float64   `json:"notification_radius"` // The radius (in meters) within which the user wants to receive notifications.
 	SubscribedAt       time.Time `json:"subscribed_at"`       // Timestamp of when the subscription was created.

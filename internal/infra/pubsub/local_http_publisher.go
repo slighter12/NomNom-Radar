@@ -10,8 +10,7 @@ import (
 	"time"
 
 	"radar/internal/domain/service"
-
-	"github.com/pkg/errors"
+	"radar/internal/errors"
 )
 
 // localHTTPPublisher implements EventPublisher by sending HTTP POST requests

@@ -8,11 +8,11 @@ import (
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
+	"radar/internal/errors"
 	"radar/internal/infra/persistence/model"
 	"radar/internal/infra/persistence/postgres/query"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"go.uber.org/fx"
 	"gorm.io/gorm"
 )
@@ -41,10 +41,10 @@ func (repo *refreshTokenRepository) CreateRefreshToken(ctx context.Context, toke
 			return domainerrors.ErrRefreshTokenInvalid.WrapMessage("refresh token already exists")
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrUserCreationFailed.WrapMessage("invalid user reference")
+			return domainerrors.ErrRefreshTokenCreationFailed.WrapMessage("invalid user reference")
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrUserCreationFailed.WrapMessage("missing required token information")
+			return domainerrors.ErrRefreshTokenCreationFailed.WrapMessage("missing required token information")
 		}
 		// For other database errors, return a generic database error
 		return domainerrors.NewDatabaseExecuteError(err, "failed to create refresh token")
@@ -139,10 +139,10 @@ func (repo *refreshTokenRepository) UpdateRefreshToken(ctx context.Context, toke
 			return domainerrors.ErrRefreshTokenInvalid.WrapMessage("refresh token already exists")
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrUserUpdateFailed.WrapMessage("invalid user reference")
+			return domainerrors.ErrRefreshTokenUpdateFailed.WrapMessage("invalid user reference")
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrUserUpdateFailed.WrapMessage("missing required token information")
+			return domainerrors.ErrRefreshTokenUpdateFailed.WrapMessage("missing required token information")
 		}
 		// For other database errors, return a generic database error
 		return domainerrors.NewDatabaseExecuteError(err, "failed to update refresh token")

@@ -7,9 +7,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"radar/internal/errors"
 	"radar/internal/util"
-
-	"github.com/pkg/errors"
 )
 
 func runPrepare(ctx context.Context, region, output string) error {

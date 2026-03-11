@@ -177,6 +177,48 @@ var (
 		"",
 	)
 
+	ErrMenuItemNotFound = NewBaseError(
+		http.StatusNotFound,
+		"MENU_ITEM_NOT_FOUND",
+		"找不到該菜單品項",
+		"",
+	)
+
+	ErrMenuItemCreationFailed = NewBaseError(
+		http.StatusInternalServerError,
+		"MENU_ITEM_CREATION_FAILED",
+		"建立菜單品項失敗",
+		"",
+	)
+
+	ErrMenuItemUpdateFailed = NewBaseError(
+		http.StatusInternalServerError,
+		"MENU_ITEM_UPDATE_FAILED",
+		"更新菜單品項失敗",
+		"",
+	)
+
+	ErrMenuItemOrderConflict = NewBaseError(
+		http.StatusConflict,
+		"MENU_ITEM_ORDER_CONFLICT",
+		"菜單排序衝突",
+		"",
+	)
+
+	ErrInvalidMenuCategory = NewBaseError(
+		http.StatusBadRequest,
+		"INVALID_MENU_CATEGORY",
+		"無效的菜單分類",
+		"",
+	)
+
+	ErrForbiddenResourceOwner = NewBaseError(
+		http.StatusForbidden,
+		"FORBIDDEN_RESOURCE_OWNER",
+		"您沒有權限存取此資源",
+		"",
+	)
+
 	// Validation-related errors
 	ErrValidationFailed = NewBaseError(
 		http.StatusBadRequest,
@@ -207,6 +249,97 @@ var (
 		"",
 	)
 
+	ErrAddressCreationFailed = NewBaseError(
+		http.StatusInternalServerError,
+		"ADDRESS_CREATION_FAILED",
+		"建立地址失敗",
+		"",
+	)
+
+	ErrAddressUpdateFailed = NewBaseError(
+		http.StatusInternalServerError,
+		"ADDRESS_UPDATE_FAILED",
+		"更新地址失敗",
+		"",
+	)
+
+	ErrLocationLimitReached = NewBaseError(
+		http.StatusConflict,
+		"LOCATION_LIMIT_REACHED",
+		"已達位置數量上限",
+		"",
+	)
+
+	ErrDeviceNotFound = NewBaseError(
+		http.StatusNotFound,
+		"DEVICE_NOT_FOUND",
+		"找不到該裝置",
+		"",
+	)
+
+	ErrDeviceOwnershipViolation = NewBaseError(
+		http.StatusForbidden,
+		"DEVICE_OWNERSHIP_VIOLATION",
+		"您沒有權限存取此裝置",
+		"",
+	)
+
+	ErrDeviceCreationFailed = NewBaseError(
+		http.StatusInternalServerError,
+		"DEVICE_CREATION_FAILED",
+		"建立裝置失敗",
+		"",
+	)
+
+	ErrSubscriptionNotFound = NewBaseError(
+		http.StatusNotFound,
+		"SUBSCRIPTION_NOT_FOUND",
+		"找不到訂閱資料",
+		"",
+	)
+
+	ErrSubscriptionCreationFailed = NewBaseError(
+		http.StatusInternalServerError,
+		"SUBSCRIPTION_CREATION_FAILED",
+		"建立訂閱失敗",
+		"",
+	)
+
+	ErrInvalidNotificationRadius = NewBaseError(
+		http.StatusBadRequest,
+		"INVALID_NOTIFICATION_RADIUS",
+		"無效的通知半徑",
+		"",
+	)
+
+	ErrInvalidQRCode = NewBaseError(
+		http.StatusBadRequest,
+		"INVALID_QR_CODE",
+		"無效的訂閱 QR code",
+		"",
+	)
+
+	ErrInvalidNotificationData = NewBaseError(
+		http.StatusBadRequest,
+		"INVALID_NOTIFICATION_DATA",
+		"通知資料無效",
+		"",
+	)
+
+	ErrNotificationCreationFailed = NewBaseError(
+		http.StatusInternalServerError,
+		"NOTIFICATION_CREATION_FAILED",
+		"建立通知失敗",
+		"",
+	)
+
+	ErrNotificationLogCreationFailed = NewBaseError(
+		http.StatusInternalServerError,
+		"NOTIFICATION_LOG_CREATION_FAILED",
+		"建立通知紀錄失敗",
+		"",
+	)
+
 	// Refresh token-related errors
 	ErrRefreshTokenNotFound = NewBaseError(
 		http.StatusNotFound,
@@ -222,6 +355,20 @@ var (
 		"",
 	)
 
+	ErrRefreshTokenCreationFailed = NewBaseError(
+		http.StatusInternalServerError,
+		"REFRESH_TOKEN_CREATION_FAILED",
+		"建立重新整理權杖失敗",
+		"",
+	)
+
+	ErrRefreshTokenUpdateFailed = NewBaseError(
+		http.StatusInternalServerError,
+		"REFRESH_TOKEN_UPDATE_FAILED",
+		"更新重新整理權杖失敗",
+		"",
+	)
+
 	ErrSessionLimitExceeded = NewBaseError(
 		http.StatusTooManyRequests,
 		"SESSION_LIMIT_EXCEEDED",
@@ -234,6 +381,20 @@ var (
 		http.StatusInternalServerError,
 		"TRANSACTION_FAILED",
 		"資料庫交易失敗",
+		"",
+	)
+
+	ErrAuthCreationFailed = NewBaseError(
+		http.StatusInternalServerError,
+		"AUTH_CREATION_FAILED",
+		"建立認證方式失敗",
+		"",
+	)
+
+	ErrAuthUpdateFailed = NewBaseError(
+		http.StatusInternalServerError,
+		"AUTH_UPDATE_FAILED",
+		"更新認證方式失敗",
 		"",
 	)
 

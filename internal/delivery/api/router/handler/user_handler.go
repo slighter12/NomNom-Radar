@@ -32,6 +32,11 @@ type UserHandler struct {
 	googleAuthSVC service.OAuthAuthService
 }
 
+type GoogleCallbackQueryParams struct {
+	Code  string `query:"code"`
+	State string `query:"state"`
+}
+
 // NewUserHandler is the constructor for UserHandler, injected by Fx.
 func NewUserHandler(params UserHandlerParams) *UserHandler {
 	return &UserHandler{
@@ -44,9 +49,9 @@ func NewUserHandler(params UserHandlerParams) *UserHandler {
 
 // RegisterUser handles the user registration request.
 func (h *UserHandler) RegisterUser(c echo.Context) error {
-	var input *usecase.RegisterUserInput
-	if err := c.Bind(&input); err != nil {
-		return response.BindingError(c, "INVALID_INPUT", "Invalid registration input")
+	input, err := bindRequiredPayload[usecase.RegisterUserInput](c, "Invalid registration input")
+	if err != nil {
+		return err
 	}
 
 	output, err := h.userUC.RegisterUser(c.Request().Context(), input)
@@ -61,9 +66,9 @@ func (h *UserHandler) RegisterUser(c echo.Context) error {
 
 // RegisterMerchant handles the merchant registration request.
 func (h *UserHandler) RegisterMerchant(c echo.Context) error {
-	var input *usecase.RegisterMerchantInput
-	if err := c.Bind(&input); err != nil {
-		return response.BindingError(c, "INVALID_INPUT", "Invalid registration input")
+	input, err := bindRequiredPayload[usecase.RegisterMerchantInput](c, "Invalid registration input")
+	if err != nil {
+		return err
 	}
 
 	output, err := h.userUC.RegisterMerchant(c.Request().Context(), input)
@@ -76,9 +81,9 @@ func (h *UserHandler) RegisterMerchant(c echo.Context) error {
 
 // Login handles the user login request.
 func (h *UserHandler) Login(c echo.Context) error {
-	var input *usecase.LoginInput
-	if err := c.Bind(&input); err != nil {
-		return response.BindingError(c, "INVALID_INPUT", "Invalid login input")
+	input, err := bindRequiredPayload[usecase.LoginInput](c, "Invalid login input")
+	if err != nil {
+		return err
 	}
 
 	output, err := h.userUC.Login(c.Request().Context(), input)
@@ -91,9 +96,9 @@ func (h *UserHandler) Login(c echo.Context) error {
 
 // RefreshToken handles the token refresh request.
 func (h *UserHandler) RefreshToken(c echo.Context) error {
-	var input *usecase.RefreshTokenInput
-	if err := c.Bind(&input); err != nil {
-		return response.BindingError(c, "INVALID_INPUT", "Invalid refresh token input")
+	input, err := bindRequiredPayload[usecase.RefreshTokenInput](c, "Invalid refresh token input")
+	if err != nil {
+		return err
 	}
 
 	output, err := h.userUC.RefreshToken(c.Request().Context(), input)
@@ -106,9 +111,9 @@ func (h *UserHandler) RefreshToken(c echo.Context) error {
 
 // Logout handles the user logout request.
 func (h *UserHandler) Logout(c echo.Context) error {
-	var input *usecase.LogoutInput
-	if err := c.Bind(&input); err != nil {
-		return response.BindingError(c, "INVALID_INPUT", "Invalid logout input")
+	input, err := bindRequiredPayload[usecase.LogoutInput](c, "Invalid logout input")
+	if err != nil {
+		return err
 	}
 
 	if err := h.userUC.Logout(c.Request().Context(), input); err != nil {
@@ -137,9 +142,14 @@ func (h *UserHandler) GoogleCallback(c echo.Context) error {
 
 // extractGoogleCallbackInput extracts and validates input from the request
 func (h *UserHandler) extractGoogleCallbackInput(c echo.Context) (*usecase.GoogleCallbackInput, error) {
-	code := c.QueryParam("code")
+	var query GoogleCallbackQueryParams
+	if err := bindQueryParams(c, &query); err != nil {
+		return nil, response.BindingError(c, "INVALID_INPUT", "Invalid Google callback input")
+	}
+
+	code := query.Code
 	idToken := c.FormValue("id_token")
-	state := c.QueryParam("state")
+	state := query.State
 
 	// Handle authorization code flow (not implemented yet)
 	if code != "" {
@@ -155,9 +165,9 @@ func (h *UserHandler) extractGoogleCallbackInput(c echo.Context) (*usecase.Googl
 	}
 
 	// Handle JSON body binding
-	var input *usecase.GoogleCallbackInput
-	if err := c.Bind(&input); err != nil {
-		return nil, response.BindingError(c, "INVALID_INPUT", "Invalid Google callback input")
+	input, err := bindRequiredPayload[usecase.GoogleCallbackInput](c, "Invalid Google callback input")
+	if err != nil {
+		return nil, err
 	}
 
 	// Override state if provided in query params
@@ -166,7 +176,7 @@ func (h *UserHandler) extractGoogleCallbackInput(c echo.Context) (*usecase.Googl
 	}
 
 	// Validate required fields
-	if input == nil || input.IDToken == "" {
+	if input.IDToken == "" {
 		return nil, response.BadRequest(c, "INVALID_INPUT", "ID token is required")
 	}
 

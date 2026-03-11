@@ -9,18 +9,14 @@ import (
 
 	deliverycontext "radar/internal/delivery/context"
 	"radar/internal/domain/entity"
+	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
+	"radar/internal/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"go.uber.org/fx"
-)
-
-var (
-	// ErrInvalidNotificationData is returned when neither addressID nor locationData is provided
-	ErrInvalidNotificationData = errors.New("either addressID or locationData must be provided")
 )
 
 const (
@@ -82,7 +78,10 @@ func (s *notificationService) PublishLocationNotification(
 ) (*entity.MerchantLocationNotification, error) {
 	// Validate input
 	if addressID == nil && locationData == nil {
-		return nil, ErrInvalidNotificationData
+		return nil, domainerrors.ErrInvalidNotificationData
+	}
+	if addressID != nil && locationData != nil {
+		return nil, errors.Wrap(domainerrors.ErrInvalidNotificationData, "address_id and location_data are mutually exclusive")
 	}
 
 	// Get location information
@@ -239,12 +238,16 @@ func (s *notificationService) getLocationInfo(
 		// Fetch address from repository
 		address, fetchErr := s.addressRepo.FindAddressByID(ctx, *addressID)
 		if fetchErr != nil {
+			if errors.Is(fetchErr, repository.ErrAddressNotFound) {
+				return "", "", 0, 0, domainerrors.ErrAddressNotFound
+			}
+
 			return "", "", 0, 0, errors.Wrap(fetchErr, "failed to fetch address")
 		}
 
 		// Verify ownership
 		if address.OwnerID != merchantID || address.OwnerType != entity.OwnerTypeMerchantProfile {
-			return "", "", 0, 0, errors.New("unauthorized: address does not belong to merchant")
+			return "", "", 0, 0, domainerrors.ErrAddressOwnershipViolation
 		}
 
 		return address.Label, address.FullAddress, address.Latitude, address.Longitude, nil

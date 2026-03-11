@@ -14,6 +14,7 @@ func main() {
 		model.AuthenticationModel{},
 		model.RefreshTokenModel{},
 		model.AddressModel{},
+		model.MenuItemModel{},
 		model.UserMerchantSubscriptionModel{},
 		model.UserDeviceModel{},
 		model.MerchantLocationNotificationModel{},

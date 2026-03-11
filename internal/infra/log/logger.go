@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"radar/config"
+	"radar/internal/errors"
 
-	"github.com/pkg/errors"
 	"go.uber.org/fx"
 )
 

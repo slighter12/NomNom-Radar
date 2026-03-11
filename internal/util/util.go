@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/pkg/errors"
+	"radar/internal/errors"
 )
 
 // CalculateFileChecksum calculates the SHA256 checksum for a file.

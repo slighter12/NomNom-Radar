@@ -5,9 +5,9 @@ import (
 
 	"radar/config"
 	"radar/internal/domain/service"
+	"radar/internal/errors"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"github.com/skip2/go-qrcode"
 )
 

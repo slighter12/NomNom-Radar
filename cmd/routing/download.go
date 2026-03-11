@@ -13,9 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"radar/internal/errors"
 	"radar/internal/util"
-
-	"github.com/pkg/errors"
 )
 
 // httpClient is initialized once and reused to allow TCP connection reuse.

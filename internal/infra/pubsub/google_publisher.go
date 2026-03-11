@@ -7,10 +7,10 @@ import (
 	"log/slog"
 
 	"radar/internal/domain/service"
+	"radar/internal/errors"
 
 	"cloud.google.com/go/pubsub/v2"
 	pubsubpb "cloud.google.com/go/pubsub/v2/apiv1/pubsubpb"
-	"github.com/pkg/errors"
 )
 
 // googlePubSubPublisher implements EventPublisher using Google Cloud Pub/Sub

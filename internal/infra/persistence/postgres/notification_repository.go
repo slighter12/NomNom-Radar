@@ -7,11 +7,11 @@ import (
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
+	"radar/internal/errors"
 	"radar/internal/infra/persistence/model"
 	"radar/internal/infra/persistence/postgres/query"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"gorm.io/gorm"
 )
 
@@ -34,10 +34,10 @@ func (repo *notificationRepository) CreateNotification(ctx context.Context, noti
 	if err := repo.q.MerchantLocationNotificationModel.WithContext(ctx).Create(notificationM); err != nil {
 		// Convert PostgreSQL errors to domain errors
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrUserCreationFailed.WrapMessage("invalid merchant or address reference")
+			return domainerrors.ErrNotificationCreationFailed.WrapMessage("invalid merchant or address reference")
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrUserCreationFailed.WrapMessage("missing required notification information")
+			return domainerrors.ErrNotificationCreationFailed.WrapMessage("missing required notification information")
 		}
 		// For other database errors, return a generic database error
 		return domainerrors.NewDatabaseExecuteError(err, "failed to create notification")
@@ -122,10 +122,10 @@ func (repo *notificationRepository) CreateNotificationLog(ctx context.Context, l
 	if err := repo.q.NotificationLogModel.WithContext(ctx).Create(logM); err != nil {
 		// Convert PostgreSQL errors to domain errors
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrUserCreationFailed.WrapMessage("invalid notification, user, or device reference")
+			return domainerrors.ErrNotificationLogCreationFailed.WrapMessage("invalid notification, user, or device reference")
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrUserCreationFailed.WrapMessage("missing required notification log information")
+			return domainerrors.ErrNotificationLogCreationFailed.WrapMessage("missing required notification log information")
 		}
 		// For other database errors, return a generic database error
 		return domainerrors.NewDatabaseExecuteError(err, "failed to create notification log")
@@ -154,10 +154,10 @@ func (repo *notificationRepository) BatchCreateNotificationLogs(ctx context.Cont
 	if err := repo.q.NotificationLogModel.WithContext(ctx).CreateInBatches(logModels, 100); err != nil {
 		// Convert PostgreSQL errors to domain errors
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrUserCreationFailed.WrapMessage("invalid notification, user, or device reference in batch")
+			return domainerrors.ErrNotificationLogCreationFailed.WrapMessage("invalid notification, user, or device reference in batch")
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrUserCreationFailed.WrapMessage("missing required notification log information in batch")
+			return domainerrors.ErrNotificationLogCreationFailed.WrapMessage("missing required notification log information in batch")
 		}
 		// For other database errors, return a generic database error
 		return domainerrors.NewDatabaseExecuteError(err, "failed to batch create notification logs")

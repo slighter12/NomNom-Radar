@@ -15,11 +15,11 @@ import (
 	"time"
 
 	"radar/config"
+	"radar/internal/errors"
 	"radar/internal/usecase"
 
 	"github.com/paulmach/orb"
 	"github.com/paulmach/orb/maptile"
-	"github.com/pkg/errors"
 	"github.com/protomaps/go-pmtiles/pmtiles"
 	"go.uber.org/fx"
 	_ "gocloud.dev/blob/gcsblob" // Register GCS blob driver for gs:// URLs
@@ -286,21 +286,26 @@ func (s *pmtilesRoutingService) OneToMany(ctx context.Context, source usecase.Co
 
 	// Convert results
 	results := make([]usecase.RouteResult, len(targets))
-	for idx, pathResult := range pathResults {
-		if pathResult.IsReachable {
+	for idx := range targets {
+		target := targets[idx]
+		if idx < len(pathResults) && pathResults[idx].IsReachable {
+			pathResult := pathResults[idx]
+
 			// Add snap distances to the total
 			totalDistance := pathResult.Distance + sourceSnapDist + targetSnapDistances[idx]
 			results[idx] = usecase.RouteResult{
 				Source:      source,
-				Target:      targets[idx],
+				Target:      target,
 				DistanceKm:  totalDistance / 1000,
 				DurationMin: pathResult.Duration / 60,
 				IsReachable: true,
 			}
-		} else {
-			// Fallback to Haversine for unreachable targets
-			results[idx] = s.haversineResult(source, targets[idx])
+
+			continue
 		}
+
+		// Fallback to Haversine for unreachable targets
+		results[idx] = s.haversineResult(source, target)
 	}
 
 	return &usecase.OneToManyResult{
