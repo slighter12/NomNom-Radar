@@ -10,10 +10,10 @@ on:
         options:
           - radar
           - geoworker
-      tag:
-        description: 'Image tag (default: latest)'
+      image_tag:
+        description: 'Optional image tag override. Leave blank to use the selected ref short SHA.'
         required: false
-        default: 'latest'
+        default: ''
       run_migration:
         description: 'Run database migration before deploy'
         required: false
@@ -35,6 +35,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Google Auth
         id: auth
@@ -57,11 +59,36 @@ jobs:
           PG_URI=$(gcloud secrets versions access latest --secret="postgres-master-dsn" --project="${{ env.PROJECT_ID }}")
           $(go env GOPATH)/bin/goose postgres "${PG_URI}" -dir ./database/migration/postgres up
 
-      - name: Set image name
+      - name: Resolve image reference
         id: image
         run: |
+          set -euo pipefail
+
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          echo "name=${{ env.REGISTRY }}/${OWNER}/${{ inputs.target }}:${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          IMAGE_TAG="${{ inputs.image_tag }}"
+          TAG_SOURCE="manual override"
+
+          if [ -z "${IMAGE_TAG}" ]; then
+            IMAGE_TAG="$(git rev-parse --short HEAD)"
+            TAG_SOURCE="selected ref short SHA"
+          fi
+
+          IMAGE_NAME="${{ env.REGISTRY }}/${OWNER}/${{ inputs.target }}:${IMAGE_TAG}"
+
+          echo "tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "source=${TAG_SOURCE}" >> $GITHUB_OUTPUT
+
+          echo "Deploy target: ${{ inputs.target }}"
+          echo "Selected ref: ${GITHUB_REF_NAME}"
+          echo "Resolved image tag: ${IMAGE_TAG} (${TAG_SOURCE})"
+          echo "Resolved image: ${IMAGE_NAME}"
+
+      - name: Verify image exists in Artifact Registry
+        run: |
+          gcloud artifacts docker images describe "${{ steps.image.outputs.name }}" \
+            --project="${{ env.PROJECT_ID }}" \
+            --format='value(image_summary.fully_qualified_digest)'
 
       - name: Prepare service YAML
         run: |
