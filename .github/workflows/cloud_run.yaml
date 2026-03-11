@@ -83,7 +83,16 @@ jobs:
                 IMAGE_TAG="${CANDIDATE_TAG}"
                 break
               fi
-            done < <(git rev-list --max-count=50 HEAD)
+            done < <(git rev-list --first-parent --max-count=200 HEAD)
+
+            if [ -z "${IMAGE_TAG}" ] && [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+              if IMAGE_DIGEST=$(gcloud artifacts docker images describe "${TARGET_IMAGE_BASE}:latest" \
+                --project="${{ env.PROJECT_ID }}" \
+                --format='value(image_summary.fully_qualified_digest)' 2>/dev/null); then
+                IMAGE_TAG="latest"
+                TAG_SOURCE="latest tag fallback on main"
+              fi
+            fi
           else
             IMAGE_DIGEST=$(gcloud artifacts docker images describe "${TARGET_IMAGE_BASE}:${IMAGE_TAG}" \
               --project="${{ env.PROJECT_ID }}" \
