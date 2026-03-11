@@ -66,23 +66,47 @@ jobs:
 
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           IMAGE_TAG="${{ inputs.image_tag }}"
+          IMAGE_DIGEST=""
           TAG_SOURCE="manual override"
+          TARGET_IMAGE_BASE="${{ env.REGISTRY }}/${OWNER}/${{ inputs.target }}"
 
           if [ -z "${IMAGE_TAG}" ]; then
-            IMAGE_TAG="$(git rev-parse --short HEAD)"
-            TAG_SOURCE="selected ref short SHA"
+            TAG_SOURCE="latest built commit on selected ref"
+
+            while read -r COMMIT_SHA; do
+              CANDIDATE_TAG="$(git rev-parse --short "${COMMIT_SHA}")"
+              CANDIDATE_IMAGE="${TARGET_IMAGE_BASE}:${CANDIDATE_TAG}"
+
+              if IMAGE_DIGEST=$(gcloud artifacts docker images describe "${CANDIDATE_IMAGE}" \
+                --project="${{ env.PROJECT_ID }}" \
+                --format='value(image_summary.fully_qualified_digest)' 2>/dev/null); then
+                IMAGE_TAG="${CANDIDATE_TAG}"
+                break
+              fi
+            done < <(git rev-list --max-count=50 HEAD)
+          else
+            IMAGE_DIGEST=$(gcloud artifacts docker images describe "${TARGET_IMAGE_BASE}:${IMAGE_TAG}" \
+              --project="${{ env.PROJECT_ID }}" \
+              --format='value(image_summary.fully_qualified_digest)')
           fi
 
-          IMAGE_NAME="${{ env.REGISTRY }}/${OWNER}/${{ inputs.target }}:${IMAGE_TAG}"
+          if [ -z "${IMAGE_TAG}" ]; then
+            echo "::error::No deployable image tag found for the selected ref. Build and push the image first, or provide image_tag manually."
+            exit 1
+          fi
+
+          IMAGE_NAME="${TARGET_IMAGE_BASE}:${IMAGE_TAG}"
 
           echo "tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
           echo "name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "digest=${IMAGE_DIGEST}" >> $GITHUB_OUTPUT
           echo "source=${TAG_SOURCE}" >> $GITHUB_OUTPUT
 
           echo "Deploy target: ${{ inputs.target }}"
           echo "Selected ref: ${GITHUB_REF_NAME}"
           echo "Resolved image tag: ${IMAGE_TAG} (${TAG_SOURCE})"
           echo "Resolved image: ${IMAGE_NAME}"
+          echo "Resolved digest: ${IMAGE_DIGEST}"
 
       - name: Verify image exists in Artifact Registry
         run: |
