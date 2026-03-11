@@ -41,7 +41,7 @@ func upsertUserDevice(
 		return nil, errors.Wrap(err, "failed to find device by user and device ID")
 	}
 
-	device := &entity.UserDevice{
+	newDevice := &entity.UserDevice{
 		ID:        uuid.New(),
 		UserID:    userID,
 		FCMToken:  deviceInfo.FCMToken,
@@ -52,11 +52,11 @@ func upsertUserDevice(
 		UpdatedAt: time.Now(),
 	}
 
-	if err := deviceRepo.CreateDevice(ctx, device); err != nil {
+	if err := deviceRepo.CreateDevice(ctx, newDevice); err != nil {
 		return nil, errors.Wrap(err, "failed to create device")
 	}
 
-	return device, nil
+	return newDevice, nil
 }
 
 func validateDeviceInfo(deviceInfo *usecase.DeviceInfo) error {
