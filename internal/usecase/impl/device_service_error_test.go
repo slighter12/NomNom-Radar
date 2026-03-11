@@ -194,13 +194,13 @@ func TestDeviceService_RegisterDevice_FindError(t *testing.T) {
 
 	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
-		FindDevicesByUser(ctx, userID).
+		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
 		Return(nil, expectedErr)
 
 	device, err := fx.service.RegisterDevice(ctx, userID, deviceInfo)
 	assert.Error(t, err)
 	assert.Nil(t, device)
-	assert.Contains(t, err.Error(), "failed to find devices by user")
+	assert.Contains(t, err.Error(), "failed to find device by user and device ID")
 }
 
 func TestDeviceService_GetUserDevices_Error(t *testing.T) {
@@ -241,8 +241,8 @@ func TestDeviceService_RegisterDevice_UpdateExisting_UpdateError(t *testing.T) {
 	}
 
 	fx.deviceRepo.EXPECT().
-		FindDevicesByUser(ctx, userID).
-		Return([]*entity.UserDevice{existingDevice}, nil)
+		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
+		Return(existingDevice, nil)
 
 	fx.deviceRepo.EXPECT().
 		UpdateFCMToken(ctx, deviceID, "new-fcm-token").
@@ -276,8 +276,8 @@ func TestDeviceService_RegisterDevice_UpdateExisting_FindByIDError(t *testing.T)
 	}
 
 	fx.deviceRepo.EXPECT().
-		FindDevicesByUser(ctx, userID).
-		Return([]*entity.UserDevice{existingDevice}, nil)
+		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
+		Return(existingDevice, nil)
 
 	fx.deviceRepo.EXPECT().
 		UpdateFCMToken(ctx, deviceID, "new-fcm-token").
@@ -305,8 +305,8 @@ func TestDeviceService_RegisterDevice_NewDevice_CreateError(t *testing.T) {
 	}
 
 	fx.deviceRepo.EXPECT().
-		FindDevicesByUser(ctx, userID).
-		Return([]*entity.UserDevice{}, nil)
+		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
+		Return(nil, repository.ErrDeviceNotFound)
 
 	fx.deviceRepo.EXPECT().
 		CreateDevice(ctx, mock.AnythingOfType("*entity.UserDevice")).

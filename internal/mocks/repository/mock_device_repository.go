@@ -289,6 +289,80 @@ func (_c *MockDeviceRepository_FindDeviceByID_Call) RunAndReturn(run func(ctx co
 	return _c
 }
 
+// FindDeviceByUserAndDeviceID provides a mock function for the type MockDeviceRepository
+func (_mock *MockDeviceRepository) FindDeviceByUserAndDeviceID(ctx context.Context, userID uuid.UUID, deviceID string) (*entity.UserDevice, error) {
+	ret := _mock.Called(ctx, userID, deviceID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FindDeviceByUserAndDeviceID")
+	}
+
+	var r0 *entity.UserDevice
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, string) (*entity.UserDevice, error)); ok {
+		return returnFunc(ctx, userID, deviceID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, string) *entity.UserDevice); ok {
+		r0 = returnFunc(ctx, userID, deviceID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*entity.UserDevice)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID, string) error); ok {
+		r1 = returnFunc(ctx, userID, deviceID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockDeviceRepository_FindDeviceByUserAndDeviceID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FindDeviceByUserAndDeviceID'
+type MockDeviceRepository_FindDeviceByUserAndDeviceID_Call struct {
+	*mock.Call
+}
+
+// FindDeviceByUserAndDeviceID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID uuid.UUID
+//   - deviceID string
+func (_e *MockDeviceRepository_Expecter) FindDeviceByUserAndDeviceID(ctx interface{}, userID interface{}, deviceID interface{}) *MockDeviceRepository_FindDeviceByUserAndDeviceID_Call {
+	return &MockDeviceRepository_FindDeviceByUserAndDeviceID_Call{Call: _e.mock.On("FindDeviceByUserAndDeviceID", ctx, userID, deviceID)}
+}
+
+func (_c *MockDeviceRepository_FindDeviceByUserAndDeviceID_Call) Run(run func(ctx context.Context, userID uuid.UUID, deviceID string)) *MockDeviceRepository_FindDeviceByUserAndDeviceID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockDeviceRepository_FindDeviceByUserAndDeviceID_Call) Return(userDevice *entity.UserDevice, err error) *MockDeviceRepository_FindDeviceByUserAndDeviceID_Call {
+	_c.Call.Return(userDevice, err)
+	return _c
+}
+
+func (_c *MockDeviceRepository_FindDeviceByUserAndDeviceID_Call) RunAndReturn(run func(ctx context.Context, userID uuid.UUID, deviceID string) (*entity.UserDevice, error)) *MockDeviceRepository_FindDeviceByUserAndDeviceID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // FindDevicesByUser provides a mock function for the type MockDeviceRepository
 func (_mock *MockDeviceRepository) FindDevicesByUser(ctx context.Context, userID uuid.UUID) ([]*entity.UserDevice, error) {
 	ret := _mock.Called(ctx, userID)

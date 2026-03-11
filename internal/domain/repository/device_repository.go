@@ -26,6 +26,9 @@ type DeviceRepository interface {
 	// FindDeviceByID retrieves a device by its unique ID.
 	FindDeviceByID(ctx context.Context, id uuid.UUID) (*entity.UserDevice, error)
 
+	// FindDeviceByUserAndDeviceID retrieves a device by user ID and client device ID.
+	FindDeviceByUserAndDeviceID(ctx context.Context, userID uuid.UUID, deviceID string) (*entity.UserDevice, error)
+
 	// FindDevicesByUser retrieves all devices for a specific user (including inactive).
 	FindDevicesByUser(ctx context.Context, userID uuid.UUID) ([]*entity.UserDevice, error)
 

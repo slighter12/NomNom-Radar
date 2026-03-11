@@ -143,8 +143,8 @@ func TestSubscriptionService_SubscribeToMerchant_WithDevice(t *testing.T) {
 		Return(nil)
 
 	fx.deviceRepo.EXPECT().
-		FindDevicesByUser(ctx, userID).
-		Return([]*entity.UserDevice{}, nil)
+		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
+		Return(nil, repository.ErrDeviceNotFound)
 
 	fx.deviceRepo.EXPECT().
 		CreateDevice(ctx, mock.AnythingOfType("*entity.UserDevice")).
@@ -297,8 +297,8 @@ func TestSubscriptionService_SubscribeToMerchant_ExistingDeviceUpdate(t *testing
 		Return(nil)
 
 	fx.deviceRepo.EXPECT().
-		FindDevicesByUser(ctx, userID).
-		Return([]*entity.UserDevice{existingDevice}, nil)
+		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
+		Return(existingDevice, nil)
 
 	fx.deviceRepo.EXPECT().
 		UpdateFCMToken(ctx, deviceID, "new-token").
@@ -344,8 +344,8 @@ func TestSubscriptionService_ProcessQRSubscription_WithDevice(t *testing.T) {
 		Return(nil)
 
 	fx.deviceRepo.EXPECT().
-		FindDevicesByUser(ctx, userID).
-		Return([]*entity.UserDevice{}, nil)
+		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
+		Return(nil, repository.ErrDeviceNotFound)
 
 	fx.deviceRepo.EXPECT().
 		CreateDevice(ctx, mock.AnythingOfType("*entity.UserDevice")).

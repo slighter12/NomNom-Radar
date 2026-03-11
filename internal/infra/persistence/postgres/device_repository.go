@@ -71,6 +71,26 @@ func (repo *deviceRepository) FindDeviceByID(ctx context.Context, id uuid.UUID) 
 	return toDeviceDomain(deviceM), nil
 }
 
+// FindDeviceByUserAndDeviceID retrieves a device by user ID and client device ID.
+func (repo *deviceRepository) FindDeviceByUserAndDeviceID(ctx context.Context, userID uuid.UUID, deviceID string) (*entity.UserDevice, error) {
+	deviceM, err := repo.q.UserDeviceModel.WithContext(ctx).
+		Where(
+			repo.q.UserDeviceModel.UserID.Eq(userID),
+			repo.q.UserDeviceModel.DeviceID.Eq(deviceID),
+		).
+		First()
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, repository.ErrDeviceNotFound
+		}
+
+		return nil, errors.WithStack(err)
+	}
+
+	return toDeviceDomain(deviceM), nil
+}
+
 // FindDevicesByUser retrieves all devices for a specific user (including inactive, excluding soft-deleted).
 func (repo *deviceRepository) FindDevicesByUser(ctx context.Context, userID uuid.UUID) ([]*entity.UserDevice, error) {
 	deviceModels, err := repo.q.UserDeviceModel.WithContext(ctx).

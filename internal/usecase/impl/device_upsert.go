@@ -24,16 +24,8 @@ func upsertUserDevice(
 		return nil, err
 	}
 
-	devices, err := deviceRepo.FindDevicesByUser(ctx, userID)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to find devices by user")
-	}
-
-	for _, device := range devices {
-		if device.DeviceID != deviceInfo.DeviceID {
-			continue
-		}
-
+	device, err := deviceRepo.FindDeviceByUserAndDeviceID(ctx, userID, deviceInfo.DeviceID)
+	if err == nil {
 		if err := deviceRepo.UpdateFCMToken(ctx, device.ID, deviceInfo.FCMToken); err != nil {
 			return nil, errors.Wrap(err, "failed to update FCM token")
 		}
@@ -44,6 +36,9 @@ func upsertUserDevice(
 		}
 
 		return updatedDevice, nil
+	}
+	if !errors.Is(err, repository.ErrDeviceNotFound) {
+		return nil, errors.Wrap(err, "failed to find device by user and device ID")
 	}
 
 	device := &entity.UserDevice{

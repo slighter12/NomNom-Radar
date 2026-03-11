@@ -177,7 +177,7 @@ func TestSubscriptionService_SubscribeToMerchant_CreateError(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to create subscription")
 }
 
-func TestSubscriptionService_SubscribeToMerchant_WithDevice_FindDevicesError(t *testing.T) {
+func TestSubscriptionService_SubscribeToMerchant_WithDevice_FindDeviceError(t *testing.T) {
 	fx := createTestSubscriptionService(t)
 
 	ctx := context.Background()
@@ -198,13 +198,13 @@ func TestSubscriptionService_SubscribeToMerchant_WithDevice_FindDevicesError(t *
 		Return(nil)
 
 	fx.deviceRepo.EXPECT().
-		FindDevicesByUser(ctx, userID).
+		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
 		Return(nil, errors.New("database error"))
 
 	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, deviceInfo)
 	assert.Error(t, err)
 	assert.Nil(t, subscription)
-	assert.Contains(t, err.Error(), "failed to find devices by user")
+	assert.Contains(t, err.Error(), "failed to find device by user and device ID")
 }
 
 func TestSubscriptionService_SubscribeToMerchant_WithDevice_UpdateTokenError(t *testing.T) {
@@ -235,8 +235,8 @@ func TestSubscriptionService_SubscribeToMerchant_WithDevice_UpdateTokenError(t *
 		Return(nil)
 
 	fx.deviceRepo.EXPECT().
-		FindDevicesByUser(ctx, userID).
-		Return([]*entity.UserDevice{existingDevice}, nil)
+		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
+		Return(existingDevice, nil)
 
 	fx.deviceRepo.EXPECT().
 		UpdateFCMToken(ctx, deviceID, "new-token").
@@ -269,8 +269,8 @@ func TestSubscriptionService_SubscribeToMerchant_WithDevice_CreateDeviceError(t 
 		Return(nil)
 
 	fx.deviceRepo.EXPECT().
-		FindDevicesByUser(ctx, userID).
-		Return([]*entity.UserDevice{}, nil)
+		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
+		Return(nil, repository.ErrDeviceNotFound)
 
 	fx.deviceRepo.EXPECT().
 		CreateDevice(ctx, mock.AnythingOfType("*entity.UserDevice")).
@@ -369,7 +369,7 @@ func TestSubscriptionService_ReactivateSubscription_ReloadError(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to reload subscription after reactivation")
 }
 
-func TestSubscriptionService_ReactivateSubscription_WithDevice_FindError(t *testing.T) {
+func TestSubscriptionService_ReactivateSubscription_WithDevice_FindDeviceError(t *testing.T) {
 	fx := createTestSubscriptionService(t)
 
 	ctx := context.Background()
@@ -394,11 +394,11 @@ func TestSubscriptionService_ReactivateSubscription_WithDevice_FindError(t *test
 		Return(existingSub, nil)
 
 	fx.deviceRepo.EXPECT().
-		FindDevicesByUser(ctx, userID).
+		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
 		Return(nil, errors.New("database error"))
 
 	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, deviceInfo)
 	assert.Error(t, err)
 	assert.Nil(t, subscription)
-	assert.Contains(t, err.Error(), "failed to find devices by user")
+	assert.Contains(t, err.Error(), "failed to find device by user and device ID")
 }
