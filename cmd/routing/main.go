@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/pkg/errors"
+	"radar/internal/errors"
 )
 
 // Supported subcommands:

@@ -7,11 +7,11 @@ import (
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
+	"radar/internal/errors"
 	"radar/internal/infra/persistence/model"
 	"radar/internal/infra/persistence/postgres/query"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"gorm.io/gorm"
 )
 
@@ -37,10 +37,10 @@ func (repo *deviceRepository) CreateDevice(ctx context.Context, device *entity.U
 			return repository.ErrDuplicateDevice
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrUserCreationFailed.WrapMessage("invalid user reference")
+			return domainerrors.ErrDeviceCreationFailed.WrapMessage("invalid user reference")
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrUserCreationFailed.WrapMessage("missing required device information")
+			return domainerrors.ErrDeviceCreationFailed.WrapMessage("missing required device information")
 		}
 		// For other database errors, return a generic database error
 		return domainerrors.NewDatabaseExecuteError(err, "failed to create device")

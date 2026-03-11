@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/pkg/errors"
+	"radar/internal/errors"
 )
 
 // RoutingMetadata represents the metadata for routing data files

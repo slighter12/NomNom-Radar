@@ -55,12 +55,8 @@ func (h *DeviceHandler) RegisterDevice(c echo.Context) error {
 	}
 
 	var req RegisterDeviceRequest
-	if err := c.Bind(&req); err != nil {
-		return response.BindingError(c, "INVALID_INPUT", "Invalid device input")
-	}
-
-	if err := c.Validate(&req); err != nil {
-		return response.BadRequest(c, "VALIDATION_ERROR", err.Error())
+	if err := bindAndValidateRequest(c, &req, "Invalid device input"); err != nil {
+		return err
 	}
 
 	deviceInfo := &usecase.DeviceInfo{
@@ -99,18 +95,14 @@ func (h *DeviceHandler) UpdateFCMToken(c echo.Context) error {
 		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
-	deviceID, err := uuid.Parse(c.Param("id"))
+	deviceID, err := h.parseDeviceID(c)
 	if err != nil {
-		return response.BadRequest(c, "INVALID_ID", "Invalid device ID")
+		return err
 	}
 
 	var req UpdateFCMTokenRequest
-	if err := c.Bind(&req); err != nil {
-		return response.BindingError(c, "INVALID_INPUT", "Invalid FCM token input")
-	}
-
-	if err := c.Validate(&req); err != nil {
-		return response.BadRequest(c, "VALIDATION_ERROR", err.Error())
+	if err := bindAndValidateRequest(c, &req, "Invalid FCM token input"); err != nil {
+		return err
 	}
 
 	if err := h.deviceUC.UpdateFCMToken(c.Request().Context(), userID, deviceID, req.FCMToken); err != nil {
@@ -127,9 +119,9 @@ func (h *DeviceHandler) DeactivateDevice(c echo.Context) error {
 		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
-	deviceID, err := uuid.Parse(c.Param("id"))
+	deviceID, err := h.parseDeviceID(c)
 	if err != nil {
-		return response.BadRequest(c, "INVALID_ID", "Invalid device ID")
+		return err
 	}
 
 	if err := h.deviceUC.DeactivateDevice(c.Request().Context(), userID, deviceID); err != nil {
@@ -137,4 +129,8 @@ func (h *DeviceHandler) DeactivateDevice(c echo.Context) error {
 	}
 
 	return response.Success(c, http.StatusOK, map[string]string{"message": "Device deactivated successfully"})
+}
+
+func (h *DeviceHandler) parseDeviceID(c echo.Context) (uuid.UUID, error) {
+	return bindIDPathParam(c, "Invalid device ID")
 }

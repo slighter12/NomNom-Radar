@@ -8,12 +8,13 @@ import (
 
 	"radar/config"
 	"radar/internal/domain/entity"
+	domainerrors "radar/internal/domain/errors"
+	"radar/internal/errors"
 	mockRepo "radar/internal/mocks/repository"
 	mockSvc "radar/internal/mocks/service"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -197,7 +198,27 @@ func TestNotificationService_PublishLocationNotification_InvalidInput(t *testing
 
 	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, nil, "")
 
-	assert.ErrorIs(t, err, ErrInvalidNotificationData)
+	assert.ErrorIs(t, err, domainerrors.ErrInvalidNotificationData)
+	assert.Nil(t, notification)
+}
+
+func TestNotificationService_PublishLocationNotification_MutuallyExclusive(t *testing.T) {
+	fx := createTestNotificationService(t)
+
+	ctx := context.Background()
+	merchantID := uuid.New()
+	addressID := uuid.New()
+	locationData := &usecase.LocationData{
+		LocationName: "Test Store",
+		FullAddress:  "123 Test St",
+		Latitude:     25.0,
+		Longitude:    121.0,
+	}
+
+	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, &addressID, locationData, "")
+
+	assert.ErrorIs(t, err, domainerrors.ErrInvalidNotificationData)
+	assert.Contains(t, err.Error(), "mutually exclusive")
 	assert.Nil(t, notification)
 }
 
@@ -218,11 +239,10 @@ func TestNotificationService_PublishLocationNotification_UnauthorizedAddress(t *
 			Label:     "Not owned",
 		}, nil)
 
-	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, &addressID, nil, "")
+	_, err := fx.service.PublishLocationNotification(ctx, merchantID, &addressID, nil, "")
 
 	assert.Error(t, err)
-	assert.Nil(t, notification)
-	assert.Contains(t, err.Error(), "unauthorized")
+	assert.ErrorIs(t, err, domainerrors.ErrAddressOwnershipViolation)
 }
 
 func TestNotificationService_PublishLocationNotification_SubscriptionError(t *testing.T) {

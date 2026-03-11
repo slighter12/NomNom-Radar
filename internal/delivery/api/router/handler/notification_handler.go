@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"radar/internal/delivery/api/middleware"
 	"radar/internal/delivery/api/response"
@@ -43,6 +44,16 @@ type PublishNotificationRequest struct {
 	HintMessage  string                `json:"hint_message,omitempty"`
 }
 
+const (
+	defaultNotificationHistoryLimit  = 20
+	defaultNotificationHistoryOffset = 0
+	maxNotificationHistoryLimit      = 100
+)
+
+type NotificationHistoryQueryParams struct {
+	LimitOffsetQueryParams
+}
+
 // PublishLocationNotification handles publishing a location notification
 func (h *NotificationHandler) PublishLocationNotification(c echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
@@ -51,8 +62,8 @@ func (h *NotificationHandler) PublishLocationNotification(c echo.Context) error 
 	}
 
 	var req PublishNotificationRequest
-	if err := c.Bind(&req); err != nil {
-		return response.BindingError(c, "INVALID_INPUT", "Invalid notification input")
+	if err := bindRequest(c, &req, "Invalid notification input"); err != nil {
+		return err
 	}
 
 	// Validate request
@@ -119,30 +130,43 @@ func (h *NotificationHandler) GetMerchantNotificationHistory(c echo.Context) err
 		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
-	// Parse pagination parameters
-	const (
-		defaultLimit = 20
-		maxLimit     = 100
-	)
-	limit := defaultLimit
-	offset := 0 // default offset
-
-	if limitStr := c.QueryParam("limit"); limitStr != "" {
-		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
-			limit = min(parsedLimit, maxLimit)
-		}
+	query, err := h.parseNotificationHistoryQueryParams(c)
+	if err != nil {
+		return err
 	}
 
-	if offsetStr := c.QueryParam("offset"); offsetStr != "" {
-		if parsedOffset, err := strconv.Atoi(offsetStr); err == nil && parsedOffset >= 0 {
-			offset = parsedOffset
-		}
-	}
-
-	notifications, err := h.notificationUC.GetMerchantNotificationHistory(c.Request().Context(), merchantID, limit, offset)
+	notifications, err := h.notificationUC.GetMerchantNotificationHistory(c.Request().Context(), merchantID, query.Limit, query.Offset)
 	if err != nil {
 		return response.HandleAppError(c, err)
 	}
 
 	return response.Success(c, http.StatusOK, notifications)
+}
+
+func (h *NotificationHandler) parseNotificationHistoryQueryParams(c echo.Context) (NotificationHistoryQueryParams, error) {
+	query := newNotificationHistoryQueryParams()
+
+	if limitValue := strings.TrimSpace(c.QueryParam("limit")); limitValue != "" {
+		limit, err := strconv.Atoi(limitValue)
+		if err != nil || limit <= 0 {
+			return query, response.BadRequest(c, "VALIDATION_ERROR", "limit 必須為大於 0 的整數")
+		}
+		query.Limit = min(limit, maxNotificationHistoryLimit)
+	}
+
+	if offsetValue := strings.TrimSpace(c.QueryParam("offset")); offsetValue != "" {
+		offset, err := strconv.Atoi(offsetValue)
+		if err != nil || offset < 0 {
+			return query, response.BadRequest(c, "VALIDATION_ERROR", "offset 必須為大於或等於 0 的整數")
+		}
+		query.Offset = offset
+	}
+
+	return query, nil
+}
+
+func newNotificationHistoryQueryParams() NotificationHistoryQueryParams {
+	return NotificationHistoryQueryParams{
+		LimitOffsetQueryParams: NewLimitOffsetQueryParams(defaultNotificationHistoryLimit, defaultNotificationHistoryOffset),
+	}
 }

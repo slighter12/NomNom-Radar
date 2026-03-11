@@ -47,7 +47,7 @@ func New(params Params) (*gorm.DB, error) {
 		return nil, errors.Wrap(err, "failed to get PostgreSQL sql.DB")
 	}
 
-	monitorCtx, cancelMonitor := context.WithCancel(context.Background())
+	var stopMonitor chan struct{}
 
 	// Add lifecycle management
 	params.Append(fx.Hook{
@@ -59,12 +59,15 @@ func New(params Params) (*gorm.DB, error) {
 				return errors.Wrap(err, "failed to ping PostgreSQL")
 			}
 
-			go monitorDBPool(monitorCtx, params.Logger, sqlDB, dbPoolMonitorInterval)
+			stopMonitor = make(chan struct{})
+			go monitorDBPool(context.WithoutCancel(startCtx), stopMonitor, params.Logger, sqlDB, dbPoolMonitorInterval)
 
 			return nil
 		},
 		OnStop: func(_ context.Context) error {
-			cancelMonitor()
+			if stopMonitor != nil {
+				close(stopMonitor)
+			}
 
 			return sqlDB.Close()
 		},
@@ -73,7 +76,7 @@ func New(params Params) (*gorm.DB, error) {
 	return db, nil
 }
 
-func monitorDBPool(ctx context.Context, logger *slog.Logger, sqlDB *sql.DB, interval time.Duration) {
+func monitorDBPool(ctx context.Context, stop <-chan struct{}, logger *slog.Logger, sqlDB *sql.DB, interval time.Duration) {
 	if logger == nil || sqlDB == nil {
 		return
 	}
@@ -84,7 +87,7 @@ func monitorDBPool(ctx context.Context, logger *slog.Logger, sqlDB *sql.DB, inte
 	prev := sqlDB.Stats()
 	for {
 		select {
-		case <-ctx.Done():
+		case <-stop:
 			return
 		case <-ticker.C:
 			cur := sqlDB.Stats()

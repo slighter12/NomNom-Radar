@@ -7,10 +7,10 @@ import (
 
 	"radar/config"
 	"radar/internal/domain/service"
+	"radar/internal/errors"
 
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/messaging"
-	"github.com/pkg/errors"
 	"go.uber.org/fx"
 	"google.golang.org/api/option"
 )

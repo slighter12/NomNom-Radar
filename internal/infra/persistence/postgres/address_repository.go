@@ -7,11 +7,11 @@ import (
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
+	"radar/internal/errors"
 	"radar/internal/infra/persistence/model"
 	"radar/internal/infra/persistence/postgres/query"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"go.uber.org/fx"
 	"gorm.io/gorm"
 )
@@ -40,10 +40,10 @@ func (repo *addressRepository) CreateAddress(ctx context.Context, address *entit
 			return domainerrors.ErrPrimaryAddressConflict.WrapMessage("primary address already exists for this owner")
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrUserCreationFailed.WrapMessage("invalid owner reference")
+			return domainerrors.ErrAddressCreationFailed.WrapMessage("invalid owner reference")
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrUserCreationFailed.WrapMessage("missing required address information")
+			return domainerrors.ErrAddressCreationFailed.WrapMessage("missing required address information")
 		}
 		// For other database errors, return a generic database error
 		return domainerrors.NewDatabaseExecuteError(err, "failed to create address")
@@ -145,10 +145,10 @@ func (repo *addressRepository) UpdateAddress(ctx context.Context, address *entit
 			return domainerrors.ErrPrimaryAddressConflict.WrapMessage("primary address already exists for this owner")
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrUserUpdateFailed.WrapMessage("invalid owner reference")
+			return domainerrors.ErrAddressUpdateFailed.WrapMessage("invalid owner reference")
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrUserUpdateFailed.WrapMessage("missing required address information")
+			return domainerrors.ErrAddressUpdateFailed.WrapMessage("missing required address information")
 		}
 		// For other database errors, return a generic database error
 		return domainerrors.NewDatabaseExecuteError(err, "failed to update address")

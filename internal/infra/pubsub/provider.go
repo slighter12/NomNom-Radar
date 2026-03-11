@@ -7,8 +7,8 @@ import (
 	"radar/config"
 	"radar/internal/domain/constants"
 	"radar/internal/domain/service"
+	"radar/internal/errors"
 
-	"github.com/pkg/errors"
 	"go.uber.org/fx"
 )
 

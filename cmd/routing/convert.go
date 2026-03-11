@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/pkg/errors"
+	"radar/internal/errors"
 )
 
 func runConvert(ctx context.Context, input, output, region string, contract bool) error {

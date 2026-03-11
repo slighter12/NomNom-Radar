@@ -9,10 +9,10 @@ import (
 
 	"radar/config"
 	deliverycontext "radar/internal/delivery/context"
+	"radar/internal/errors"
 	"radar/internal/infra/routing/ch"
 	"radar/internal/usecase"
 
-	"github.com/pkg/errors"
 	"go.uber.org/fx"
 )
 

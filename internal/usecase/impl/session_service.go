@@ -10,10 +10,10 @@ import (
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
+	"radar/internal/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"go.uber.org/fx"
 )
 
@@ -209,7 +209,6 @@ func (srv *sessionService) RevokeAllOtherSessions(ctx context.Context, userID uu
 			if token.ID != currentSessionID {
 				if err := refreshRepo.DeleteRefreshToken(ctx, token.ID); err != nil {
 					srv.log(ctx).Warn("Failed to delete session", slog.Any("session_id", token.ID), slog.Any("error", err))
-					// Continue with other sessions
 				}
 			}
 		}

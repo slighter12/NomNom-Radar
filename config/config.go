@@ -8,13 +8,14 @@ import (
 	"time"
 	"unicode"
 
+	"radar/internal/errors"
+
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/env/v2"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
-	"github.com/pkg/errors"
 	"github.com/slighter12/go-lib/database/postgres"
 )
 

@@ -8,9 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"radar/internal/errors"
 	"radar/internal/infra/routing/loader"
-
-	"github.com/pkg/errors"
 )
 
 // ErrSnapDistanceExceeded is returned when a coordinate is too far from the road network

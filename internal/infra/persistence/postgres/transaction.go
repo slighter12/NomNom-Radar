@@ -6,8 +6,8 @@ import (
 	"log/slog"
 
 	"radar/internal/domain/repository"
+	"radar/internal/errors"
 
-	"github.com/pkg/errors"
 	"gorm.io/gorm"
 )
 

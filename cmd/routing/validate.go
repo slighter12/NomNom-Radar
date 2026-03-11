@@ -7,9 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"radar/internal/errors"
 	"radar/internal/util"
-
-	"github.com/pkg/errors"
 )
 
 func runValidate(dir string) error {

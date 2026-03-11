@@ -1,4 +1,4 @@
-.PHONY: help test-race lint \
+.PHONY: help test-race test-usecase-race lint \
     sec-scan trivy-scan vuln-scan \
     db-postgres-init db-postgres-seeders-init \
     db-postgres-create db-postgres-up db-postgres-down db-postgres-down-all \
@@ -16,13 +16,19 @@ GitCommit := $(shell git rev-parse HEAD)
 Date := $(shell date -Iseconds)
 SHELL := /bin/bash
 DOCKER_PLATFORM ?= linux/amd64
+TEST_PKGS ?= ./...
+USECASE_TEST_PKGS ?= ./internal/usecase/impl/...
 
 ########
 # test #
 ########
 
-test-race: ## launch all tests with race detection
-	go test -p 4 ./... -cover -race
+test-race: ## launch tests with race detection (override with TEST_PKGS=./path/...)
+	go test -p 4 $(TEST_PKGS) -cover -race
+
+test-usecase-race: TEST_PKGS=$(USECASE_TEST_PKGS)
+test-usecase-race: ## launch usecase tests with race detection
+	go test -p 4 $(TEST_PKGS) -cover -race
 
 ########
 # lint #

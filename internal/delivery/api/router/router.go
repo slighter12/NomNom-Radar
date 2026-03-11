@@ -17,6 +17,7 @@ type RouterParams struct {
 	UserHandler         *handler.UserHandler
 	TestHandler         *handler.TestHandler
 	LocationHandler     *handler.LocationHandler
+	MenuHandler         *handler.MenuHandler
 	DeviceHandler       *handler.DeviceHandler
 	SubscriptionHandler *handler.SubscriptionHandler
 	NotificationHandler *handler.NotificationHandler
@@ -29,6 +30,7 @@ type router struct {
 	userHandler         *handler.UserHandler
 	testHandler         *handler.TestHandler
 	locationHandler     *handler.LocationHandler
+	menuHandler         *handler.MenuHandler
 	deviceHandler       *handler.DeviceHandler
 	subscriptionHandler *handler.SubscriptionHandler
 	notificationHandler *handler.NotificationHandler
@@ -43,6 +45,7 @@ func NewRouter(params RouterParams) *router {
 		userHandler:         params.UserHandler,
 		testHandler:         params.TestHandler,
 		locationHandler:     params.LocationHandler,
+		menuHandler:         params.MenuHandler,
 		deviceHandler:       params.DeviceHandler,
 		subscriptionHandler: params.SubscriptionHandler,
 		notificationHandler: params.NotificationHandler,
@@ -110,6 +113,18 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 			merchantLocGroup.PUT("/:id", r.locationHandler.UpdateMerchantLocation)
 			merchantLocGroup.DELETE("/:id", r.locationHandler.DeleteMerchantLocation)
 		}
+	}
+
+	// Merchant menu routes (require merchant role)
+	menusGroup := apiV1.Group("/menus/merchant")
+	menusGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant))
+	{
+		menusGroup.GET("", r.menuHandler.GetMerchantMenuItems)
+		menusGroup.POST("", r.menuHandler.CreateMenuItem)
+		menusGroup.PATCH("/reorder", r.menuHandler.ReorderMenuItems)
+		menusGroup.PUT("/:id", r.menuHandler.UpdateMenuItem)
+		menusGroup.PATCH("/:id/status", r.menuHandler.UpdateMenuItemStatus)
+		menusGroup.DELETE("/:id", r.menuHandler.DeleteMenuItem)
 	}
 
 	// Device management routes

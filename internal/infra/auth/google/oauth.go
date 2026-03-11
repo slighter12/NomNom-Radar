@@ -9,8 +9,8 @@ import (
 	deliverycontext "radar/internal/delivery/context"
 	"radar/internal/domain/entity"
 	"radar/internal/domain/service"
+	"radar/internal/errors"
 
-	"github.com/pkg/errors"
 	"google.golang.org/api/idtoken"
 )
 

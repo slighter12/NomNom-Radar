@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"radar/internal/errors"
 	"radar/internal/infra/routing/loader"
 
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

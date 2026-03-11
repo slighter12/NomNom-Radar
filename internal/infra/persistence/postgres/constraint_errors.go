@@ -3,7 +3,8 @@ package postgres
 import (
 	"strings"
 
-	"github.com/pkg/errors"
+	"radar/internal/errors"
+
 	"gorm.io/gorm"
 )
 

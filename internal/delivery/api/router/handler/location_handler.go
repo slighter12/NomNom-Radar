@@ -63,24 +63,11 @@ func (h *LocationHandler) CreateUserLocation(c echo.Context) error {
 	}
 
 	var req CreateLocationRequest
-	if err := c.Bind(&req); err != nil {
-		return response.BindingError(c, "INVALID_INPUT", "Invalid location input")
+	if err := bindAndValidateRequest(c, &req, "Invalid location input"); err != nil {
+		return err
 	}
 
-	if err := c.Validate(&req); err != nil {
-		return response.BadRequest(c, "VALIDATION_ERROR", err.Error())
-	}
-
-	input := &usecase.AddLocationInput{
-		Label:       req.Label,
-		FullAddress: req.FullAddress,
-		Latitude:    req.Latitude,
-		Longitude:   req.Longitude,
-		IsPrimary:   req.IsPrimary,
-		IsActive:    req.IsActive,
-	}
-
-	location, err := h.locationUC.AddUserLocation(c.Request().Context(), userID, input)
+	location, err := h.locationUC.AddUserLocation(c.Request().Context(), userID, newAddLocationInput(&req))
 	if err != nil {
 		return response.HandleAppError(c, err)
 	}
@@ -110,30 +97,17 @@ func (h *LocationHandler) UpdateUserLocation(c echo.Context) error {
 		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
-	locationID, err := uuid.Parse(c.Param("id"))
+	locationID, err := h.parseLocationID(c)
 	if err != nil {
-		return response.BadRequest(c, "INVALID_ID", "Invalid location ID")
+		return err
 	}
 
 	var req UpdateLocationRequest
-	if err := c.Bind(&req); err != nil {
-		return response.BindingError(c, "INVALID_INPUT", "Invalid location input")
+	if err := bindAndValidateRequest(c, &req, "Invalid location input"); err != nil {
+		return err
 	}
 
-	if err := c.Validate(&req); err != nil {
-		return response.BadRequest(c, "VALIDATION_ERROR", err.Error())
-	}
-
-	input := &usecase.UpdateLocationInput{
-		Label:       req.Label,
-		FullAddress: req.FullAddress,
-		Latitude:    req.Latitude,
-		Longitude:   req.Longitude,
-		IsPrimary:   req.IsPrimary,
-		IsActive:    req.IsActive,
-	}
-
-	location, err := h.locationUC.UpdateUserLocation(c.Request().Context(), userID, locationID, input)
+	location, err := h.locationUC.UpdateUserLocation(c.Request().Context(), userID, locationID, newUpdateLocationInput(&req))
 	if err != nil {
 		return response.HandleAppError(c, err)
 	}
@@ -148,9 +122,9 @@ func (h *LocationHandler) DeleteUserLocation(c echo.Context) error {
 		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
-	locationID, err := uuid.Parse(c.Param("id"))
+	locationID, err := h.parseLocationID(c)
 	if err != nil {
-		return response.BadRequest(c, "INVALID_ID", "Invalid location ID")
+		return err
 	}
 
 	if err := h.locationUC.DeleteUserLocation(c.Request().Context(), userID, locationID); err != nil {
@@ -168,24 +142,11 @@ func (h *LocationHandler) CreateMerchantLocation(c echo.Context) error {
 	}
 
 	var req CreateLocationRequest
-	if err := c.Bind(&req); err != nil {
-		return response.BindingError(c, "INVALID_INPUT", "Invalid location input")
+	if err := bindAndValidateRequest(c, &req, "Invalid location input"); err != nil {
+		return err
 	}
 
-	if err := c.Validate(&req); err != nil {
-		return response.BadRequest(c, "VALIDATION_ERROR", err.Error())
-	}
-
-	input := &usecase.AddLocationInput{
-		Label:       req.Label,
-		FullAddress: req.FullAddress,
-		Latitude:    req.Latitude,
-		Longitude:   req.Longitude,
-		IsPrimary:   req.IsPrimary,
-		IsActive:    req.IsActive,
-	}
-
-	location, err := h.locationUC.AddMerchantLocation(c.Request().Context(), merchantID, input)
+	location, err := h.locationUC.AddMerchantLocation(c.Request().Context(), merchantID, newAddLocationInput(&req))
 	if err != nil {
 		return response.HandleAppError(c, err)
 	}
@@ -215,30 +176,17 @@ func (h *LocationHandler) UpdateMerchantLocation(c echo.Context) error {
 		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
-	locationID, err := uuid.Parse(c.Param("id"))
+	locationID, err := h.parseLocationID(c)
 	if err != nil {
-		return response.BadRequest(c, "INVALID_ID", "Invalid location ID")
+		return err
 	}
 
 	var req UpdateLocationRequest
-	if err := c.Bind(&req); err != nil {
-		return response.BindingError(c, "INVALID_INPUT", "Invalid location input")
+	if err := bindAndValidateRequest(c, &req, "Invalid location input"); err != nil {
+		return err
 	}
 
-	if err := c.Validate(&req); err != nil {
-		return response.BadRequest(c, "VALIDATION_ERROR", err.Error())
-	}
-
-	input := &usecase.UpdateLocationInput{
-		Label:       req.Label,
-		FullAddress: req.FullAddress,
-		Latitude:    req.Latitude,
-		Longitude:   req.Longitude,
-		IsPrimary:   req.IsPrimary,
-		IsActive:    req.IsActive,
-	}
-
-	location, err := h.locationUC.UpdateMerchantLocation(c.Request().Context(), merchantID, locationID, input)
+	location, err := h.locationUC.UpdateMerchantLocation(c.Request().Context(), merchantID, locationID, newUpdateLocationInput(&req))
 	if err != nil {
 		return response.HandleAppError(c, err)
 	}
@@ -253,9 +201,9 @@ func (h *LocationHandler) DeleteMerchantLocation(c echo.Context) error {
 		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
-	locationID, err := uuid.Parse(c.Param("id"))
+	locationID, err := h.parseLocationID(c)
 	if err != nil {
-		return response.BadRequest(c, "INVALID_ID", "Invalid location ID")
+		return err
 	}
 
 	if err := h.locationUC.DeleteMerchantLocation(c.Request().Context(), merchantID, locationID); err != nil {
@@ -263,4 +211,30 @@ func (h *LocationHandler) DeleteMerchantLocation(c echo.Context) error {
 	}
 
 	return response.Success(c, http.StatusOK, map[string]string{"message": "Location deleted successfully"})
+}
+
+func (h *LocationHandler) parseLocationID(c echo.Context) (uuid.UUID, error) {
+	return bindIDPathParam(c, "Invalid location ID")
+}
+
+func newAddLocationInput(req *CreateLocationRequest) *usecase.AddLocationInput {
+	return &usecase.AddLocationInput{
+		Label:       req.Label,
+		FullAddress: req.FullAddress,
+		Latitude:    req.Latitude,
+		Longitude:   req.Longitude,
+		IsPrimary:   req.IsPrimary,
+		IsActive:    req.IsActive,
+	}
+}
+
+func newUpdateLocationInput(req *UpdateLocationRequest) *usecase.UpdateLocationInput {
+	return &usecase.UpdateLocationInput{
+		Label:       req.Label,
+		FullAddress: req.FullAddress,
+		Latitude:    req.Latitude,
+		Longitude:   req.Longitude,
+		IsPrimary:   req.IsPrimary,
+		IsActive:    req.IsActive,
+	}
 }

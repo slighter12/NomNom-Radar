@@ -8,12 +8,12 @@ import (
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
+	"radar/internal/errors"
 	mockRepo "radar/internal/mocks/repository"
 	mockSvc "radar/internal/mocks/service"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"

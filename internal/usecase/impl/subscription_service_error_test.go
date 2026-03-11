@@ -5,11 +5,12 @@ import (
 	"testing"
 
 	"radar/internal/domain/entity"
+	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
+	"radar/internal/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -43,7 +44,7 @@ func TestSubscriptionService_UnsubscribeFromMerchant_NotFound(t *testing.T) {
 
 	err := fx.service.UnsubscribeFromMerchant(ctx, userID, merchantID)
 	assert.Error(t, err)
-	assert.Equal(t, ErrSubscriptionNotFound, err)
+	assert.ErrorIs(t, err, domainerrors.ErrSubscriptionNotFound)
 }
 
 func TestSubscriptionService_ProcessQRSubscription_InvalidQR(t *testing.T) {
@@ -60,7 +61,7 @@ func TestSubscriptionService_ProcessQRSubscription_InvalidQR(t *testing.T) {
 	subscription, err := fx.service.ProcessQRSubscription(ctx, userID, qrData, nil)
 	assert.Error(t, err)
 	assert.Nil(t, subscription)
-	assert.Equal(t, ErrInvalidQRCode, err)
+	assert.ErrorIs(t, err, domainerrors.ErrInvalidQRCode)
 }
 
 func TestSubscriptionService_GetUserSubscriptions_Error(t *testing.T) {
@@ -308,6 +309,64 @@ func TestSubscriptionService_ReactivateSubscription_UpdateStatusError(t *testing
 	assert.Error(t, err)
 	assert.Nil(t, subscription)
 	assert.Contains(t, err.Error(), "failed to update subscription status")
+}
+
+func TestSubscriptionService_SubscribeToMerchant_CreateReloadError(t *testing.T) {
+	fx := createTestSubscriptionService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	merchantID := uuid.New()
+
+	fx.subRepo.EXPECT().
+		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
+		Return(nil, repository.ErrSubscriptionNotFound)
+
+	fx.subRepo.EXPECT().
+		CreateSubscription(ctx, mock.AnythingOfType("*entity.UserMerchantSubscription")).
+		Return(nil)
+
+	fx.subRepo.EXPECT().
+		FindSubscriptionByID(ctx, mock.Anything).
+		Return(nil, errors.New("database error"))
+
+	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, nil)
+	assert.Error(t, err)
+	assert.Nil(t, subscription)
+	assert.Contains(t, err.Error(), "failed to reload subscription after creation")
+}
+
+func TestSubscriptionService_ReactivateSubscription_ReloadError(t *testing.T) {
+	fx := createTestSubscriptionService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	merchantID := uuid.New()
+	subID := uuid.New()
+
+	existingSub := &entity.UserMerchantSubscription{
+		ID:         subID,
+		UserID:     userID,
+		MerchantID: merchantID,
+		IsActive:   false,
+	}
+
+	fx.subRepo.EXPECT().
+		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
+		Return(existingSub, nil)
+
+	fx.subRepo.EXPECT().
+		UpdateSubscriptionStatus(ctx, subID, true).
+		Return(nil)
+
+	fx.subRepo.EXPECT().
+		FindSubscriptionByID(ctx, subID).
+		Return(nil, errors.New("database error"))
+
+	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, nil)
+	assert.Error(t, err)
+	assert.Nil(t, subscription)
+	assert.Contains(t, err.Error(), "failed to reload subscription after reactivation")
 }
 
 func TestSubscriptionService_ReactivateSubscription_WithDevice_FindError(t *testing.T) {
