@@ -62,6 +62,7 @@ type ReorderMenuItemsResult struct {
 }
 
 type MenuUsecase interface {
+	GetPublicMerchantMenu(ctx context.Context, merchantID uuid.UUID, input *ListMerchantMenuItemsInput) (*MerchantMenuItemsResult, error)
 	ListMerchantMenuItems(ctx context.Context, merchantID uuid.UUID, input *ListMerchantMenuItemsInput) (*MerchantMenuItemsResult, error)
 	CreateMenuItem(ctx context.Context, merchantID uuid.UUID, input *CreateMenuItemInput) (*entity.MenuItem, error)
 	UpdateMenuItem(ctx context.Context, merchantID, itemID uuid.UUID, input *UpdateMenuItemInput) (*entity.MenuItem, error)

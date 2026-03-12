@@ -76,6 +76,12 @@ type ListMerchantMenuItemsQueryParams struct {
 	Keyword     string `query:"keyword"`
 }
 
+type ListPublicMerchantMenuItemsQueryParams struct {
+	PaginationQueryParams
+	Category string `query:"category"`
+	Keyword  string `query:"keyword"`
+}
+
 func NewMenuHandler(params MenuHandlerParams) *MenuHandler {
 	return &MenuHandler{
 		menuUC: params.MenuUC,
@@ -95,6 +101,27 @@ func (h *MenuHandler) GetMerchantMenuItems(c echo.Context) error {
 	}
 
 	result, err := h.menuUC.ListMerchantMenuItems(c.Request().Context(), merchantID, input)
+	if err != nil {
+		return response.HandleAppError(c, err)
+	}
+
+	return response.Success(c, http.StatusOK, result)
+}
+
+// GetPublicMerchantMenu returns the consumer-facing menu for a merchant.
+// The route is intentionally mounted behind the user role and only exposes available items.
+func (h *MenuHandler) GetPublicMerchantMenu(c echo.Context) error {
+	merchantID, err := h.parseMerchantID(c)
+	if err != nil {
+		return err
+	}
+
+	input, err := h.parseListPublicMerchantMenuItemsInput(c)
+	if err != nil {
+		return err
+	}
+
+	result, err := h.menuUC.GetPublicMerchantMenu(c.Request().Context(), merchantID, input)
 	if err != nil {
 		return response.HandleAppError(c, err)
 	}
@@ -245,6 +272,10 @@ func (h *MenuHandler) parseMenuItemID(c echo.Context) (uuid.UUID, error) {
 	return bindIDPathParam(c, "Invalid menu item ID")
 }
 
+func (h *MenuHandler) parseMerchantID(c echo.Context) (uuid.UUID, error) {
+	return bindMerchantIDPathParam(c, "Invalid merchant ID")
+}
+
 func (h *MenuHandler) parseListMerchantMenuItemsInput(c echo.Context) (*usecase.ListMerchantMenuItemsInput, error) {
 	query := newListMerchantMenuItemsQueryParams()
 	if err := bindQueryParams(c, &query); err != nil {
@@ -268,8 +299,36 @@ func (h *MenuHandler) parseListMerchantMenuItemsInput(c echo.Context) (*usecase.
 	}, nil
 }
 
+func (h *MenuHandler) parseListPublicMerchantMenuItemsInput(c echo.Context) (*usecase.ListMerchantMenuItemsInput, error) {
+	query := newListPublicMerchantMenuItemsQueryParams()
+	if err := bindQueryParams(c, &query); err != nil {
+		return nil, h.handleListPublicMerchantMenuItemsQueryBindingError(c)
+	}
+
+	h.normalizeListPublicMerchantMenuItemsQueryParams(c, &query)
+
+	if err := validatePaginationQueryParams(c, &query.PaginationQueryParams); err != nil {
+		return nil, err
+	}
+
+	query.PageSize = min(query.PageSize, maxMenuItemsPageSize)
+
+	return &usecase.ListMerchantMenuItemsInput{
+		Category: strings.TrimSpace(query.Category),
+		Keyword:  strings.TrimSpace(query.Keyword),
+		Page:     query.Page,
+		PageSize: query.PageSize,
+	}, nil
+}
+
 func newListMerchantMenuItemsQueryParams() ListMerchantMenuItemsQueryParams {
 	return ListMerchantMenuItemsQueryParams{
+		PaginationQueryParams: NewPaginationQueryParams(defaultMenuItemsPage, defaultMenuItemsPageSize),
+	}
+}
+
+func newListPublicMerchantMenuItemsQueryParams() ListPublicMerchantMenuItemsQueryParams {
+	return ListPublicMerchantMenuItemsQueryParams{
 		PaginationQueryParams: NewPaginationQueryParams(defaultMenuItemsPage, defaultMenuItemsPageSize),
 	}
 }
@@ -285,6 +344,16 @@ func (h *MenuHandler) normalizeListMerchantMenuItemsQueryParams(c echo.Context, 
 
 	if strings.TrimSpace(c.QueryParam("is_available")) == "" {
 		query.IsAvailable = nil
+	}
+}
+
+func (h *MenuHandler) normalizeListPublicMerchantMenuItemsQueryParams(c echo.Context, query *ListPublicMerchantMenuItemsQueryParams) {
+	if strings.TrimSpace(c.QueryParam("page")) == "" {
+		query.Page = defaultMenuItemsPage
+	}
+
+	if strings.TrimSpace(c.QueryParam("page_size")) == "" {
+		query.PageSize = defaultMenuItemsPageSize
 	}
 }
 
@@ -304,6 +373,22 @@ func (h *MenuHandler) handleListMerchantMenuItemsQueryBindingError(c echo.Contex
 	if isAvailableValue := strings.TrimSpace(c.QueryParam("is_available")); isAvailableValue != "" {
 		if _, err := strconv.ParseBool(isAvailableValue); err != nil {
 			return response.BadRequest(c, "VALIDATION_ERROR", "is_available 必須為布林值")
+		}
+	}
+
+	return response.BindingError(c, "INVALID_INPUT", "Invalid menu item query input")
+}
+
+func (h *MenuHandler) handleListPublicMerchantMenuItemsQueryBindingError(c echo.Context) error {
+	if pageValue := strings.TrimSpace(c.QueryParam("page")); pageValue != "" {
+		if _, err := strconv.Atoi(pageValue); err != nil {
+			return response.BadRequest(c, "VALIDATION_ERROR", "page 必須為大於 0 的整數")
+		}
+	}
+
+	if pageSizeValue := strings.TrimSpace(c.QueryParam("page_size")); pageSizeValue != "" {
+		if _, err := strconv.Atoi(pageSizeValue); err != nil {
+			return response.BadRequest(c, "VALIDATION_ERROR", "page_size 必須為大於 0 的整數")
 		}
 	}
 

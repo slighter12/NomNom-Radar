@@ -177,6 +177,13 @@ var (
 		"",
 	)
 
+	ErrMerchantNotFound = NewBaseError(
+		http.StatusNotFound,
+		"MERCHANT_NOT_FOUND",
+		"找不到該商家",
+		"",
+	)
+
 	ErrMenuItemNotFound = NewBaseError(
 		http.StatusNotFound,
 		"MENU_ITEM_NOT_FOUND",

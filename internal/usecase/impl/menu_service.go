@@ -18,16 +18,37 @@ import (
 
 type menuService struct {
 	menuRepo repository.MenuRepository
+	userRepo repository.UserRepository
 }
 
 type MenuServiceParams struct {
 	fx.In
 
 	MenuRepo repository.MenuRepository
+	UserRepo repository.UserRepository
 }
 
 func NewMenuService(params MenuServiceParams) usecase.MenuUsecase {
-	return &menuService{menuRepo: params.MenuRepo}
+	return &menuService{
+		menuRepo: params.MenuRepo,
+		userRepo: params.UserRepo,
+	}
+}
+
+func (s *menuService) GetPublicMerchantMenu(ctx context.Context, merchantID uuid.UUID, input *usecase.ListMerchantMenuItemsInput) (*usecase.MerchantMenuItemsResult, error) {
+	if input == nil {
+		return nil, errors.Wrap(domainerrors.ErrValidationFailed, "menu item list input is required")
+	}
+
+	if err := s.validatePublicMerchant(ctx, merchantID); err != nil {
+		return nil, err
+	}
+
+	isAvailable := true
+	publicInput := *input
+	publicInput.IsAvailable = &isAvailable
+
+	return s.ListMerchantMenuItems(ctx, merchantID, &publicInput)
 }
 
 func (s *menuService) ListMerchantMenuItems(ctx context.Context, merchantID uuid.UUID, input *usecase.ListMerchantMenuItemsInput) (*usecase.MerchantMenuItemsResult, error) {
@@ -234,6 +255,23 @@ func (s *menuService) findOwnedMenuItem(ctx context.Context, merchantID, itemID 
 	}
 
 	return item, nil
+}
+
+func (s *menuService) validatePublicMerchant(ctx context.Context, merchantID uuid.UUID) error {
+	merchant, err := s.userRepo.FindByID(ctx, merchantID)
+	if err != nil {
+		if errors.Is(err, repository.ErrUserNotFound) {
+			return domainerrors.ErrMerchantNotFound
+		}
+
+		return errors.Wrap(err, "failed to find merchant by id")
+	}
+
+	if merchant.MerchantProfile == nil {
+		return domainerrors.ErrMerchantNotFound
+	}
+
+	return nil
 }
 
 func normalizeOptionalString(value *string) *string {

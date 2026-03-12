@@ -145,11 +145,20 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 		subscriptionsGroup.POST("/qr", r.subscriptionHandler.ProcessQRSubscription)
 	}
 
-	// Merchant QR code generation (requires merchant role)
-	merchantsGroup := apiV1.Group("/merchants")
-	merchantsGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant))
+	// Consumer-facing merchant menu routes.
+	// These endpoints are intentionally limited to authenticated user-role accounts.
+	// Merchant-only accounts are excluded even though the menu data is consumer-visible.
+	consumerMerchantsGroup := apiV1.Group("/merchants")
+	consumerMerchantsGroup.Use(r.authMiddleware.RequireRole(entity.RoleUser))
 	{
-		merchantsGroup.GET("/:id/qr", r.subscriptionHandler.GenerateSubscriptionQR)
+		consumerMerchantsGroup.GET("/:merchantId/menu", r.menuHandler.GetPublicMerchantMenu)
+	}
+
+	// Merchant QR code generation (requires merchant role)
+	merchantAdminGroup := apiV1.Group("/merchants")
+	merchantAdminGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant))
+	{
+		merchantAdminGroup.GET("/:id/qr", r.subscriptionHandler.GenerateSubscriptionQR)
 	}
 
 	// Notification management routes (require merchant role)
