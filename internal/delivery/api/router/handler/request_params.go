@@ -13,14 +13,6 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-type IDPathParams struct {
-	ID uuid.UUID `param:"id"`
-}
-
-type MerchantIDPathParams struct {
-	MerchantID uuid.UUID `param:"merchantId"`
-}
-
 type PaginationQueryParams struct {
 	Page     int `query:"page" validate:"gte=1"`
 	PageSize int `query:"page_size" validate:"gte=1"`
@@ -43,10 +35,6 @@ func NewLimitOffsetQueryParams(defaultLimit, defaultOffset int) LimitOffsetQuery
 		Limit:  defaultLimit,
 		Offset: defaultOffset,
 	}
-}
-
-func bindPathParams(c echo.Context, params any) error {
-	return (&echo.DefaultBinder{}).BindPathParams(c, params)
 }
 
 func bindQueryParams(c echo.Context, params any) error {
@@ -97,28 +85,39 @@ func bindRequiredPayload[T any](c echo.Context, invalidMessage string) (*T, erro
 	return payload, nil
 }
 
-func bindIDPathParam(c echo.Context, invalidMessage string) (uuid.UUID, error) {
-	var params IDPathParams
-	if err := bindPathParams(c, &params); err != nil {
-		return uuid.Nil, response.BadRequest(c, "INVALID_ID", invalidMessage)
-	}
-
-	return params.ID, nil
+func bindMerchantIDPathParam(c echo.Context, invalidMessage string) (uuid.UUID, error) {
+	return bindUUIDPathParam(c, "merchantId", invalidMessage)
 }
 
-func bindMerchantIDPathParam(c echo.Context, invalidMessage string) (uuid.UUID, error) {
-	var params MerchantIDPathParams
-	if err := bindPathParams(c, &params); err != nil {
+func bindLocationIDPathParam(c echo.Context, invalidMessage string) (uuid.UUID, error) {
+	return bindUUIDPathParam(c, "locationId", invalidMessage)
+}
+
+func bindMenuItemIDPathParam(c echo.Context, invalidMessage string) (uuid.UUID, error) {
+	return bindUUIDPathParam(c, "menuItemId", invalidMessage)
+}
+
+func bindDeviceIDPathParam(c echo.Context, invalidMessage string) (uuid.UUID, error) {
+	return bindUUIDPathParam(c, "deviceId", invalidMessage)
+}
+
+func bindUUIDPathParam(c echo.Context, paramName, invalidMessage string) (uuid.UUID, error) {
+	value := strings.TrimSpace(c.Param(paramName))
+	if value == "" {
 		return uuid.Nil, response.BadRequest(c, "INVALID_ID", invalidMessage)
 	}
 
-	return params.MerchantID, nil
+	id, err := uuid.Parse(value)
+	if err != nil {
+		return uuid.Nil, response.BadRequest(c, "INVALID_ID", invalidMessage)
+	}
+
+	return id, nil
 }
 
 func validatePaginationQueryParams(c echo.Context, params *PaginationQueryParams) error {
 	if err := c.Validate(params); err != nil {
-		var validationErrors validatorpkg.ValidationErrors
-		if errors.As(err, &validationErrors) {
+		if validationErrors, ok := errors.AsType[validatorpkg.ValidationErrors](err); ok {
 			for _, validationErr := range validationErrors {
 				switch validationErr.StructField() {
 				case "Page":
@@ -136,8 +135,7 @@ func validatePaginationQueryParams(c echo.Context, params *PaginationQueryParams
 }
 
 func validationMessage(err error, req any) string {
-	var validationErrors validatorpkg.ValidationErrors
-	if errors.As(err, &validationErrors) {
+	if validationErrors, ok := errors.AsType[validatorpkg.ValidationErrors](err); ok {
 		validationErr := validationErrors[0]
 		fieldName := requestFieldName(req, validationErr)
 

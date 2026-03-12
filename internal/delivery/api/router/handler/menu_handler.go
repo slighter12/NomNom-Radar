@@ -269,20 +269,23 @@ func (h *MenuHandler) DeleteMenuItem(c echo.Context) error {
 }
 
 func (h *MenuHandler) parseMenuItemID(c echo.Context) (uuid.UUID, error) {
-	return bindIDPathParam(c, "Invalid menu item ID")
+	return bindMenuItemIDPathParam(c, "Invalid menu item ID")
 }
 
 func (h *MenuHandler) parseMerchantID(c echo.Context) (uuid.UUID, error) {
-	return bindIDPathParam(c, "Invalid merchant ID")
+	return bindMerchantIDPathParam(c, "Invalid merchant ID")
 }
 
 func (h *MenuHandler) parseListMerchantMenuItemsInput(c echo.Context) (*usecase.ListMerchantMenuItemsInput, error) {
 	query := newListMerchantMenuItemsQueryParams()
 	if err := bindQueryParams(c, &query); err != nil {
-		return nil, h.handleListMerchantMenuItemsQueryBindingError(c)
+		return nil, handleListMenuItemsQueryBindingError(c, true)
 	}
 
-	h.normalizeListMerchantMenuItemsQueryParams(c, &query)
+	normalizePaginationQueryParams(c, &query.PaginationQueryParams)
+	if strings.TrimSpace(c.QueryParam("is_available")) == "" {
+		query.IsAvailable = nil
+	}
 
 	if err := validatePaginationQueryParams(c, &query.PaginationQueryParams); err != nil {
 		return nil, err
@@ -302,10 +305,10 @@ func (h *MenuHandler) parseListMerchantMenuItemsInput(c echo.Context) (*usecase.
 func (h *MenuHandler) parseListPublicMerchantMenuItemsInput(c echo.Context) (*usecase.ListMerchantMenuItemsInput, error) {
 	query := newListPublicMerchantMenuItemsQueryParams()
 	if err := bindQueryParams(c, &query); err != nil {
-		return nil, h.handleListPublicMerchantMenuItemsQueryBindingError(c)
+		return nil, handleListMenuItemsQueryBindingError(c, false)
 	}
 
-	h.normalizeListPublicMerchantMenuItemsQueryParams(c, &query)
+	normalizePaginationQueryParams(c, &query.PaginationQueryParams)
 
 	if err := validatePaginationQueryParams(c, &query.PaginationQueryParams); err != nil {
 		return nil, err
@@ -333,31 +336,33 @@ func newListPublicMerchantMenuItemsQueryParams() ListPublicMerchantMenuItemsQuer
 	}
 }
 
-func (h *MenuHandler) normalizeListMerchantMenuItemsQueryParams(c echo.Context, query *ListMerchantMenuItemsQueryParams) {
+func handleListMenuItemsQueryBindingError(c echo.Context, checkIsAvailable bool) error {
+	if err := handlePaginationQueryBindingError(c); err != nil {
+		return err
+	}
+
+	if checkIsAvailable {
+		if isAvailableValue := strings.TrimSpace(c.QueryParam("is_available")); isAvailableValue != "" {
+			if _, err := strconv.ParseBool(isAvailableValue); err != nil {
+				return response.BadRequest(c, "VALIDATION_ERROR", "is_available 必須為布林值")
+			}
+		}
+	}
+
+	return response.BindingError(c, "INVALID_INPUT", "Invalid menu item query input")
+}
+
+func normalizePaginationQueryParams(c echo.Context, params *PaginationQueryParams) {
 	if strings.TrimSpace(c.QueryParam("page")) == "" {
-		query.Page = defaultMenuItemsPage
+		params.Page = defaultMenuItemsPage
 	}
 
 	if strings.TrimSpace(c.QueryParam("page_size")) == "" {
-		query.PageSize = defaultMenuItemsPageSize
-	}
-
-	if strings.TrimSpace(c.QueryParam("is_available")) == "" {
-		query.IsAvailable = nil
+		params.PageSize = defaultMenuItemsPageSize
 	}
 }
 
-func (h *MenuHandler) normalizeListPublicMerchantMenuItemsQueryParams(c echo.Context, query *ListPublicMerchantMenuItemsQueryParams) {
-	if strings.TrimSpace(c.QueryParam("page")) == "" {
-		query.Page = defaultMenuItemsPage
-	}
-
-	if strings.TrimSpace(c.QueryParam("page_size")) == "" {
-		query.PageSize = defaultMenuItemsPageSize
-	}
-}
-
-func (h *MenuHandler) handleListMerchantMenuItemsQueryBindingError(c echo.Context) error {
+func handlePaginationQueryBindingError(c echo.Context) error {
 	if pageValue := strings.TrimSpace(c.QueryParam("page")); pageValue != "" {
 		if _, err := strconv.Atoi(pageValue); err != nil {
 			return response.BadRequest(c, "VALIDATION_ERROR", "page 必須為大於 0 的整數")
@@ -370,47 +375,29 @@ func (h *MenuHandler) handleListMerchantMenuItemsQueryBindingError(c echo.Contex
 		}
 	}
 
-	if isAvailableValue := strings.TrimSpace(c.QueryParam("is_available")); isAvailableValue != "" {
-		if _, err := strconv.ParseBool(isAvailableValue); err != nil {
-			return response.BadRequest(c, "VALIDATION_ERROR", "is_available 必須為布林值")
-		}
-	}
-
-	return response.BindingError(c, "INVALID_INPUT", "Invalid menu item query input")
-}
-
-func (h *MenuHandler) handleListPublicMerchantMenuItemsQueryBindingError(c echo.Context) error {
-	if pageValue := strings.TrimSpace(c.QueryParam("page")); pageValue != "" {
-		if _, err := strconv.Atoi(pageValue); err != nil {
-			return response.BadRequest(c, "VALIDATION_ERROR", "page 必須為大於 0 的整數")
-		}
-	}
-
-	if pageSizeValue := strings.TrimSpace(c.QueryParam("page_size")); pageSizeValue != "" {
-		if _, err := strconv.Atoi(pageSizeValue); err != nil {
-			return response.BadRequest(c, "VALIDATION_ERROR", "page_size 必須為大於 0 的整數")
-		}
-	}
-
-	return response.BindingError(c, "INVALID_INPUT", "Invalid menu item query input")
+	return nil
 }
 
 func (h *MenuHandler) validateCreateMenuItemRequest(c echo.Context, req *CreateMenuItemRequest) error {
-	normalizeMenuItemRequestFields(&req.Name, &req.Category, &req.Currency)
-	if err := validateRequest(c, req); err != nil {
-		return err
-	}
-
-	return h.validateMenuItemRequestURLs(c, req.ImageURL, req.ExternalURL)
+	return h.validateMenuItemRequest(c, req, &req.Name, &req.Category, &req.Currency, req.ImageURL, req.ExternalURL)
 }
 
 func (h *MenuHandler) validateUpdateMenuItemRequest(c echo.Context, req *UpdateMenuItemRequest) error {
-	normalizeMenuItemRequestFields(&req.Name, &req.Category, &req.Currency)
+	return h.validateMenuItemRequest(c, req, &req.Name, &req.Category, &req.Currency, req.ImageURL, req.ExternalURL)
+}
+
+func (h *MenuHandler) validateMenuItemRequest(
+	c echo.Context,
+	req any,
+	name, category, currency *string,
+	imageURL, externalURL *string,
+) error {
+	normalizeMenuItemRequestFields(name, category, currency)
 	if err := validateRequest(c, req); err != nil {
 		return err
 	}
 
-	return h.validateMenuItemRequestURLs(c, req.ImageURL, req.ExternalURL)
+	return h.validateMenuItemRequestURLs(c, imageURL, externalURL)
 }
 
 func normalizeMenuItemRequestFields(name, category, currency *string) {

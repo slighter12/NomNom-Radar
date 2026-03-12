@@ -132,5 +132,5 @@ func (h *DeviceHandler) DeactivateDevice(c echo.Context) error {
 }
 
 func (h *DeviceHandler) parseDeviceID(c echo.Context) (uuid.UUID, error) {
-	return bindIDPathParam(c, "Invalid device ID")
+	return bindDeviceIDPathParam(c, "Invalid device ID")
 }

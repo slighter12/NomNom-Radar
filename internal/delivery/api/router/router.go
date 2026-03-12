@@ -101,8 +101,8 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 		// User location routes
 		locationsGroup.POST("/user", r.locationHandler.CreateUserLocation)
 		locationsGroup.GET("/user", r.locationHandler.GetUserLocations)
-		locationsGroup.PUT("/user/:id", r.locationHandler.UpdateUserLocation)
-		locationsGroup.DELETE("/user/:id", r.locationHandler.DeleteUserLocation)
+		locationsGroup.PUT("/user/:locationId", r.locationHandler.UpdateUserLocation)
+		locationsGroup.DELETE("/user/:locationId", r.locationHandler.DeleteUserLocation)
 
 		// Merchant location routes (require merchant role)
 		merchantLocGroup := locationsGroup.Group("/merchant")
@@ -110,8 +110,8 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 		{
 			merchantLocGroup.POST("", r.locationHandler.CreateMerchantLocation)
 			merchantLocGroup.GET("", r.locationHandler.GetMerchantLocations)
-			merchantLocGroup.PUT("/:id", r.locationHandler.UpdateMerchantLocation)
-			merchantLocGroup.DELETE("/:id", r.locationHandler.DeleteMerchantLocation)
+			merchantLocGroup.PUT("/:locationId", r.locationHandler.UpdateMerchantLocation)
+			merchantLocGroup.DELETE("/:locationId", r.locationHandler.DeleteMerchantLocation)
 		}
 	}
 
@@ -122,9 +122,9 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 		menusGroup.GET("", r.menuHandler.GetMerchantMenuItems)
 		menusGroup.POST("", r.menuHandler.CreateMenuItem)
 		menusGroup.PATCH("/reorder", r.menuHandler.ReorderMenuItems)
-		menusGroup.PUT("/:id", r.menuHandler.UpdateMenuItem)
-		menusGroup.PATCH("/:id/status", r.menuHandler.UpdateMenuItemStatus)
-		menusGroup.DELETE("/:id", r.menuHandler.DeleteMenuItem)
+		menusGroup.PUT("/:menuItemId", r.menuHandler.UpdateMenuItem)
+		menusGroup.PATCH("/:menuItemId/status", r.menuHandler.UpdateMenuItemStatus)
+		menusGroup.DELETE("/:menuItemId", r.menuHandler.DeleteMenuItem)
 	}
 
 	// Device management routes
@@ -132,8 +132,8 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 	{
 		devicesGroup.POST("", r.deviceHandler.RegisterDevice)
 		devicesGroup.GET("", r.deviceHandler.GetUserDevices)
-		devicesGroup.PUT("/:id/token", r.deviceHandler.UpdateFCMToken)
-		devicesGroup.DELETE("/:id", r.deviceHandler.DeactivateDevice)
+		devicesGroup.PUT("/:deviceId/token", r.deviceHandler.UpdateFCMToken)
+		devicesGroup.DELETE("/:deviceId", r.deviceHandler.DeactivateDevice)
 	}
 
 	// Subscription management routes
@@ -151,14 +151,14 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 	consumerMerchantsGroup := apiV1.Group("/merchants")
 	consumerMerchantsGroup.Use(r.authMiddleware.RequireRole(entity.RoleUser))
 	{
-		consumerMerchantsGroup.GET("/:id/menu", r.menuHandler.GetPublicMerchantMenu)
+		consumerMerchantsGroup.GET("/:merchantId/menu", r.menuHandler.GetPublicMerchantMenu)
 	}
 
 	// Merchant QR code generation (requires merchant role)
 	merchantAdminGroup := apiV1.Group("/merchants")
 	merchantAdminGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant))
 	{
-		merchantAdminGroup.GET("/:id/qr", r.subscriptionHandler.GenerateSubscriptionQR)
+		merchantAdminGroup.GET("/:merchantId/qr", r.subscriptionHandler.GenerateSubscriptionQR)
 	}
 
 	// Notification management routes (require merchant role)
