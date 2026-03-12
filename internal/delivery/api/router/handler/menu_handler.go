@@ -273,7 +273,7 @@ func (h *MenuHandler) parseMenuItemID(c echo.Context) (uuid.UUID, error) {
 }
 
 func (h *MenuHandler) parseMerchantID(c echo.Context) (uuid.UUID, error) {
-	return bindMerchantIDPathParam(c, "Invalid merchant ID")
+	return bindIDPathParam(c, "Invalid merchant ID")
 }
 
 func (h *MenuHandler) parseListMerchantMenuItemsInput(c echo.Context) (*usecase.ListMerchantMenuItemsInput, error) {

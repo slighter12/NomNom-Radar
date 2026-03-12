@@ -151,7 +151,7 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 	consumerMerchantsGroup := apiV1.Group("/merchants")
 	consumerMerchantsGroup.Use(r.authMiddleware.RequireRole(entity.RoleUser))
 	{
-		consumerMerchantsGroup.GET("/:merchantId/menu", r.menuHandler.GetPublicMerchantMenu)
+		consumerMerchantsGroup.GET("/:id/menu", r.menuHandler.GetPublicMerchantMenu)
 	}
 
 	// Merchant QR code generation (requires merchant role)
