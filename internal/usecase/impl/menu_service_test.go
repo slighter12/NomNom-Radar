@@ -58,6 +58,34 @@ func (s *menuRepositoryStub) ReorderMenuItems(ctx context.Context, merchantID uu
 	return s.reorderMenuItemsFunc(ctx, merchantID, itemIDs)
 }
 
+type userRepositoryStub struct {
+	findByIDFunc func(ctx context.Context, id uuid.UUID) (*entity.User, error)
+}
+
+func (s *userRepositoryStub) FindByID(ctx context.Context, id uuid.UUID) (*entity.User, error) {
+	if s.findByIDFunc == nil {
+		return nil, nil
+	}
+
+	return s.findByIDFunc(ctx, id)
+}
+
+func (s *userRepositoryStub) AcquireSessionMutex(context.Context, uuid.UUID) error {
+	return nil
+}
+
+func (s *userRepositoryStub) FindByEmail(context.Context, string) (*entity.User, error) {
+	return nil, nil
+}
+
+func (s *userRepositoryStub) Create(context.Context, *entity.User) error {
+	return nil
+}
+
+func (s *userRepositoryStub) Update(context.Context, *entity.User) error {
+	return nil
+}
+
 func TestMenuService_CreateMenuItem_Success(t *testing.T) {
 	ctx := context.Background()
 	merchantID := uuid.New()
@@ -219,6 +247,121 @@ func TestMenuService_ReorderMenuItems_Success(t *testing.T) {
 	require.NotNil(t, result)
 	assert.Equal(t, 3, result.UpdatedCount)
 	assert.Equal(t, []uuid.UUID{itemC, itemA, itemB}, reorderedIDs)
+}
+
+func TestMenuService_GetPublicMerchantMenu_Success(t *testing.T) {
+	ctx := context.Background()
+	merchantID := uuid.New()
+	expectedItems := []*entity.MenuItem{
+		{ID: uuid.New(), MerchantID: merchantID, Name: "Beef Noodles", IsAvailable: true},
+	}
+
+	menuRepo := &menuRepositoryStub{
+		listMenuItemsByMerchantFunc: func(_ context.Context, id uuid.UUID, filter repository.MenuItemListFilter) ([]*entity.MenuItem, int64, error) {
+			assert.Equal(t, merchantID, id)
+			require.NotNil(t, filter.IsAvailable)
+			assert.True(t, *filter.IsAvailable)
+			require.NotNil(t, filter.Category)
+			assert.Equal(t, entity.MenuCategoryMain, *filter.Category)
+			assert.Equal(t, "beef", filter.Keyword)
+			assert.Equal(t, 20, filter.Limit)
+			assert.Equal(t, 0, filter.Offset)
+
+			return expectedItems, 1, nil
+		},
+	}
+	userRepo := &userRepositoryStub{
+		findByIDFunc: func(_ context.Context, id uuid.UUID) (*entity.User, error) {
+			assert.Equal(t, merchantID, id)
+
+			return &entity.User{
+				ID:              merchantID,
+				MerchantProfile: &entity.MerchantProfile{UserID: merchantID},
+			}, nil
+		},
+	}
+
+	service := NewMenuService(MenuServiceParams{
+		MenuRepo: menuRepo,
+		UserRepo: userRepo,
+	})
+
+	result, err := service.GetPublicMerchantMenu(ctx, merchantID, &usecase.ListMerchantMenuItemsInput{
+		Category: "  main  ",
+		Keyword:  "  beef  ",
+		Page:     1,
+		PageSize: 20,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, expectedItems, result.Items)
+	assert.Equal(t, 1, result.Pagination.Page)
+	assert.Equal(t, 20, result.Pagination.PageSize)
+	assert.EqualValues(t, 1, result.Pagination.Total)
+}
+
+func TestMenuService_GetPublicMerchantMenu_MerchantNotFound(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name        string
+		buildUser   func(merchantID uuid.UUID) *entity.User
+		findByIDErr error
+	}{
+		{
+			name:        "missing user",
+			findByIDErr: repository.ErrUserNotFound,
+		},
+		{
+			name: "user without merchant profile",
+			buildUser: func(merchantID uuid.UUID) *entity.User {
+				return &entity.User{ID: merchantID}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			merchantID := uuid.New()
+			menuRepoCalled := false
+
+			menuRepo := &menuRepositoryStub{
+				listMenuItemsByMerchantFunc: func(context.Context, uuid.UUID, repository.MenuItemListFilter) ([]*entity.MenuItem, int64, error) {
+					menuRepoCalled = true
+					t.Fatal("menu repository should not be called when merchant is invalid")
+
+					return nil, 0, nil
+				},
+			}
+			userRepo := &userRepositoryStub{
+				findByIDFunc: func(_ context.Context, id uuid.UUID) (*entity.User, error) {
+					assert.Equal(t, merchantID, id)
+
+					if tt.buildUser != nil {
+						return tt.buildUser(merchantID), tt.findByIDErr
+					}
+
+					return nil, tt.findByIDErr
+				},
+			}
+
+			service := NewMenuService(MenuServiceParams{
+				MenuRepo: menuRepo,
+				UserRepo: userRepo,
+			})
+
+			result, err := service.GetPublicMerchantMenu(ctx, merchantID, &usecase.ListMerchantMenuItemsInput{
+				Page:     1,
+				PageSize: 20,
+			})
+
+			require.Error(t, err)
+			assert.Nil(t, result)
+			assert.ErrorIs(t, err, domainerrors.ErrMerchantNotFound)
+			assert.False(t, menuRepoCalled)
+		})
+	}
 }
 
 func TestMenuService_ListMerchantMenuItems_Success(t *testing.T) {

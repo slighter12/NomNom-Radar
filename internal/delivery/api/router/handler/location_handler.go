@@ -214,7 +214,7 @@ func (h *LocationHandler) DeleteMerchantLocation(c echo.Context) error {
 }
 
 func (h *LocationHandler) parseLocationID(c echo.Context) (uuid.UUID, error) {
-	return bindIDPathParam(c, "Invalid location ID")
+	return bindLocationIDPathParam(c, "Invalid location ID")
 }
 
 func newAddLocationInput(req *CreateLocationRequest) *usecase.AddLocationInput {
