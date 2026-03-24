@@ -61,7 +61,7 @@ func (h *UserHandler) RegisterUser(c echo.Context) error {
 
 	// Do not return sensitive data in the response.
 	// The DTO from the usecase might need to be mapped to a response model.
-	return response.Success(c, http.StatusCreated, output.User)
+	return response.Success(c, http.StatusCreated, output)
 }
 
 // RegisterMerchant handles the merchant registration request.
@@ -76,7 +76,7 @@ func (h *UserHandler) RegisterMerchant(c echo.Context) error {
 		return response.HandleAppError(c, err)
 	}
 
-	return response.Success(c, http.StatusCreated, output.User)
+	return response.Success(c, http.StatusCreated, output)
 }
 
 // Login handles the user login request.
@@ -140,42 +140,44 @@ func (h *UserHandler) GoogleCallback(c echo.Context) error {
 	return response.Success(c, http.StatusOK, output)
 }
 
-// extractGoogleCallbackInput extracts and validates input from the request
+// CompleteMerchantOnboarding finalizes merchant onboarding for a verified identity.
+func (h *UserHandler) CompleteMerchantOnboarding(c echo.Context) error {
+	input, err := bindRequiredPayload[usecase.CompleteMerchantOnboardingInput](c, "Invalid merchant onboarding input")
+	if err != nil {
+		return err
+	}
+
+	output, err := h.userUC.CompleteMerchantOnboarding(c.Request().Context(), input)
+	if err != nil {
+		return response.HandleAppError(c, err)
+	}
+
+	return response.Success(c, http.StatusOK, output)
+}
+
+// extractGoogleCallbackInput extracts and validates input from the request.
+// Query params (code, state) are read from the URL; the rest comes from the JSON body.
 func (h *UserHandler) extractGoogleCallbackInput(c echo.Context) (*usecase.GoogleCallbackInput, error) {
 	var query GoogleCallbackQueryParams
 	if err := bindQueryParams(c, &query); err != nil {
 		return nil, response.BindingError(c, "INVALID_INPUT", "Invalid Google callback input")
 	}
 
-	code := query.Code
-	idToken := c.FormValue("id_token")
-	state := query.State
-
 	// Handle authorization code flow (not implemented yet)
-	if code != "" {
+	if query.Code != "" {
 		return nil, response.BadRequest(c, "INVALID_INPUT", "Authorization code flow not implemented yet. Please use ID token flow.")
 	}
 
-	// Handle ID token flow
-	if idToken != "" {
-		return &usecase.GoogleCallbackInput{
-			IDToken: idToken,
-			State:   state,
-		}, nil
-	}
-
-	// Handle JSON body binding
 	input, err := bindRequiredPayload[usecase.GoogleCallbackInput](c, "Invalid Google callback input")
 	if err != nil {
 		return nil, err
 	}
 
-	// Override state if provided in query params
-	if state != "" {
-		input.State = state
+	// Backward compatibility: query param state overrides body
+	if query.State != "" {
+		input.State = query.State
 	}
 
-	// Validate required fields
 	if input.IDToken == "" {
 		return nil, response.BadRequest(c, "INVALID_INPUT", "ID token is required")
 	}

@@ -14,8 +14,9 @@ func TestJWTService_GenerateAndValidateTokens(t *testing.T) {
 	// Create test config
 	cfg := &config.Config{
 		SecretKey: struct {
-			Access  string `json:"access" yaml:"access"`
-			Refresh string `json:"refresh" yaml:"refresh"`
+			Access     string `json:"access" yaml:"access"`
+			Refresh    string `json:"refresh" yaml:"refresh"`
+			Onboarding string `json:"onboarding" yaml:"onboarding"`
 		}{
 			Access:  "test_access_secret_key_very_long_for_testing",
 			Refresh: "test_refresh_secret_key_very_long_for_testing",
@@ -58,8 +59,9 @@ func TestJWTService_InvalidToken(t *testing.T) {
 	// Create test config
 	cfg := &config.Config{
 		SecretKey: struct {
-			Access  string `json:"access" yaml:"access"`
-			Refresh string `json:"refresh" yaml:"refresh"`
+			Access     string `json:"access" yaml:"access"`
+			Refresh    string `json:"refresh" yaml:"refresh"`
+			Onboarding string `json:"onboarding" yaml:"onboarding"`
 		}{
 			Access:  "test_access_secret_key_very_long_for_testing",
 			Refresh: "test_refresh_secret_key_very_long_for_testing",
@@ -82,8 +84,9 @@ func TestJWTService_UnknownTokenType(t *testing.T) {
 	// Create test config
 	cfg := &config.Config{
 		SecretKey: struct {
-			Access  string `json:"access" yaml:"access"`
-			Refresh string `json:"refresh" yaml:"refresh"`
+			Access     string `json:"access" yaml:"access"`
+			Refresh    string `json:"refresh" yaml:"refresh"`
+			Onboarding string `json:"onboarding" yaml:"onboarding"`
 		}{
 			Access:  "test_access_secret_key_very_long_for_testing",
 			Refresh: "test_refresh_secret_key_very_long_for_testing",
@@ -105,8 +108,9 @@ func TestJWTService_EmptySecrets(t *testing.T) {
 	// Test with empty secrets
 	cfg := &config.Config{
 		SecretKey: struct {
-			Access  string `json:"access" yaml:"access"`
-			Refresh string `json:"refresh" yaml:"refresh"`
+			Access     string `json:"access" yaml:"access"`
+			Refresh    string `json:"refresh" yaml:"refresh"`
+			Onboarding string `json:"onboarding" yaml:"onboarding"`
 		}{
 			Access:  "",
 			Refresh: "",
@@ -124,8 +128,9 @@ func TestJWTService_GetRefreshTokenDuration(t *testing.T) {
 	// Create test config
 	cfg := &config.Config{
 		SecretKey: struct {
-			Access  string `json:"access" yaml:"access"`
-			Refresh string `json:"refresh" yaml:"refresh"`
+			Access     string `json:"access" yaml:"access"`
+			Refresh    string `json:"refresh" yaml:"refresh"`
+			Onboarding string `json:"onboarding" yaml:"onboarding"`
 		}{
 			Access:  "test_access_secret_key_very_long_for_testing",
 			Refresh: "test_refresh_secret_key_very_long_for_testing",
@@ -146,8 +151,9 @@ func TestJWTService_HashToken(t *testing.T) {
 	// Create test config
 	cfg := &config.Config{
 		SecretKey: struct {
-			Access  string `json:"access" yaml:"access"`
-			Refresh string `json:"refresh" yaml:"refresh"`
+			Access     string `json:"access" yaml:"access"`
+			Refresh    string `json:"refresh" yaml:"refresh"`
+			Onboarding string `json:"onboarding" yaml:"onboarding"`
 		}{
 			Access:  "test_access_secret_key_very_long_for_testing",
 			Refresh: "test_refresh_secret_key_very_long_for_testing",
@@ -178,8 +184,9 @@ func TestJWTService_RotateTokens(t *testing.T) {
 	// Create test config
 	cfg := &config.Config{
 		SecretKey: struct {
-			Access  string `json:"access" yaml:"access"`
-			Refresh string `json:"refresh" yaml:"refresh"`
+			Access     string `json:"access" yaml:"access"`
+			Refresh    string `json:"refresh" yaml:"refresh"`
+			Onboarding string `json:"onboarding" yaml:"onboarding"`
 		}{
 			Access:  "test_access_secret_key_very_long_for_testing",
 			Refresh: "test_refresh_secret_key_very_long_for_testing",
@@ -224,8 +231,9 @@ func TestJWTService_TokenRotationFunctionality(t *testing.T) {
 	// Create test config
 	cfg := &config.Config{
 		SecretKey: struct {
-			Access  string `json:"access" yaml:"access"`
-			Refresh string `json:"refresh" yaml:"refresh"`
+			Access     string `json:"access" yaml:"access"`
+			Refresh    string `json:"refresh" yaml:"refresh"`
+			Onboarding string `json:"onboarding" yaml:"onboarding"`
 		}{
 			Access:  "test_access_secret_key_very_long_for_testing",
 			Refresh: "test_refresh_secret_key_very_long_for_testing",

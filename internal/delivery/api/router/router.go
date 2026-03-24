@@ -65,6 +65,7 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 		authGroup.POST("/register/user", r.userHandler.RegisterUser)
 		authGroup.POST("/register/merchant", r.userHandler.RegisterMerchant)
 		authGroup.POST("/login", r.userHandler.Login)
+		authGroup.POST("/onboarding/merchant", r.userHandler.CompleteMerchantOnboarding)
 		authGroup.POST("/refresh", r.userHandler.RefreshToken)
 		authGroup.POST("/logout", r.userHandler.Logout)
 	}

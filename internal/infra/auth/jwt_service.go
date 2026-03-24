@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -17,10 +18,12 @@ import (
 
 // jwtService is a concrete implementation of the TokenService interface using the JWT standard.
 type jwtService struct {
-	accessSecret  string        // Secret key for signing access tokens.
-	refreshSecret string        // Secret key for signing refresh tokens.
-	accessTTL     time.Duration // Time-to-live for access tokens.
-	refreshTTL    time.Duration // Time-to-live for refresh tokens.
+	accessSecret     string        // Secret key for signing access tokens.
+	refreshSecret    string        // Secret key for signing refresh tokens.
+	onboardingSecret string        // Secret key for signing onboarding tokens.
+	onboardingTTL    time.Duration // Time-to-live for onboarding tokens.
+	accessTTL        time.Duration // Time-to-live for access tokens.
+	refreshTTL       time.Duration // Time-to-live for refresh tokens.
 }
 
 // NewJWTService is the constructor for jwtService.
@@ -30,11 +33,20 @@ func NewJWTService(cfg *config.Config) (service.TokenService, error) {
 		return nil, errors.New("jwt secrets must be provided")
 	}
 
+	onboardingSecret := cfg.SecretKey.Onboarding
+	if onboardingSecret == "" {
+		h := hmac.New(sha256.New, []byte(cfg.SecretKey.Access))
+		h.Write([]byte("onboarding"))
+		onboardingSecret = hex.EncodeToString(h.Sum(nil))
+	}
+
 	return &jwtService{
-		accessSecret:  cfg.SecretKey.Access,
-		refreshSecret: cfg.SecretKey.Refresh,
-		accessTTL:     time.Minute * 15,   // e.g., 15 minutes
-		refreshTTL:    time.Hour * 24 * 7, // e.g., 7 days
+		accessSecret:     cfg.SecretKey.Access,
+		refreshSecret:    cfg.SecretKey.Refresh,
+		onboardingSecret: onboardingSecret,
+		onboardingTTL:    time.Minute * 10,
+		accessTTL:        time.Minute * 15,   // e.g., 15 minutes
+		refreshTTL:       time.Hour * 24 * 7, // e.g., 7 days
 	}, nil
 }
 
@@ -55,39 +67,64 @@ func (s *jwtService) GenerateTokens(userID uuid.UUID, roles []string) (accessTok
 
 // ValidateToken checks the validity of a token string against a secret.
 func (s *jwtService) ValidateToken(tokenString string) (*service.Claims, error) {
-	// First, parse the token without verification to get the claims
+	unverifiedClaims, err := parseUnverifiedClaims(tokenString)
+	if err != nil {
+		return nil, err
+	}
+
+	secret, err := s.secretForTokenType(unverifiedClaims.Type)
+	if err != nil {
+		return nil, err
+	}
+
+	return parseAndValidateClaims(tokenString, secret)
+}
+
+// GenerateOnboardingToken creates a short-lived onboarding token for a given user.
+func (s *jwtService) GenerateOnboardingToken(userID uuid.UUID) (string, error) {
+	token, err := s.generateToken(userID, nil, s.onboardingTTL, s.onboardingSecret, "onboarding")
+	if err != nil {
+		return "", errors.WithStack(err)
+	}
+
+	return token, nil
+}
+
+func parseUnverifiedClaims(tokenString string) (*service.Claims, error) {
 	unverifiedToken, _, err := new(jwt.Parser).ParseUnverified(tokenString, &service.Claims{})
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	// Get the claims to determine the token type
 	unverifiedClaims, ok := unverifiedToken.Claims.(*service.Claims)
 	if !ok {
 		return nil, errors.New("invalid token claims structure")
 	}
 
-	// Determine which secret to use based on token type
-	var secret []byte
-	switch unverifiedClaims.Type {
+	return unverifiedClaims, nil
+}
+
+func (s *jwtService) secretForTokenType(tokenType string) ([]byte, error) {
+	switch tokenType {
 	case "access":
-		secret = []byte(s.accessSecret)
+		return []byte(s.accessSecret), nil
 	case "refresh":
-		secret = []byte(s.refreshSecret)
+		return []byte(s.refreshSecret), nil
+	case "onboarding":
+		return []byte(s.onboardingSecret), nil
 	default:
 		return nil, errors.New("unknown token type")
 	}
+}
 
-	// Now parse and verify the token with the correct secret
+func parseAndValidateClaims(tokenString string, secret []byte) (*service.Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &service.Claims{}, func(token *jwt.Token) (any, error) {
-		// Check the signing method
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 
 		return secret, nil
 	})
-
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

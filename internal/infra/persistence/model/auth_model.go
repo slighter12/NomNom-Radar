@@ -4,16 +4,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // AuthenticationModel mirrors the 'user_authentications' table. UUID columns track provider credentials.
 type AuthenticationModel struct {
 	ID             uuid.UUID `gorm:"type:uuid;primary_key;default:uuid_generate_v7()"`
 	UserID         uuid.UUID `gorm:"type:uuid;not null"`
-	Provider       string    `gorm:"type:text;not null;uniqueIndex:idx_auth_provider_provider_user_id"`
-	ProviderUserID string    `gorm:"type:text;not null;uniqueIndex:idx_auth_provider_provider_user_id"`
+	Provider       string    `gorm:"type:text;not null;uniqueIndex:idx_auth_provider_provider_user_id_active,priority:1,where:deleted_at IS NULL"`
+	ProviderUserID string    `gorm:"type:text;not null;uniqueIndex:idx_auth_provider_provider_user_id_active,priority:2,where:deleted_at IS NULL"`
 	PasswordHash   string    `gorm:"type:text"`
 	CreatedAt      time.Time
+	DeletedAt      gorm.DeletedAt `gorm:"index:idx_user_authentications_deleted_at"`
 }
 
 // TableName explicitly sets the table name for GORM.

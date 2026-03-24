@@ -38,8 +38,8 @@ type registrationConfig struct {
 	Email              string
 	Password           string
 	Role               entity.Role
-	BuildNewUser       func() *entity.User
-	AttachProfile      func(*entity.User)
+	BuildNewUser       func() (*entity.User, error)
+	AttachProfile      func(*entity.User) error
 	HasProfile         func(*entity.User) bool
 	ProfileExistsError func() error
 }
@@ -84,136 +84,64 @@ func (srv *userService) log(ctx context.Context) *slog.Logger {
 	return deliverycontext.GetLoggerOrDefault(ctx, srv.logger)
 }
 
-// RegisterUser orchestrates the complete user registration process.
-func (srv *userService) RegisterUser(ctx context.Context, input *usecase.RegisterUserInput) (*usecase.RegisterOutput, error) {
-	config := &registrationConfig{
+// RegisterUser orchestrates the unified user registration flow.
+func (srv *userService) RegisterUser(ctx context.Context, input *usecase.RegisterUserInput) (*usecase.AuthResult, error) {
+	return srv.authenticate(ctx, &authRequest{
+		Method:        authMethodEmailPassword,
+		Intent:        authIntentRegister,
+		Provider:      entity.ProviderTypeEmail,
+		RequestedRole: entity.RoleUser,
 		Name:          input.Name,
 		Email:         input.Email,
 		Password:      input.Password,
-		Role:          entity.RoleUser,
-		BuildNewUser:  func() *entity.User { return buildNewUserEntity(input.Name, input.Email) },
-		AttachProfile: attachUserProfile,
-		HasProfile:    userHasUserProfile,
-		ProfileExistsError: func() error {
-			return domainerrors.ErrUserAlreadyExists.WrapMessage("user profile already registered for this account")
-		},
-	}
-
-	return srv.executeRegistration(ctx, config)
-}
-
-func (srv *userService) executeRegistration(ctx context.Context, cfg *registrationConfig) (*usecase.RegisterOutput, error) {
-	srv.log(ctx).Info("Starting registration", slog.Any("role", cfg.Role), slog.String("email", cfg.Email))
-
-	var registeredUser *entity.User
-	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		userRepo := repoFactory.UserRepo()
-		authRepo := repoFactory.AuthRepo()
-
-		authRecord, err := authRepo.FindAuthentication(ctx, entity.ProviderTypeEmail, cfg.Email)
-		if errors.Is(err, repository.ErrAuthNotFound) {
-			return srv.handleNewRegistration(ctx, cfg, userRepo, authRepo, &registeredUser)
-		}
-		if err != nil {
-			return errors.Wrap(err, "failed to find authentication")
-		}
-
-		return srv.handleExistingAccountRegistration(ctx, cfg, userRepo, authRecord, &registeredUser)
 	})
-
-	if err != nil {
-		srv.log(ctx).Error("Failed to execute registration transaction", slog.Any("role", cfg.Role), slog.String("email", cfg.Email), slog.Any("error", err))
-
-		return nil, errors.Wrap(err, "failed to execute user registration transaction")
-	}
-
-	srv.log(ctx).Debug("Registration completed", slog.Any("role", cfg.Role), slog.Any("user_id", registeredUser.ID))
-
-	return &usecase.RegisterOutput{User: registeredUser}, nil
 }
 
-func (srv *userService) handleNewRegistration(
-	ctx context.Context,
-	cfg *registrationConfig,
-	userRepo repository.UserRepository,
-	authRepo repository.AuthRepository,
-	registeredUser **entity.User,
-) error {
-	if err := srv.hasher.ValidatePasswordStrength(cfg.Password); err != nil {
-		srv.log(ctx).Warn("Password validation failed during registration", slog.Any("role", cfg.Role), slog.String("email", cfg.Email), slog.Any("error", err))
-
-		return errors.Wrap(domainerrors.ErrValidationFailed, "password does not meet security requirements")
-	}
-
-	hashedPassword, err := srv.hasher.Hash(cfg.Password)
+func (srv *userService) createUserWithProfile(ctx context.Context, cfg *registrationConfig, userRepo repository.UserRepository) (*entity.User, error) {
+	newUser, err := cfg.BuildNewUser()
 	if err != nil {
-		srv.log(ctx).Error("Failed to hash password during registration", slog.Any("role", cfg.Role), slog.Any("error", err))
-
-		return errors.Wrap(err, "failed to hash password during registration")
+		return nil, err
 	}
-
-	newUser := cfg.BuildNewUser()
 	if newUser.Name == "" {
 		newUser.Name = cfg.Name
 	}
 	newUser.Email = cfg.Email
 
 	if err := userRepo.Create(ctx, newUser); err != nil {
-		return errors.Wrap(err, "failed to create user during registration")
+		return nil, errors.Wrap(err, "failed to create user during registration")
 	}
 
-	newAuth := &entity.Authentication{
-		UserID:         newUser.ID,
-		Provider:       entity.ProviderTypeEmail,
-		ProviderUserID: cfg.Email,
-		PasswordHash:   hashedPassword,
-	}
-
-	if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
-		return errors.Wrap(err, "failed to create authentication during registration")
-	}
-
-	*registeredUser = newUser
-
-	return nil
+	return newUser, nil
 }
 
-func (srv *userService) handleExistingAccountRegistration(
+func (srv *userService) syncExistingAccountProfile(
 	ctx context.Context,
 	cfg *registrationConfig,
 	userRepo repository.UserRepository,
-	authRecord *entity.Authentication,
-	registeredUser **entity.User,
+	existingUser *entity.User,
+	failIfProfileExists bool,
 ) error {
-	if !srv.hasher.Check(cfg.Password, authRecord.PasswordHash) {
-		srv.log(ctx).Warn("Password mismatch when attaching profile", slog.Any("role", cfg.Role), slog.String("email", cfg.Email))
-
-		return errors.Wrap(domainerrors.ErrInvalidCredentials, "password mismatch during registration")
-	}
-
-	existingUser, err := userRepo.FindByID(ctx, authRecord.UserID)
-	if err != nil {
-		return errors.Wrap(err, "failed to load existing user for registration")
-	}
-
 	if cfg.HasProfile(existingUser) {
-		srv.log(ctx).Warn("Profile already exists for account", slog.Any("role", cfg.Role), slog.Any("user_id", existingUser.ID))
+		if failIfProfileExists {
+			srv.log(ctx).Warn("Profile already exists for account", slog.Any("role", cfg.Role), slog.Any("user_id", existingUser.ID))
 
-		return cfg.ProfileExistsError()
+			return cfg.ProfileExistsError()
+		}
+
+		return nil
 	}
 
 	if cfg.Name != "" {
 		existingUser.Name = cfg.Name
 	}
 
-	cfg.AttachProfile(existingUser)
+	if err := cfg.AttachProfile(existingUser); err != nil {
+		return err
+	}
 
 	if err := userRepo.Update(ctx, existingUser); err != nil {
 		return errors.Wrap(err, "failed to update user profile during registration")
 	}
-
-	srv.log(ctx).Debug("Attached profile to existing account", slog.Any("role", cfg.Role), slog.Any("user_id", existingUser.ID))
-	*registeredUser = existingUser
 
 	return nil
 }
@@ -226,28 +154,52 @@ func buildNewUserEntity(name, email string) *entity.User {
 	}
 }
 
-func buildNewMerchantEntity(input *usecase.RegisterMerchantInput) *entity.User {
-	return &entity.User{
-		Name:  input.Name,
-		Email: input.Email,
-		MerchantProfile: &entity.MerchantProfile{
-			StoreName:       input.StoreName,
-			BusinessLicense: input.BusinessLicense,
-		},
-	}
+type merchantProfileSeed struct {
+	StoreName       string
+	BusinessLicense string
 }
 
 func attachUserProfile(user *entity.User) {
 	user.UserProfile = &entity.UserProfile{UserID: user.ID}
 }
 
-func attachMerchantProfile(input *usecase.RegisterMerchantInput) func(*entity.User) {
-	return func(user *entity.User) {
-		user.MerchantProfile = &entity.MerchantProfile{
-			UserID:          user.ID,
-			StoreName:       input.StoreName,
-			BusinessLicense: input.BusinessLicense,
+func buildNewMerchantEntity(input *usecase.RegisterMerchantInput) (*entity.User, error) {
+	return buildNewMerchantEntityFromSeed(input.Name, input.Email, merchantProfileSeed{
+		StoreName:       input.StoreName,
+		BusinessLicense: input.BusinessLicense,
+	})
+}
+
+func buildNewMerchantEntityFromSeed(name, email string, seed merchantProfileSeed) (*entity.User, error) {
+	merchantProfile, err := buildMerchantProfile(seed, uuid.Nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return &entity.User{
+		Name:            name,
+		Email:           email,
+		MerchantProfile: merchantProfile,
+	}, nil
+}
+
+func attachMerchantProfile(input *usecase.RegisterMerchantInput) func(*entity.User) error {
+	return attachMerchantProfileFromSeed(merchantProfileSeed{
+		StoreName:       input.StoreName,
+		BusinessLicense: input.BusinessLicense,
+	})
+}
+
+func attachMerchantProfileFromSeed(seed merchantProfileSeed) func(*entity.User) error {
+	return func(user *entity.User) error {
+		merchantProfile, err := buildMerchantProfile(seed, user.ID)
+		if err != nil {
+			return err
 		}
+
+		user.MerchantProfile = merchantProfile
+
+		return nil
 	}
 }
 
@@ -272,126 +224,32 @@ func maskEmailForLog(email string) string {
 	return email[:3] + "***" + email[atIndex:]
 }
 
-func emailLogAttr(email string) slog.Attr {
-	return slog.String("email_masked", maskEmailForLog(email))
-}
-
-// RegisterMerchant orchestrates the complete merchant registration process.
-func (srv *userService) RegisterMerchant(ctx context.Context, input *usecase.RegisterMerchantInput) (*usecase.RegisterOutput, error) {
-	config := &registrationConfig{
+// RegisterMerchant orchestrates the unified merchant registration flow.
+func (srv *userService) RegisterMerchant(ctx context.Context, input *usecase.RegisterMerchantInput) (*usecase.AuthResult, error) {
+	return srv.authenticate(ctx, &authRequest{
+		Method:        authMethodEmailPassword,
+		Intent:        authIntentRegister,
+		Provider:      entity.ProviderTypeEmail,
+		RequestedRole: entity.RoleMerchant,
 		Name:          input.Name,
 		Email:         input.Email,
 		Password:      input.Password,
-		Role:          entity.RoleMerchant,
-		BuildNewUser:  func() *entity.User { return buildNewMerchantEntity(input) },
-		AttachProfile: attachMerchantProfile(input),
-		HasProfile:    userHasMerchantProfile,
-		ProfileExistsError: func() error {
-			return errors.Wrap(domainerrors.ErrMerchantAlreadyExists, "merchant profile already registered for this account")
+		MerchantSeed: &merchantProfileSeed{
+			StoreName:       input.StoreName,
+			BusinessLicense: input.BusinessLicense,
 		},
-	}
-
-	return srv.executeRegistration(ctx, config)
+	})
 }
 
-// Login orchestrates the user login process.
-func (srv *userService) Login(ctx context.Context, input *usecase.LoginInput) (*usecase.LoginOutput, error) {
-	srv.log(ctx).Debug("Starting user login", emailLogAttr(input.Email))
-
-	authRecord, err := srv.loadLoginAuth(ctx, input.Email)
-	if err != nil {
-		srv.log(ctx).Warn("Login failed", emailLogAttr(input.Email), slog.Any("error", err))
-
-		if errors.Is(err, domainerrors.ErrInvalidCredentials) {
-			return nil, errors.Wrap(err, "login failed")
-		}
-
-		return nil, errors.Wrap(err, "failed to load login authentication from primary")
-	}
-
-	// 2. Check password outside transaction (bcrypt is CPU-bound).
-	if !srv.hasher.Check(input.Password, authRecord.PasswordHash) {
-		srv.log(ctx).Warn("Login failed", emailLogAttr(input.Email), slog.Any("error", domainerrors.ErrInvalidCredentials))
-
-		return nil, errors.Wrap(domainerrors.ErrInvalidCredentials, "login failed")
-	}
-
-	loggedInUser, err := srv.loadLoginUser(ctx, authRecord.UserID)
-	if err != nil {
-		srv.log(ctx).Warn("Login failed", emailLogAttr(input.Email), slog.Any("error", err))
-
-		return nil, errors.Wrap(err, "failed to load login user from primary")
-	}
-
-	roles := srv.extractUserRoles(loggedInUser)
-
-	// 3. Generate new tokens outside transaction.
-	accessToken, refreshTokenString, err := srv.tokenService.GenerateTokens(loggedInUser.ID, roles.ToStrings())
-	if err != nil {
-		srv.log(ctx).Warn("Login failed", emailLogAttr(input.Email), slog.Any("error", err))
-
-		return nil, errors.Wrap(err, "failed to generate tokens")
-	}
-
-	// 4. Store refresh token.
-	if err := srv.persistLoginRefreshToken(ctx, loggedInUser.ID, refreshTokenString); err != nil {
-		srv.log(ctx).Warn("Login failed", emailLogAttr(input.Email), slog.Any("error", err))
-
-		return nil, errors.Wrap(err, "failed to create refresh token during login")
-	}
-	srv.log(ctx).Debug("User logged in successfully", slog.Any("user_id", loggedInUser.ID))
-
-	return &usecase.LoginOutput{
-		AccessToken:  accessToken,
-		RefreshToken: refreshTokenString,
-		User:         loggedInUser,
-	}, nil
-}
-
-func (srv *userService) loadLoginAuth(ctx context.Context, email string) (*entity.Authentication, error) {
-	var authRecord *entity.Authentication
-
-	// Load authentication from primary in a short transaction to avoid stale reads on replicas.
-	if err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		authRepo := repoFactory.AuthRepo()
-
-		var findAuthErr error
-		authRecord, findAuthErr = authRepo.FindAuthentication(ctx, entity.ProviderTypeEmail, email)
-		if findAuthErr != nil {
-			if errors.Is(findAuthErr, repository.ErrAuthNotFound) {
-				return errors.Wrap(domainerrors.ErrInvalidCredentials, "login failed")
-			}
-
-			return errors.Wrap(findAuthErr, "failed to find authentication")
-		}
-
-		return nil
-	}); err != nil {
-		return nil, errors.Wrap(err, "failed to execute login auth transaction")
-	}
-
-	return authRecord, nil
-}
-
-func (srv *userService) loadLoginUser(ctx context.Context, userID uuid.UUID) (*entity.User, error) {
-	var loggedInUser *entity.User
-
-	// Load user data from primary in a short transaction to avoid stale reads on replicas.
-	if err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		userRepo := repoFactory.UserRepo()
-
-		var findUserErr error
-		loggedInUser, findUserErr = userRepo.FindByID(ctx, userID)
-		if findUserErr != nil {
-			return errors.Wrap(findUserErr, "failed to find user by id")
-		}
-
-		return nil
-	}); err != nil {
-		return nil, errors.Wrap(err, "failed to execute login user transaction")
-	}
-
-	return loggedInUser, nil
+// Login orchestrates the unified email login flow.
+func (srv *userService) Login(ctx context.Context, input *usecase.LoginInput) (*usecase.AuthResult, error) {
+	return srv.authenticate(ctx, &authRequest{
+		Method:   authMethodEmailPassword,
+		Intent:   authIntentLogin,
+		Provider: entity.ProviderTypeEmail,
+		Email:    input.Email,
+		Password: input.Password,
+	})
 }
 
 func (srv *userService) persistLoginRefreshToken(ctx context.Context, userID uuid.UUID, refreshTokenString string) error {
@@ -497,128 +355,77 @@ func (srv *userService) Logout(ctx context.Context, input *usecase.LogoutInput) 
 	return nil
 }
 
-// GoogleCallback handles the user login or registration via Google Sign-In.
-func (srv *userService) GoogleCallback(ctx context.Context, input *usecase.GoogleCallbackInput) (*usecase.LoginOutput, error) {
-	srv.log(ctx).Info("Handling Google callback")
+// GoogleCallback handles Google sign-in via the unified auth flow.
+func (srv *userService) GoogleCallback(ctx context.Context, input *usecase.GoogleCallbackInput) (*usecase.AuthResult, error) {
+	requestedRole := normalizeRequestedRole(input.RequestedRole, input.State)
 
-	// 1. Verify the ID token with Google.
-	oauthUser, err := srv.googleAuthService.VerifyIDToken(ctx, input.IDToken)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to verify Google ID token")
+	var merchantSeed *merchantProfileSeed
+	if strings.TrimSpace(input.StoreName) != "" || strings.TrimSpace(input.BusinessLicense) != "" {
+		merchantSeed = &merchantProfileSeed{
+			StoreName:       input.StoreName,
+			BusinessLicense: input.BusinessLicense,
+		}
 	}
 
-	// 2. Find or create user and generate tokens
-	loggedInUser, accessToken, refreshTokenString, err := srv.handleGoogleUserAuth(ctx, oauthUser)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to handle Google user authentication")
-	}
-
-	return &usecase.LoginOutput{
-		AccessToken:  accessToken,
-		RefreshToken: refreshTokenString,
-		User:         loggedInUser,
-	}, nil
-}
-
-// handleGoogleUserAuth handles the complete Google user authentication flow
-func (srv *userService) handleGoogleUserAuth(ctx context.Context, oauthUser *service.OAuthUser) (*entity.User, string, string, error) {
-	var loggedInUser *entity.User
-	var accessToken, refreshTokenString string
-
-	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		// Find or create user
-		user, err := srv.findOrCreateGoogleUser(ctx, repoFactory, oauthUser)
-		if err != nil {
-			return err
-		}
-		loggedInUser = user
-
-		// Generate tokens
-		accessToken, refreshTokenString, err = srv.generateUserTokens(ctx, user)
-		if err != nil {
-			return errors.Wrap(err, "failed to find or create Google user")
-		}
-
-		// Store refresh token
-		return srv.storeRefreshToken(ctx, repoFactory, user.ID, refreshTokenString)
+	return srv.authenticate(ctx, &authRequest{
+		Method:        authMethodOAuth,
+		Intent:        authIntentLogin,
+		RequestedRole: requestedRole,
+		IDToken:       input.IDToken,
+		MerchantSeed:  merchantSeed,
 	})
-
-	if err != nil {
-		return nil, "", "", errors.Wrap(err, "failed to execute Google user authentication transaction")
-	}
-
-	return loggedInUser, accessToken, refreshTokenString, nil
 }
 
-// findOrCreateGoogleUser finds existing user or creates new one for Google authentication
-func (srv *userService) findOrCreateGoogleUser(ctx context.Context, repoFactory repository.RepositoryFactory, oauthUser *service.OAuthUser) (*entity.User, error) {
-	authRepo := repoFactory.AuthRepo()
-	userRepo := repoFactory.UserRepo()
-
-	// Try to find existing authentication record
-	authRecord, err := authRepo.FindAuthentication(ctx, entity.ProviderTypeGoogle, oauthUser.ID)
-	if err != nil && !errors.Is(err, repository.ErrAuthNotFound) {
-		return nil, errors.Wrap(err, "failed to find authentication")
+func normalizeRequestedRole(requestedRole, legacyState string) entity.Role {
+	role := strings.TrimSpace(strings.ToLower(requestedRole))
+	if role == "" {
+		role = strings.TrimSpace(strings.ToLower(legacyState))
 	}
 
-	// If user doesn't exist, create new one
-	if errors.Is(err, repository.ErrAuthNotFound) {
-		return srv.createGoogleUser(ctx, userRepo, authRepo, oauthUser)
+	switch role {
+	case entity.RoleMerchant.String():
+		return entity.RoleMerchant
+	case entity.RoleUser.String():
+		return entity.RoleUser
+	default:
+		return entity.RoleUser
 	}
-
-	// If user exists, fetch their data
-	return srv.fetchExistingUser(ctx, userRepo, authRecord.UserID)
 }
 
-// createGoogleUser creates a new user for Google authentication
-func (srv *userService) createGoogleUser(ctx context.Context, userRepo repository.UserRepository, authRepo repository.AuthRepository, oauthUser *service.OAuthUser) (*entity.User, error) {
-	srv.log(ctx).Info("Google user not found, creating new user", slog.String("email", oauthUser.Email))
-
-	newUser := &entity.User{
-		Name:        oauthUser.Name,
-		Email:       oauthUser.Email,
-		UserProfile: &entity.UserProfile{}, // Default role is 'user'
+func buildMerchantProfile(seed merchantProfileSeed, userID uuid.UUID) (*entity.MerchantProfile, error) {
+	storeName := strings.TrimSpace(seed.StoreName)
+	if storeName == "" {
+		return nil, errors.Wrap(domainerrors.ErrValidationFailed, "store_name is required for merchant sign-in")
 	}
 
-	if err := userRepo.Create(ctx, newUser); err != nil {
-		return nil, errors.Wrap(err, "failed to create user for Google authentication")
+	businessLicense := strings.TrimSpace(seed.BusinessLicense)
+	if businessLicense == "" {
+		return nil, errors.Wrap(domainerrors.ErrValidationFailed, "business_license is required for merchant sign-in")
 	}
 
+	profile := &entity.MerchantProfile{
+		StoreName:       storeName,
+		BusinessLicense: businessLicense,
+	}
+	if userID != uuid.Nil {
+		profile.UserID = userID
+	}
+
+	return profile, nil
+}
+
+func createOAuthAuthentication(ctx context.Context, authRepo repository.AuthRepository, userID uuid.UUID, provider entity.ProviderType, providerUserID string) error {
 	newAuth := &entity.Authentication{
-		UserID:         newUser.ID,
-		Provider:       entity.ProviderTypeGoogle,
-		ProviderUserID: oauthUser.ID,
+		UserID:         userID,
+		Provider:       provider,
+		ProviderUserID: providerUserID,
 	}
 
 	if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
-		return nil, errors.Wrap(err, "failed to create Google authentication")
+		return errors.Wrap(err, "failed to create OAuth authentication")
 	}
 
-	return newUser, nil
-}
-
-// fetchExistingUser fetches existing user by ID
-func (srv *userService) fetchExistingUser(ctx context.Context, userRepo repository.UserRepository, userID uuid.UUID) (*entity.User, error) {
-	srv.log(ctx).Info("Found existing Google user", slog.Any("user_id", userID))
-
-	user, err := userRepo.FindByID(ctx, userID)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to find user by id for google auth")
-	}
-
-	return user, nil
-}
-
-// generateUserTokens generates access and refresh tokens for the user
-func (srv *userService) generateUserTokens(_ context.Context, user *entity.User) (string, string, error) {
-	roles := srv.extractUserRoles(user)
-
-	accessToken, refreshTokenString, err := srv.tokenService.GenerateTokens(user.ID, roles.ToStrings())
-	if err != nil {
-		return "", "", errors.Wrap(err, "failed to generate tokens for google auth")
-	}
-
-	return accessToken, refreshTokenString, nil
+	return nil
 }
 
 // extractUserRoles extracts roles from user profiles
@@ -641,7 +448,7 @@ func (srv *userService) storeRefreshToken(ctx context.Context, repoFactory repos
 	userRepo := repoFactory.UserRepo()
 
 	// Defensive: check maxActiveSessions here because storeRefreshToken is called
-	// from multiple sites (e.g. handleGoogleUserAuth), not only persistLoginRefreshToken.
+	// from multiple sites (e.g. handleOAuthUserAuth), not only persistLoginRefreshToken.
 	if srv.maxActiveSessions > 0 {
 		if err := userRepo.AcquireSessionMutex(ctx, userID); err != nil {
 			return errors.Wrap(err, "failed to lock user row for session limit check")
