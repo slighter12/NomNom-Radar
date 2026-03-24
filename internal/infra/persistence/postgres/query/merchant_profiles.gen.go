@@ -33,6 +33,7 @@ func newMerchantProfileModel(db *gorm.DB, opts ...gen.DOOption) merchantProfileM
 	_merchantProfileModel.BusinessLicense = field.NewString(tableName, "business_license")
 	_merchantProfileModel.CreatedAt = field.NewTime(tableName, "created_at")
 	_merchantProfileModel.UpdatedAt = field.NewTime(tableName, "updated_at")
+	_merchantProfileModel.DeletedAt = field.NewField(tableName, "deleted_at")
 	_merchantProfileModel.Addresses = merchantProfileModelHasManyAddresses{
 		db: db.Session(&gorm.Session{}),
 
@@ -54,6 +55,7 @@ type merchantProfileModel struct {
 	BusinessLicense  field.String
 	CreatedAt        field.Time
 	UpdatedAt        field.Time
+	DeletedAt        field.Field
 	Addresses        merchantProfileModelHasManyAddresses
 
 	fieldMap map[string]field.Expr
@@ -77,6 +79,7 @@ func (m *merchantProfileModel) updateTableName(table string) *merchantProfileMod
 	m.BusinessLicense = field.NewString(table, "business_license")
 	m.CreatedAt = field.NewTime(table, "created_at")
 	m.UpdatedAt = field.NewTime(table, "updated_at")
+	m.DeletedAt = field.NewField(table, "deleted_at")
 
 	m.fillFieldMap()
 
@@ -105,13 +108,14 @@ func (m *merchantProfileModel) GetFieldByName(fieldName string) (field.OrderExpr
 }
 
 func (m *merchantProfileModel) fillFieldMap() {
-	m.fieldMap = make(map[string]field.Expr, 7)
+	m.fieldMap = make(map[string]field.Expr, 8)
 	m.fieldMap["user_id"] = m.UserID
 	m.fieldMap["store_name"] = m.StoreName
 	m.fieldMap["store_description"] = m.StoreDescription
 	m.fieldMap["business_license"] = m.BusinessLicense
 	m.fieldMap["created_at"] = m.CreatedAt
 	m.fieldMap["updated_at"] = m.UpdatedAt
+	m.fieldMap["deleted_at"] = m.DeletedAt
 
 }
 

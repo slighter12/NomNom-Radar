@@ -33,6 +33,7 @@ func newAuthenticationModel(db *gorm.DB, opts ...gen.DOOption) authenticationMod
 	_authenticationModel.ProviderUserID = field.NewString(tableName, "provider_user_id")
 	_authenticationModel.PasswordHash = field.NewString(tableName, "password_hash")
 	_authenticationModel.CreatedAt = field.NewTime(tableName, "created_at")
+	_authenticationModel.DeletedAt = field.NewField(tableName, "deleted_at")
 
 	_authenticationModel.fillFieldMap()
 
@@ -49,6 +50,7 @@ type authenticationModel struct {
 	ProviderUserID field.String
 	PasswordHash   field.String
 	CreatedAt      field.Time
+	DeletedAt      field.Field
 
 	fieldMap map[string]field.Expr
 }
@@ -71,6 +73,7 @@ func (a *authenticationModel) updateTableName(table string) *authenticationModel
 	a.ProviderUserID = field.NewString(table, "provider_user_id")
 	a.PasswordHash = field.NewString(table, "password_hash")
 	a.CreatedAt = field.NewTime(table, "created_at")
+	a.DeletedAt = field.NewField(table, "deleted_at")
 
 	a.fillFieldMap()
 
@@ -99,13 +102,14 @@ func (a *authenticationModel) GetFieldByName(fieldName string) (field.OrderExpr,
 }
 
 func (a *authenticationModel) fillFieldMap() {
-	a.fieldMap = make(map[string]field.Expr, 6)
+	a.fieldMap = make(map[string]field.Expr, 7)
 	a.fieldMap["id"] = a.ID
 	a.fieldMap["user_id"] = a.UserID
 	a.fieldMap["provider"] = a.Provider
 	a.fieldMap["provider_user_id"] = a.ProviderUserID
 	a.fieldMap["password_hash"] = a.PasswordHash
 	a.fieldMap["created_at"] = a.CreatedAt
+	a.fieldMap["deleted_at"] = a.DeletedAt
 }
 
 func (a authenticationModel) clone(db *gorm.DB) authenticationModel {
