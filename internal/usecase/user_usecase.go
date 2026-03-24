@@ -46,22 +46,38 @@ type LogoutInput struct {
 
 // GoogleCallbackInput defines the data required for Google login.
 type GoogleCallbackInput struct {
-	IDToken string `json:"id_token"`
-	State   string `json:"state,omitempty"` // State parameter for CSRF protection
+	IDToken         string `json:"id_token"`
+	RequestedRole   string `json:"requested_role,omitempty"`
+	State           string `json:"state,omitempty"` // Deprecated: use requested_role instead.
+	StoreName       string `json:"store_name,omitempty"`
+	BusinessLicense string `json:"business_license,omitempty"`
+}
+
+// CompleteMerchantOnboardingInput defines the data required to finish merchant onboarding.
+type CompleteMerchantOnboardingInput struct {
+	OnboardingToken string `json:"onboarding_token" validate:"required"`
+	StoreName       string `json:"store_name" validate:"required"`
+	BusinessLicense string `json:"business_license" validate:"required"`
 }
 
 // --- Output DTOs ---
 
-// RegisterOutput returns the newly created user's basic information.
-type RegisterOutput struct {
-	User *entity.User `json:"user"`
-}
+type AuthStatus string
 
-// LoginOutput returns the generated tokens after a successful login.
-type LoginOutput struct {
-	AccessToken  string       `json:"access_token"`
-	RefreshToken string       `json:"refresh_token"`
-	User         *entity.User `json:"user"`
+const (
+	AuthStatusAuthenticated      AuthStatus = "authenticated"
+	AuthStatusOnboardingRequired AuthStatus = "onboarding_required"
+)
+
+// AuthResult returns the result of an authentication attempt.
+type AuthResult struct {
+	Status          AuthStatus   `json:"status"`
+	AccessToken     string       `json:"access_token,omitempty"`
+	RefreshToken    string       `json:"refresh_token,omitempty"`
+	OnboardingToken string       `json:"onboarding_token,omitempty"`
+	RequestedRole   string       `json:"requested_role,omitempty"`
+	RequiredFields  []string     `json:"required_fields,omitempty"`
+	User            *entity.User `json:"user,omitempty"`
 }
 
 // RefreshTokenOutput returns the new generated access token only.
@@ -75,12 +91,13 @@ type RefreshTokenOutput struct {
 // UserUsecase defines the interface for user-related business operations.
 // This is the contract that the delivery layer (e.g., API handlers) will depend on.
 type UserUsecase interface {
-	RegisterUser(ctx context.Context, input *RegisterUserInput) (*RegisterOutput, error)
-	RegisterMerchant(ctx context.Context, input *RegisterMerchantInput) (*RegisterOutput, error)
-	Login(ctx context.Context, input *LoginInput) (*LoginOutput, error)
+	RegisterUser(ctx context.Context, input *RegisterUserInput) (*AuthResult, error)
+	RegisterMerchant(ctx context.Context, input *RegisterMerchantInput) (*AuthResult, error)
+	Login(ctx context.Context, input *LoginInput) (*AuthResult, error)
 	RefreshToken(ctx context.Context, input *RefreshTokenInput) (*RefreshTokenOutput, error)
 	Logout(ctx context.Context, input *LogoutInput) error
-	GoogleCallback(ctx context.Context, input *GoogleCallbackInput) (*LoginOutput, error)
+	GoogleCallback(ctx context.Context, input *GoogleCallbackInput) (*AuthResult, error)
+	CompleteMerchantOnboarding(ctx context.Context, input *CompleteMerchantOnboardingInput) (*AuthResult, error)
 
 	// Session management methods
 	LogoutAllDevices(ctx context.Context, userID uuid.UUID) error

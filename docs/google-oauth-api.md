@@ -1,8 +1,8 @@
-# Google OAuth Architecture
+# Google OAuth API
 
 ## Overview
 
-This document describes the Google OAuth architecture for the NomNom-Radar application. The architecture follows the **ID Token Verification** pattern, which is the recommended approach for mobile applications using Google Sign-In.
+This document describes the Google OAuth API contract for NomNom-Radar. The backend follows the **ID Token Verification** pattern and returns a unified `AuthResult` envelope shared with email registration and login.
 
 ## Architecture Design
 
@@ -33,13 +33,24 @@ const signIn = async () => {
     const { idToken } = await GoogleSignin.signIn();
 
     // Send ID token to backend for verification
-    const response = await fetch('/api/oauth/google/callback', {
+    const response = await fetch('/oauth/google/callback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id_token: idToken })
+      body: JSON.stringify({
+        id_token: idToken,
+        requested_role: 'user',
+      }),
     });
 
-    // Handle response...
+    const result = await response.json();
+
+    if (result.status === 'authenticated') {
+      // use access_token / refresh_token
+    }
+
+    if (result.status === 'onboarding_required') {
+      // store onboarding_token and continue merchant onboarding
+    }
   } catch (error) {
     // Handle error...
   }
@@ -142,13 +153,85 @@ googleOAuth:
 5. **Expiration Checking**: Automatic token expiration validation
 6. **Email Verification**: Ensures user's email is verified by Google
 
+## AuthResult Envelope
+
+All auth-related endpoints below return the same envelope:
+
+```json
+{
+  "status": "authenticated",
+  "access_token": "jwt-access-token",
+  "refresh_token": "jwt-refresh-token",
+  "user": {
+    "id": "uuid",
+    "email": "user@example.com"
+  }
+}
+```
+
+or:
+
+```json
+{
+  "status": "onboarding_required",
+  "onboarding_token": "short-lived-jwt",
+  "requested_role": "merchant",
+  "required_fields": ["store_name", "business_license"]
+}
+```
+
+Registration is not an account-linking flow. If an email is already present on an existing account, `/auth/register/user` and `/auth/register/merchant` must return `409 conflict` instead of attaching a new login method.
+
 ## API Endpoints
 
-### POST /api/oauth/google/callback
+### POST /oauth/google/callback
 
 - **Purpose**: Verify Google ID token and authenticate user
-- **Input**: `{ "id_token": "google_id_token" }`
-- **Output**: User authentication result with session tokens
+- **Input**:
+
+```json
+{
+  "id_token": "google_id_token",
+  "requested_role": "user"
+}
+```
+
+- **Merchant input**:
+
+```json
+{
+  "id_token": "google_id_token",
+  "requested_role": "merchant",
+  "store_name": "NomNom Bento",
+  "business_license": "A123456789"
+}
+```
+
+- **Backward compatibility**:
+  - `state` is still accepted as a deprecated fallback.
+  - Only `state=user` and `state=merchant` are supported.
+- **Output**:
+  - `status=authenticated` when the account is fully ready
+  - `status=onboarding_required` when merchant profile data is still missing
+
+### POST /auth/onboarding/merchant
+
+- **Purpose**: Complete merchant onboarding after an OAuth sign-in returned `onboarding_required`
+- **Input**:
+
+```json
+{
+  "onboarding_token": "short-lived-jwt",
+  "store_name": "NomNom Bento",
+  "business_license": "A123456789"
+}
+```
+
+- **Output**:
+  - `status=authenticated` with `access_token`, `refresh_token`, and `user`
+- **Replay behavior**:
+  - If onboarding has already been completed for that account, the endpoint returns `409 conflict`
+  - The same onboarding token must not be reused to mint additional sessions after merchant profile creation
 
 ### GET /api/oauth/google (Deprecated)
 
@@ -162,7 +245,8 @@ googleOAuth:
 1. Install `@react-native-google-signin/google-signin`
 2. Configure with your `webClientId`
 3. Use `GoogleSignin.signIn()` to get ID token
-4. Send ID token to `/api/oauth/google/callback`
+4. Send ID token to `/oauth/google/callback`
+5. If response is `onboarding_required`, call `/auth/onboarding/merchant`
 
 ### For Backend Developers
 
@@ -199,7 +283,10 @@ The `idtoken.Validate` function automatically:
 - Test ID token verification with valid tokens
 - Test rejection of invalid/expired tokens
 - Test audience validation
-- Test user creation/authentication flow
+- Test unified auth flow for:
+  - same-email account linking
+  - merchant onboarding_required responses
+  - onboarding replay returning conflict
 
 ## Troubleshooting
 

@@ -24,6 +24,9 @@ type TokenService interface {
 	// ValidateToken checks the validity of a token string.
 	ValidateToken(tokenString string) (*Claims, error)
 
+	// GenerateOnboardingToken creates a short-lived token for completing onboarding.
+	GenerateOnboardingToken(userID uuid.UUID) (string, error)
+
 	// GetRefreshTokenDuration returns the configured duration for refresh tokens.
 	GetRefreshTokenDuration() time.Duration
 

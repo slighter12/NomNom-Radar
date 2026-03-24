@@ -111,6 +111,64 @@ func (_c *MockTokenService_GenerateTokens_Call) RunAndReturn(run func(userID uui
 	return _c
 }
 
+// GenerateOnboardingToken provides a mock function for the type MockTokenService
+func (_mock *MockTokenService) GenerateOnboardingToken(userID uuid.UUID) (string, error) {
+	ret := _mock.Called(userID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GenerateOnboardingToken")
+	}
+
+	var r0 string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(uuid.UUID) (string, error)); ok {
+		return returnFunc(userID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(uuid.UUID) string); ok {
+		r0 = returnFunc(userID)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(uuid.UUID) error); ok {
+		r1 = returnFunc(userID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockTokenService_GenerateOnboardingToken_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GenerateOnboardingToken'
+type MockTokenService_GenerateOnboardingToken_Call struct {
+	*mock.Call
+}
+
+// GenerateOnboardingToken is a helper method to define mock.On call
+//   - userID uuid.UUID
+func (_e *MockTokenService_Expecter) GenerateOnboardingToken(userID interface{}) *MockTokenService_GenerateOnboardingToken_Call {
+	return &MockTokenService_GenerateOnboardingToken_Call{Call: _e.mock.On("GenerateOnboardingToken", userID)}
+}
+
+func (_c *MockTokenService_GenerateOnboardingToken_Call) Run(run func(userID uuid.UUID)) *MockTokenService_GenerateOnboardingToken_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 uuid.UUID
+		if args[0] != nil {
+			arg0 = args[0].(uuid.UUID)
+		}
+		run(arg0)
+	})
+	return _c
+}
+
+func (_c *MockTokenService_GenerateOnboardingToken_Call) Return(token string, err error) *MockTokenService_GenerateOnboardingToken_Call {
+	_c.Call.Return(token, err)
+	return _c
+}
+
+func (_c *MockTokenService_GenerateOnboardingToken_Call) RunAndReturn(run func(userID uuid.UUID) (string, error)) *MockTokenService_GenerateOnboardingToken_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetRefreshTokenDuration provides a mock function for the type MockTokenService
 func (_mock *MockTokenService) GetRefreshTokenDuration() time.Duration {
 	ret := _mock.Called()

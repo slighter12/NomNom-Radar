@@ -420,6 +420,13 @@ var (
 		"",
 	)
 
+	ErrUnauthorized = NewBaseError(
+		http.StatusUnauthorized,
+		"UNAUTHORIZED",
+		"未授權的操作",
+		"",
+	)
+
 	ErrForbiddenHost = NewBaseError(
 		http.StatusForbidden,
 		"FORBIDDEN_HOST",

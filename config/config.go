@@ -49,8 +49,9 @@ type Config struct {
 	Postgres *postgres.DBConn `json:"postgres" yaml:"postgres" mapstructure:"postgres"`
 
 	SecretKey struct {
-		Access  string `json:"access" yaml:"access"`
-		Refresh string `json:"refresh" yaml:"refresh"`
+		Access     string `json:"access" yaml:"access"`
+		Refresh    string `json:"refresh" yaml:"refresh"`
+		Onboarding string `json:"onboarding" yaml:"onboarding"`
 	} `json:"secretKey" yaml:"secretKey"`
 
 	GoogleOAuth *GoogleOAuthConfig `json:"googleOAuth" yaml:"googleOAuth"`

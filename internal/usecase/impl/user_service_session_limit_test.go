@@ -294,6 +294,10 @@ func (s *sessionLimitTestTokenService) ValidateToken(_ string) (*service.Claims,
 	panic("not implemented")
 }
 
+func (s *sessionLimitTestTokenService) GenerateOnboardingToken(_ uuid.UUID) (string, error) {
+	panic("not implemented")
+}
+
 func (s *sessionLimitTestTokenService) GetRefreshTokenDuration() time.Duration {
 	return time.Hour
 }
