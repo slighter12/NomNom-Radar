@@ -107,12 +107,10 @@ func (srv *userService) verifyIdentity(ctx context.Context, req *authRequest) (*
 }
 
 func (srv *userService) verifyEmailIdentity(ctx context.Context, req *authRequest) (*verifiedIdentity, error) {
-	normalizedEmail := entity.NormalizeEmail(req.Email)
-
 	identity := &verifiedIdentity{
 		Provider:       entity.ProviderTypeEmail,
-		ProviderUserID: normalizedEmail,
-		Email:          normalizedEmail,
+		ProviderUserID: req.Email,
+		Email:          req.Email,
 		Name:           req.Name,
 		EmailVerified:  true,
 	}
