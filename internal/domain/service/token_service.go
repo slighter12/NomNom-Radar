@@ -7,11 +7,17 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	TokenTypeAccess     = "access"
+	TokenTypeRefresh    = "refresh"
+	TokenTypeOnboarding = "onboarding"
+)
+
 // Claims defines the custom claims for the JWT tokens.
 type Claims struct {
 	UserID uuid.UUID
 	Roles  []string
-	Type   string // Add this field
+	Type   string
 	jwt.RegisteredClaims
 }
 

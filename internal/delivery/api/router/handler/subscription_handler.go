@@ -103,12 +103,20 @@ func (h *SubscriptionHandler) GetUserSubscriptions(c echo.Context) error {
 
 // GenerateSubscriptionQR handles generating QR code for merchant subscription
 func (h *SubscriptionHandler) GenerateSubscriptionQR(c echo.Context) error {
-	merchantID, ok := middleware.GetUserID(c)
+	authenticatedMerchantID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
-	qrCode, err := h.subscriptionUC.GenerateSubscriptionQR(c.Request().Context(), merchantID)
+	pathMerchantID, err := h.parseMerchantID(c)
+	if err != nil {
+		return err
+	}
+	if pathMerchantID != authenticatedMerchantID {
+		return response.Forbidden(c, "FORBIDDEN", "Permission denied: merchant ID mismatch")
+	}
+
+	qrCode, err := h.subscriptionUC.GenerateSubscriptionQR(c.Request().Context(), authenticatedMerchantID)
 	if err != nil {
 		return response.HandleAppError(c, err)
 	}

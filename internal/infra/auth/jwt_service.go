@@ -36,7 +36,7 @@ func NewJWTService(cfg *config.Config) (service.TokenService, error) {
 	onboardingSecret := cfg.SecretKey.Onboarding
 	if onboardingSecret == "" {
 		h := hmac.New(sha256.New, []byte(cfg.SecretKey.Access))
-		h.Write([]byte("onboarding"))
+		h.Write([]byte(service.TokenTypeOnboarding))
 		onboardingSecret = hex.EncodeToString(h.Sum(nil))
 	}
 
@@ -52,12 +52,12 @@ func NewJWTService(cfg *config.Config) (service.TokenService, error) {
 
 // GenerateTokens creates a new access token and refresh token for a given user and roles.
 func (s *jwtService) GenerateTokens(userID uuid.UUID, roles []string) (accessToken string, refreshToken string, err error) {
-	accessToken, err = s.generateToken(userID, roles, s.accessTTL, s.accessSecret, "access")
+	accessToken, err = s.generateToken(userID, roles, s.accessTTL, s.accessSecret, service.TokenTypeAccess)
 	if err != nil {
 		return "", "", errors.WithStack(err)
 	}
 
-	refreshToken, err = s.generateToken(userID, nil, s.refreshTTL, s.refreshSecret, "refresh")
+	refreshToken, err = s.generateToken(userID, nil, s.refreshTTL, s.refreshSecret, service.TokenTypeRefresh)
 	if err != nil {
 		return "", "", errors.WithStack(err)
 	}
@@ -82,7 +82,7 @@ func (s *jwtService) ValidateToken(tokenString string) (*service.Claims, error) 
 
 // GenerateOnboardingToken creates a short-lived onboarding token for a given user.
 func (s *jwtService) GenerateOnboardingToken(userID uuid.UUID) (string, error) {
-	token, err := s.generateToken(userID, nil, s.onboardingTTL, s.onboardingSecret, "onboarding")
+	token, err := s.generateToken(userID, nil, s.onboardingTTL, s.onboardingSecret, service.TokenTypeOnboarding)
 	if err != nil {
 		return "", errors.WithStack(err)
 	}
@@ -106,11 +106,11 @@ func parseUnverifiedClaims(tokenString string) (*service.Claims, error) {
 
 func (s *jwtService) secretForTokenType(tokenType string) ([]byte, error) {
 	switch tokenType {
-	case "access":
+	case service.TokenTypeAccess:
 		return []byte(s.accessSecret), nil
-	case "refresh":
+	case service.TokenTypeRefresh:
 		return []byte(s.refreshSecret), nil
-	case "onboarding":
+	case service.TokenTypeOnboarding:
 		return []byte(s.onboardingSecret), nil
 	default:
 		return nil, errors.New("unknown token type")

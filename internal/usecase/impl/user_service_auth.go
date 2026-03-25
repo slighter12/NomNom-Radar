@@ -8,6 +8,7 @@ import (
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
+	domainservice "radar/internal/domain/service"
 	"radar/internal/errors"
 	"radar/internal/usecase"
 
@@ -106,10 +107,12 @@ func (srv *userService) verifyIdentity(ctx context.Context, req *authRequest) (*
 }
 
 func (srv *userService) verifyEmailIdentity(ctx context.Context, req *authRequest) (*verifiedIdentity, error) {
+	normalizedEmail := entity.NormalizeEmail(req.Email)
+
 	identity := &verifiedIdentity{
 		Provider:       entity.ProviderTypeEmail,
-		ProviderUserID: req.Email,
-		Email:          req.Email,
+		ProviderUserID: normalizedEmail,
+		Email:          normalizedEmail,
 		Name:           req.Name,
 		EmailVerified:  true,
 	}
@@ -155,7 +158,7 @@ func (srv *userService) verifyOAuthIdentity(ctx context.Context, req *authReques
 	return &verifiedIdentity{
 		Provider:       provider,
 		ProviderUserID: oauthUser.ID,
-		Email:          oauthUser.Email,
+		Email:          entity.NormalizeEmail(oauthUser.Email),
 		Name:           oauthUser.Name,
 		EmailVerified:  oauthUser.EmailVerified,
 	}, nil
@@ -400,7 +403,7 @@ func (srv *userService) CompleteMerchantOnboarding(ctx context.Context, input *u
 	if err != nil {
 		return nil, errors.Wrap(domainerrors.ErrUnauthorized, "invalid onboarding token")
 	}
-	if claims.Type != "onboarding" {
+	if claims.Type != domainservice.TokenTypeOnboarding {
 		return nil, errors.Wrap(domainerrors.ErrUnauthorized, "invalid onboarding token type")
 	}
 
