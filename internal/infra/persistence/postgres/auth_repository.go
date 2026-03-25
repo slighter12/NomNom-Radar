@@ -58,12 +58,15 @@ func (repo *authRepository) CreateAuthentication(ctx context.Context, auth *enti
 
 // FindAuthentication retrieves an authentication record by its provider and provider-specific ID.
 func (repo *authRepository) FindAuthentication(ctx context.Context, provider entity.ProviderType, providerUserID string) (*entity.Authentication, error) {
+	if provider == entity.ProviderTypeEmail {
+		providerUserID = entity.NormalizeEmail(providerUserID)
+	}
+
 	authM, err := repo.q.AuthenticationModel.WithContext(ctx).
 		Where(
 			repo.q.AuthenticationModel.Provider.Eq(string(provider)),
 			repo.q.AuthenticationModel.ProviderUserID.Eq(providerUserID),
-		).
-		First()
+		).First()
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

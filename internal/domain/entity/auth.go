@@ -3,6 +3,7 @@
 package entity
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,6 +34,11 @@ func (p ProviderType) IsOAuthProvider() bool {
 // String returns the string representation of the provider type
 func (p ProviderType) String() string {
 	return string(p)
+}
+
+// NormalizeEmail canonicalizes user email for case-insensitive identity matching.
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }
 
 // Authentication represents a single method of logging in (a credential).

@@ -68,6 +68,9 @@ func (m *AuthMiddleware) Authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 		if err != nil {
 			return response.Unauthorized(c, "INVALID_TOKEN", "Invalid or expired token")
 		}
+		if claims.Type != service.TokenTypeAccess {
+			return response.Unauthorized(c, "INVALID_TOKEN", "Invalid token type")
+		}
 
 		// Extract user ID
 		userID := claims.UserID
