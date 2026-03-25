@@ -30,8 +30,8 @@ type RegisterMerchantInput struct {
 
 // LoginInput defines the data required for a user to log in.
 type LoginInput struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required"`
 }
 
 // RefreshTokenInput defines the data required to refresh an access token.

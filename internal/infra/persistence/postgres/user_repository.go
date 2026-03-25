@@ -72,8 +72,6 @@ func (repo *userRepository) AcquireSessionMutex(ctx context.Context, id uuid.UUI
 
 // FindByEmail retrieves a single user by their email address, preloading profiles and addresses.
 func (repo *userRepository) FindByEmail(ctx context.Context, email string) (*entity.User, error) {
-	email = entity.NormalizeEmail(email)
-
 	userM, err := repo.q.UserModel.WithContext(ctx).
 		Preload(repo.q.UserModel.UserProfile.Addresses).
 		Preload(repo.q.UserModel.MerchantProfile.Addresses).

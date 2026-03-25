@@ -197,7 +197,7 @@ func TestUserService_RefreshToken_Success(t *testing.T) {
 
 	fx.tokenService.EXPECT().
 		ValidateToken(input.RefreshToken).
-		Return(&service.Claims{UserID: userID}, nil).
+		Return(&service.Claims{UserID: userID, Type: service.TokenTypeRefresh}, nil).
 		Once()
 	fx.tokenService.EXPECT().
 		HashToken(input.RefreshToken).
@@ -239,6 +239,26 @@ func TestUserService_RefreshToken_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, output)
 	assert.Equal(t, "new-access-token", output.AccessToken)
+}
+
+func TestUserService_RefreshToken_InvalidTokenType(t *testing.T) {
+	fx := createTestUserService(t)
+
+	ctx := context.Background()
+	input := &usecase.RefreshTokenInput{RefreshToken: "access-token"}
+
+	fx.tokenService.EXPECT().
+		ValidateToken(input.RefreshToken).
+		Return(&service.Claims{UserID: uuid.New(), Type: service.TokenTypeAccess}, nil).
+		Once()
+
+	output, err := fx.service.RefreshToken(ctx, input)
+
+	require.Error(t, err)
+	assert.Nil(t, output)
+	assert.True(t, errors.Is(err, domainerrors.ErrUnauthorized))
+	fx.txManager.AssertNotCalled(t, "Execute", mock.Anything, mock.Anything)
+	fx.tokenService.AssertNotCalled(t, "HashToken", mock.Anything)
 }
 
 func TestUserService_Logout_InvalidTokenStillDeletesRefreshToken(t *testing.T) {

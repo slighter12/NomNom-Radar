@@ -281,6 +281,9 @@ func (srv *userService) RefreshToken(ctx context.Context, input *usecase.Refresh
 	if err != nil {
 		return nil, errors.Wrap(err, "invalid refresh token")
 	}
+	if claims.Type != service.TokenTypeRefresh {
+		return nil, errors.Wrap(domainerrors.ErrUnauthorized, "invalid token type")
+	}
 
 	var newAccessToken string
 

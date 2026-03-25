@@ -7,6 +7,7 @@ import (
 
 	"radar/internal/delivery/api/middleware"
 	"radar/internal/delivery/api/response"
+	"radar/internal/domain/entity"
 	"radar/internal/domain/service"
 	"radar/internal/usecase"
 
@@ -53,6 +54,7 @@ func (h *UserHandler) RegisterUser(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	input.Email = entity.NormalizeEmail(input.Email)
 
 	output, err := h.userUC.RegisterUser(c.Request().Context(), input)
 	if err != nil {
@@ -70,6 +72,7 @@ func (h *UserHandler) RegisterMerchant(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	input.Email = entity.NormalizeEmail(input.Email)
 
 	output, err := h.userUC.RegisterMerchant(c.Request().Context(), input)
 	if err != nil {
@@ -85,6 +88,7 @@ func (h *UserHandler) Login(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	input.Email = entity.NormalizeEmail(input.Email)
 
 	output, err := h.userUC.Login(c.Request().Context(), input)
 	if err != nil {
