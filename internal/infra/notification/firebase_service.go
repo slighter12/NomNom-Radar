@@ -19,36 +19,23 @@ type firebaseService struct {
 	client *messaging.Client
 }
 
-// noopNotificationService is a no-op implementation of the NotificationService
-type noopNotificationService struct{}
-
 // NewFirebaseService creates a new Firebase notification service instance
 func NewFirebaseService(params FirebaseDependencies) (service.NotificationService, error) {
-	// Firebase is optional - skip if not configured
 	if params.Config.Firebase == nil {
-		params.Logger.Info("Firebase not configured, notification service will be disabled")
-
-		return &noopNotificationService{}, nil
+		return nil, errors.New("firebase config must be configured")
 	}
 
-	// Validate Firebase configuration
 	if params.Config.Firebase.ProjectID == "" || params.Config.Firebase.ProjectID == "your-project-id" {
-		params.Logger.Warn("Firebase project ID not configured, notification service will be disabled")
-
-		return &noopNotificationService{}, nil
+		return nil, errors.New("firebase project ID must be configured")
 	}
 
 	if params.Config.Firebase.CredentialsPath == "" || params.Config.Firebase.CredentialsPath == "/path/to/firebase-service-account.json" {
-		params.Logger.Warn("Firebase credentials path not configured, notification service will be disabled")
-
-		return &noopNotificationService{}, nil
+		return nil, errors.New("firebase credentials path must be configured")
 	}
 
 	credentialsJSON, readErr := os.ReadFile(params.Config.Firebase.CredentialsPath)
 	if readErr != nil {
-		params.Logger.Error("Failed to read Firebase credentials, notification service will be disabled", slog.Any("error", readErr))
-
-		return &noopNotificationService{}, nil
+		return nil, errors.Wrap(readErr, "failed to read firebase credentials")
 	}
 
 	config := &firebase.Config{
@@ -57,16 +44,12 @@ func NewFirebaseService(params FirebaseDependencies) (service.NotificationServic
 	opt := option.WithAuthCredentialsJSON(option.ServiceAccount, credentialsJSON)
 	app, err := firebase.NewApp(params.LC, config, opt)
 	if err != nil {
-		params.Logger.Error("Failed to initialize Firebase app, notifications will be disabled", slog.Any("error", err))
-
-		return &noopNotificationService{}, nil
+		return nil, errors.Wrap(err, "failed to initialize firebase app")
 	}
 
 	client, err := app.Messaging(params.LC)
 	if err != nil {
-		params.Logger.Error("Failed to get messaging client, notifications will be disabled", slog.Any("error", err))
-
-		return &noopNotificationService{}, nil
+		return nil, errors.Wrap(err, "failed to create firebase messaging client")
 	}
 
 	params.Logger.Info("Firebase notification service initialized successfully")
@@ -74,16 +57,6 @@ func NewFirebaseService(params FirebaseDependencies) (service.NotificationServic
 	return &firebaseService{
 		client: client,
 	}, nil
-}
-
-// SendSingleNotification is a no-op for the disabled notification service
-func (s *noopNotificationService) SendSingleNotification(ctx context.Context, token, title, body string, data map[string]string) error {
-	return nil
-}
-
-// SendBatchNotification is a no-op for the disabled notification service
-func (s *noopNotificationService) SendBatchNotification(ctx context.Context, tokens []string, title, body string, data map[string]string) (successCount, failureCount int, invalidTokens []string, err error) {
-	return 0, 0, nil, nil
 }
 
 type FirebaseDependencies struct {

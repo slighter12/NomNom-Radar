@@ -9,6 +9,7 @@ import (
 	"radar/config"
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
+	"radar/internal/domain/service"
 	"radar/internal/errors"
 	mockRepo "radar/internal/mocks/repository"
 	mockSvc "radar/internal/mocks/service"
@@ -30,12 +31,25 @@ type notificationServiceFixtures struct {
 	notificationSvc  *mockSvc.MockNotificationService
 }
 
+type fallbackEventPublisher struct {
+	err error
+}
+
+func (p *fallbackEventPublisher) PublishNotificationEvent(ctx context.Context, event *service.NotificationEvent) error {
+	return p.err
+}
+
+func (p *fallbackEventPublisher) Close() error {
+	return nil
+}
+
 func createTestNotificationService(t *testing.T) notificationServiceFixtures {
 	notificationRepo := mockRepo.NewMockNotificationRepository(t)
 	subscriptionRepo := mockRepo.NewMockSubscriptionRepository(t)
 	deviceRepo := mockRepo.NewMockDeviceRepository(t)
 	addressRepo := mockRepo.NewMockAddressRepository(t)
 	notificationSvc := mockSvc.NewMockNotificationService(t)
+	eventPublisher := &fallbackEventPublisher{err: errors.New("pubsub unavailable")}
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	routingSvc := NewRoutingService(RoutingServiceParams{
@@ -56,6 +70,7 @@ func createTestNotificationService(t *testing.T) notificationServiceFixtures {
 		AddressRepo:      addressRepo,
 		NotificationSvc:  notificationSvc,
 		RoutingSvc:       routingSvc,
+		EventPublisher:   eventPublisher,
 	})
 
 	return notificationServiceFixtures{
@@ -253,6 +268,9 @@ func TestNotificationService_PublishLocationNotification_SubscriptionError(t *te
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
 
 	fx.notificationRepo.EXPECT().CreateNotification(ctx, mock.Anything).Return(nil)
+	fx.subscriptionRepo.EXPECT().
+		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
+		Return(nil, errors.New("db error")).Once()
 	fx.subscriptionRepo.EXPECT().
 		FindSubscriberAddressesWithinRadius(ctx, merchantID, locationData.Latitude, locationData.Longitude).
 		Return(nil, errors.New("db error"))

@@ -12,23 +12,6 @@ import (
 	"go.uber.org/fx"
 )
 
-// noopPublisher is a no-op implementation when Pub/Sub is disabled
-type noopPublisher struct {
-	logger *slog.Logger
-}
-
-func (p *noopPublisher) PublishNotificationEvent(ctx context.Context, event *service.NotificationEvent) error {
-	p.logger.Debug("[NoopPubSub] Event publishing disabled, skipping",
-		slog.String("notification_id", event.NotificationID),
-	)
-
-	return nil
-}
-
-func (p *noopPublisher) Close() error {
-	return nil
-}
-
 // PublisherParams holds dependencies for EventPublisher, injected by Fx
 type PublisherParams struct {
 	fx.In
@@ -44,11 +27,9 @@ func NewEventPublisher(params PublisherParams) (service.EventPublisher, error) {
 	cfg := params.Config.PubSub
 	logger := params.Logger
 
-	// If PubSub is not configured, return a no-op publisher
+	// Pub/Sub is required for the async notification pipeline.
 	if cfg == nil || cfg.Provider == "" {
-		logger.Info("PubSub not configured, using no-op publisher")
-
-		return &noopPublisher{logger: logger}, nil
+		return nil, errors.New("pubsub provider must be configured")
 	}
 
 	var publisher service.EventPublisher
