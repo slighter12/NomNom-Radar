@@ -46,11 +46,13 @@ type NotificationServiceParams struct {
 	AddressRepo      repository.AddressRepository
 	NotificationSvc  service.NotificationService
 	RoutingSvc       usecase.RoutingUsecase
-	EventPublisher   service.EventPublisher `optional:"true"`
+	EventPublisher   service.EventPublisher
 }
 
 // NewNotificationService creates a new notification service instance
 func NewNotificationService(params NotificationServiceParams) usecase.NotificationUsecase {
+	params.Logger.Info("Notification service configured for async Pub/Sub delivery")
+
 	return &notificationService{
 		logger:           params.Logger,
 		notificationRepo: params.NotificationRepo,
@@ -111,13 +113,7 @@ func (s *notificationService) PublishLocationNotification(
 		return nil, errors.Wrap(err, "failed to create notification")
 	}
 
-	// Check if async processing is available
-	if s.eventPublisher != nil {
-		return s.publishAsync(ctx, notification, merchantID, latitude, longitude, locationName, fullAddress, hintMessage)
-	}
-
-	// Fallback to synchronous processing
-	return s.publishSync(ctx, notification, merchantID, latitude, longitude, locationName, fullAddress, hintMessage)
+	return s.publishAsync(ctx, notification, merchantID, latitude, longitude, locationName, fullAddress, hintMessage)
 }
 
 // publishAsync publishes the notification event to Pub/Sub for async processing
@@ -131,6 +127,8 @@ func (s *notificationService) publishAsync(
 	// Pre-filter subscribers using PostGIS (straight-line distance)
 	candidateAddresses, err := s.subscriptionRepo.FindSubscriberAddressesWithinRadius(ctx, merchantID, latitude, longitude)
 	if err != nil {
+		// Startup is strict about configuration, but runtime pre-filter failures are
+		// treated as a degraded-mode event so delivery can still proceed via direct Firebase.
 		s.log(ctx).Warn("Failed to pre-filter subscribers, falling back to sync",
 			slog.Any("error", err),
 		)
@@ -170,6 +168,8 @@ func (s *notificationService) publishAsync(
 	}
 
 	if err := s.eventPublisher.PublishNotificationEvent(ctx, event); err != nil {
+		// Keep a runtime fallback here so transient Pub/Sub outages do not turn into
+		// notification loss after the notification record has already been created.
 		s.log(ctx).Warn("Failed to publish async event, falling back to sync",
 			slog.Any("error", err),
 		)
