@@ -1,4 +1,3 @@
-// Package usecase contains the application-specific business rules.
 package usecase
 
 import (

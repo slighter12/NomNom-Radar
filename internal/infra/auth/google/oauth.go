@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"radar/config"
 	deliverycontext "radar/internal/delivery/context"
@@ -19,11 +20,20 @@ type OAuthService struct {
 }
 
 // NewOAuthService creates a new Google OAuthService
-func NewOAuthService(cfg *config.Config, logger *slog.Logger) service.OAuthAuthService {
-	return &OAuthService{
-		clientID: cfg.GoogleOAuth.ClientID,
-		logger:   logger,
+func NewOAuthService(cfg *config.Config, logger *slog.Logger) (service.OAuthAuthService, error) {
+	if cfg == nil || cfg.GoogleOAuth == nil {
+		return nil, fmt.Errorf("google oauth config is required")
 	}
+
+	clientID := strings.TrimSpace(cfg.GoogleOAuth.ClientID)
+	if clientID == "" {
+		return nil, fmt.Errorf("google oauth client_id is required")
+	}
+
+	return &OAuthService{
+		clientID: clientID,
+		logger:   logger,
+	}, nil
 }
 
 // log returns a request-scoped logger if available, otherwise falls back to the service's logger.

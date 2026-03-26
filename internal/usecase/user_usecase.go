@@ -1,5 +1,3 @@
-// Package usecase contains the application-specific business rules.
-// It orchestrates the domain layer to perform tasks.
 package usecase
 
 import (
@@ -36,19 +34,19 @@ type LoginInput struct {
 
 // RefreshTokenInput defines the data required to refresh an access token.
 type RefreshTokenInput struct {
-	RefreshToken string `json:"refresh_token"`
+	RefreshToken string `json:"refresh_token" validate:"required"`
 }
 
 // LogoutInput defines the data required to log out.
 type LogoutInput struct {
-	RefreshToken string `json:"refresh_token"`
+	RefreshToken string `json:"refresh_token" validate:"required"`
 }
 
 // GoogleCallbackInput defines the data required for Google login.
 type GoogleCallbackInput struct {
-	IDToken         string `json:"id_token"`
-	RequestedRole   string `json:"requested_role,omitempty"`
-	State           string `json:"state,omitempty"` // Deprecated: use requested_role instead.
+	IDToken         string `json:"id_token" validate:"required"`
+	RequestedRole   string `json:"requested_role,omitempty" validate:"omitempty,oneof=user merchant"`
+	State           string `json:"state,omitempty" validate:"omitempty,oneof=user merchant"` // Deprecated: use requested_role instead.
 	StoreName       string `json:"store_name,omitempty"`
 	BusinessLicense string `json:"business_license,omitempty"`
 }

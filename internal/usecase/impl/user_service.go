@@ -1,4 +1,3 @@
-// Package impl contains the implementation of the application's business logic.
 package impl
 
 import (

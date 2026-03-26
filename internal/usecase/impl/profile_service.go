@@ -1,4 +1,3 @@
-// Package impl contains the application-specific business rules implementations.
 package impl
 
 import (
