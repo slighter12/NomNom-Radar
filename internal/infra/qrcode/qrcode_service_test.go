@@ -197,6 +197,7 @@ func decodeQRImage(img image.Image) (*gozxing.Result, error) {
 		gozxing.DecodeHintType_PURE_BARCODE: true,
 	}
 	var lastErr error
+	thresholdedImg := thresholdQRCodeImage(img)
 
 	for _, tc := range []struct {
 		source image.Image
@@ -204,12 +205,13 @@ func decodeQRImage(img image.Image) (*gozxing.Result, error) {
 	}{
 		{source: img, hints: nil},
 		{source: img, hints: tunedHints},
-		{source: thresholdQRCodeImage(img), hints: tunedHints},
-		{source: thresholdQRCodeImage(img), hints: pureHints},
+		{source: thresholdedImg, hints: tunedHints},
+		{source: thresholdedImg, hints: pureHints},
 	} {
 		bitmap, err := gozxing.NewBinaryBitmapFromImage(tc.source)
 		if err != nil {
 			lastErr = fmt.Errorf("build binary bitmap: %w", err)
+
 			continue
 		}
 
@@ -238,6 +240,7 @@ func thresholdQRCodeImage(img image.Image) image.Image {
 			luminance := (299*r + 587*g + 114*b) / 1000
 			if luminance >= 0x8000 {
 				dst.SetGray(x, y, color.Gray{Y: 0xFF})
+
 				continue
 			}
 

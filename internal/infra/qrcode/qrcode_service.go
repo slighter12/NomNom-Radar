@@ -31,24 +31,24 @@ type QRCodeData struct {
 
 // NewQRCodeService creates a new QR code service instance
 func NewQRCodeService(cfg *config.Config) service.QRCodeService {
+	level := qrcode.ErrorCorrectionMedium
 	if cfg.QRCode == nil {
 		return &qrcodeService{
-			errorCorrectionOption: qrcode.WithErrorCorrectionLevel(qrcode.ErrorCorrectionMedium),
+			errorCorrectionOption: qrcode.WithErrorCorrectionLevel(level),
 		}
 	}
 
-	option := qrcode.WithErrorCorrectionLevel(qrcode.ErrorCorrectionMedium)
 	switch cfg.QRCode.ErrorCorrectionLevel {
 	case "L":
-		option = qrcode.WithErrorCorrectionLevel(qrcode.ErrorCorrectionLow)
+		level = qrcode.ErrorCorrectionLow
 	case "Q":
-		option = qrcode.WithErrorCorrectionLevel(qrcode.ErrorCorrectionQuart)
+		level = qrcode.ErrorCorrectionQuart
 	case "H":
-		option = qrcode.WithErrorCorrectionLevel(qrcode.ErrorCorrectionHighest)
+		level = qrcode.ErrorCorrectionHighest
 	}
 
 	return &qrcodeService{
-		errorCorrectionOption: option,
+		errorCorrectionOption: qrcode.WithErrorCorrectionLevel(level),
 	}
 }
 
