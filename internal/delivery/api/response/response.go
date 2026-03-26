@@ -2,7 +2,6 @@ package response
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 
 	deliverycontext "radar/internal/delivery/context"
@@ -110,5 +109,6 @@ func HandleAppError(c echo.Context, err error) error {
 		return Error(c, appErr.HTTPCode(), appErr.ErrorCode(), appErr.Message(), nil)
 	}
 
-	return fmt.Errorf("internal server error: %w", err)
+	// Preserve original error for centralized logging middleware.
+	return err
 }

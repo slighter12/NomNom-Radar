@@ -261,6 +261,182 @@ func TestUserService_RefreshToken_InvalidTokenType(t *testing.T) {
 	fx.tokenService.AssertNotCalled(t, "HashToken", mock.Anything)
 }
 
+func TestUserService_RefreshToken_RefreshTokenNotFound(t *testing.T) {
+	fx := createTestUserService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	input := &usecase.RefreshTokenInput{RefreshToken: "missing-refresh-token"}
+
+	fx.tokenService.EXPECT().
+		ValidateToken(input.RefreshToken).
+		Return(&service.Claims{UserID: userID, Type: service.TokenTypeRefresh}, nil).
+		Once()
+	fx.tokenService.EXPECT().
+		HashToken(input.RefreshToken).
+		Return("missing-refresh-token-hash").
+		Once()
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
+
+			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+			mockRefreshRepo.EXPECT().
+				FindRefreshTokenByHash(ctx, "missing-refresh-token-hash").
+				Return(nil, repository.ErrRefreshTokenNotFound)
+
+			return fn(mockFactory)
+		}).
+		Once()
+
+	output, err := fx.service.RefreshToken(ctx, input)
+
+	require.Error(t, err)
+	assert.Nil(t, output)
+	assert.True(t, errors.Is(err, domainerrors.ErrRefreshTokenNotFound))
+	fx.refreshTokenRepo.AssertNotCalled(t, "DeleteRefreshTokenByHash", mock.Anything, mock.Anything)
+	fx.tokenService.AssertNotCalled(t, "GenerateTokens", mock.Anything, mock.Anything)
+}
+
+func TestUserService_RefreshToken_RefreshTokenExpired(t *testing.T) {
+	fx := createTestUserService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	input := &usecase.RefreshTokenInput{RefreshToken: "expired-refresh-token"}
+
+	fx.tokenService.EXPECT().
+		ValidateToken(input.RefreshToken).
+		Return(&service.Claims{UserID: userID, Type: service.TokenTypeRefresh}, nil).
+		Once()
+	fx.tokenService.EXPECT().
+		HashToken(input.RefreshToken).
+		Return("expired-refresh-token-hash").
+		Once()
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
+
+			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+			mockRefreshRepo.EXPECT().
+				FindRefreshTokenByHash(ctx, "expired-refresh-token-hash").
+				Return(nil, repository.ErrRefreshTokenExpired)
+
+			return fn(mockFactory)
+		}).
+		Once()
+
+	output, err := fx.service.RefreshToken(ctx, input)
+
+	require.Error(t, err)
+	assert.Nil(t, output)
+	assert.True(t, errors.Is(err, domainerrors.ErrRefreshTokenExpired))
+	fx.refreshTokenRepo.AssertNotCalled(t, "DeleteRefreshTokenByHash", mock.Anything, mock.Anything)
+	fx.tokenService.AssertNotCalled(t, "GenerateTokens", mock.Anything, mock.Anything)
+}
+
+func TestUserService_RefreshToken_UserNotFound_CleansOrphanToken(t *testing.T) {
+	fx := createTestUserService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	input := &usecase.RefreshTokenInput{RefreshToken: "orphan-refresh-token"}
+
+	fx.tokenService.EXPECT().
+		ValidateToken(input.RefreshToken).
+		Return(&service.Claims{UserID: userID, Type: service.TokenTypeRefresh}, nil).
+		Once()
+	fx.tokenService.EXPECT().
+		HashToken(input.RefreshToken).
+		Return("orphan-refresh-token-hash").
+		Once()
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
+			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
+
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+			mockRefreshRepo.EXPECT().
+				FindRefreshTokenByHash(ctx, "orphan-refresh-token-hash").
+				Return(&entity.RefreshToken{ID: uuid.New(), UserID: userID}, nil)
+			mockUserRepo.EXPECT().
+				FindByID(ctx, userID).
+				Return(nil, repository.ErrUserNotFound)
+
+			return fn(mockFactory)
+		}).
+		Once()
+
+	fx.refreshTokenRepo.EXPECT().
+		DeleteRefreshTokenByHash(ctx, "orphan-refresh-token-hash").
+		Return(nil).
+		Once()
+
+	output, err := fx.service.RefreshToken(ctx, input)
+
+	require.Error(t, err)
+	assert.Nil(t, output)
+	assert.True(t, errors.Is(err, domainerrors.ErrUnauthorized))
+}
+
+func TestUserService_RefreshToken_UserNotFound_CleanupFailureStillReturnsUnauthorized(t *testing.T) {
+	fx := createTestUserService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	input := &usecase.RefreshTokenInput{RefreshToken: "orphan-refresh-token"}
+
+	fx.tokenService.EXPECT().
+		ValidateToken(input.RefreshToken).
+		Return(&service.Claims{UserID: userID, Type: service.TokenTypeRefresh}, nil).
+		Once()
+	fx.tokenService.EXPECT().
+		HashToken(input.RefreshToken).
+		Return("orphan-refresh-token-hash").
+		Once()
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
+			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
+
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+			mockRefreshRepo.EXPECT().
+				FindRefreshTokenByHash(ctx, "orphan-refresh-token-hash").
+				Return(&entity.RefreshToken{ID: uuid.New(), UserID: userID}, nil)
+			mockUserRepo.EXPECT().
+				FindByID(ctx, userID).
+				Return(nil, repository.ErrUserNotFound)
+
+			return fn(mockFactory)
+		}).
+		Once()
+
+	fx.refreshTokenRepo.EXPECT().
+		DeleteRefreshTokenByHash(ctx, "orphan-refresh-token-hash").
+		Return(errors.New("cleanup failed")).
+		Once()
+
+	output, err := fx.service.RefreshToken(ctx, input)
+
+	require.Error(t, err)
+	assert.Nil(t, output)
+	assert.True(t, errors.Is(err, domainerrors.ErrUnauthorized))
+}
+
 func TestUserService_Logout_InvalidTokenStillDeletesRefreshToken(t *testing.T) {
 	fx := createTestUserService(t)
 
@@ -281,6 +457,53 @@ func TestUserService_Logout_InvalidTokenStillDeletesRefreshToken(t *testing.T) {
 		Once()
 
 	require.NoError(t, fx.service.Logout(ctx, input))
+}
+
+func TestUserService_Logout_RefreshTokenNotFoundIsIdempotent(t *testing.T) {
+	fx := createTestUserService(t)
+
+	ctx := context.Background()
+	input := &usecase.LogoutInput{RefreshToken: "already-deleted-token"}
+
+	fx.tokenService.EXPECT().
+		ValidateToken(input.RefreshToken).
+		Return(nil, assert.AnError).
+		Once()
+	fx.tokenService.EXPECT().
+		HashToken(input.RefreshToken).
+		Return("already-deleted-token-hash").
+		Once()
+	fx.refreshTokenRepo.EXPECT().
+		DeleteRefreshTokenByHash(ctx, "already-deleted-token-hash").
+		Return(repository.ErrRefreshTokenNotFound).
+		Once()
+
+	require.NoError(t, fx.service.Logout(ctx, input))
+}
+
+func TestUserService_Logout_DeleteRefreshTokenErrorReturnsInternalError(t *testing.T) {
+	fx := createTestUserService(t)
+
+	ctx := context.Background()
+	input := &usecase.LogoutInput{RefreshToken: "delete-error-token"}
+
+	fx.tokenService.EXPECT().
+		ValidateToken(input.RefreshToken).
+		Return(nil, nil).
+		Once()
+	fx.tokenService.EXPECT().
+		HashToken(input.RefreshToken).
+		Return("delete-error-token-hash").
+		Once()
+	fx.refreshTokenRepo.EXPECT().
+		DeleteRefreshTokenByHash(ctx, "delete-error-token-hash").
+		Return(errors.New("db error")).
+		Once()
+
+	err := fx.service.Logout(ctx, input)
+
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, domainerrors.ErrInternalError))
 }
 
 func TestUserService_LogoutAllDevices_Success(t *testing.T) {

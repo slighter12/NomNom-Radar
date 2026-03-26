@@ -277,62 +277,132 @@ func (srv *userService) persistLoginRefreshToken(ctx context.Context, userID uui
 func (srv *userService) RefreshToken(ctx context.Context, input *usecase.RefreshTokenInput) (*usecase.RefreshTokenOutput, error) {
 	srv.log(ctx).Info("Attempting to refresh access token")
 
-	claims, err := srv.tokenService.ValidateToken(input.RefreshToken)
+	claims, err := srv.validateRefreshTokenInput(input.RefreshToken)
 	if err != nil {
-		return nil, fmt.Errorf("invalid refresh token: %w", err)
-	}
-	if claims.Type != service.TokenTypeRefresh {
-		return nil, fmt.Errorf("invalid token type: %w", domainerrors.ErrUnauthorized)
+		return nil, err
 	}
 
-	var newAccessToken string
+	tokenHash := srv.tokenService.HashToken(input.RefreshToken)
+	newAccessToken, cleanupOrphanedToken, err := srv.generateAccessTokenFromRefresh(ctx, claims, tokenHash)
 
-	err = srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		userRepo := repoFactory.UserRepo()
-		refreshRepo := repoFactory.RefreshTokenRepo()
-
-		// 1. Verify the refresh token exists in the database.
-		tokenHash := srv.tokenService.HashToken(input.RefreshToken)
-
-		_, err := refreshRepo.FindRefreshTokenByHash(ctx, tokenHash)
-		if err != nil {
-			return fmt.Errorf("refresh token not found or expired: %w", err)
-		}
-
-		// 2. Fetch user and roles.
-		user, err := userRepo.FindByID(ctx, claims.UserID)
-		if err != nil {
-			return fmt.Errorf("failed to find user: %w", err)
-		}
-		var roles entity.Roles
-		if user.UserProfile != nil {
-			roles = append(roles, entity.RoleUser)
-		}
-		if user.MerchantProfile != nil {
-			roles = append(roles, entity.RoleMerchant)
-		}
-
-		// 3. Generate only a new access token (refresh token remains unchanged).
-		newAccessToken, _, err = srv.tokenService.GenerateTokens(user.ID, roles.ToStrings())
-		if err != nil {
-			return fmt.Errorf("failed to generate new access token: %w", err)
-		}
-
-		// Note: We don't modify the refresh token - it remains valid and unchanged
-		// This prevents token rotation attacks and maintains better security
-
-		return nil
-	})
+	if cleanupOrphanedToken {
+		srv.cleanupOrphanedRefreshToken(ctx, tokenHash, claims.UserID)
+	}
 
 	if err != nil {
-		srv.log(ctx).Error("Failed to execute refresh token transaction", slog.Any("error", err))
+		if _, ok := errors.AsType[domainerrors.AppError](err); !ok {
+			srv.log(ctx).Error("Failed to execute refresh token transaction", slog.Any("error", err))
+		}
 
-		return nil, fmt.Errorf("failed to execute refresh token transaction: %w", err)
+		return nil, err
 	}
 
 	return &usecase.RefreshTokenOutput{
 		AccessToken: newAccessToken,
 	}, nil
+}
+
+func (srv *userService) validateRefreshTokenInput(refreshToken string) (*service.Claims, error) {
+	claims, err := srv.tokenService.ValidateToken(refreshToken)
+	if err != nil {
+		return nil, domainerrors.ErrRefreshTokenInvalid.WrapMessage("invalid refresh token")
+	}
+
+	if claims.Type != service.TokenTypeRefresh {
+		return nil, domainerrors.ErrUnauthorized.WrapMessage("invalid token type for refresh flow")
+	}
+
+	return claims, nil
+}
+
+func (srv *userService) generateAccessTokenFromRefresh(
+	ctx context.Context,
+	claims *service.Claims,
+	tokenHash string,
+) (accessToken string, cleanupOrphanedToken bool, err error) {
+	err = srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
+		refreshRepo := repoFactory.RefreshTokenRepo()
+
+		if err := srv.ensureRefreshTokenUsable(ctx, refreshRepo, tokenHash); err != nil {
+			return err
+		}
+
+		userRepo := repoFactory.UserRepo()
+		user, shouldCleanup, err := srv.loadRefreshTokenUser(ctx, userRepo, claims.UserID)
+		if shouldCleanup {
+			cleanupOrphanedToken = true
+		}
+		if err != nil {
+			return err
+		}
+
+		// Generate only a new access token. Refresh token remains unchanged.
+		accessToken, _, err = srv.tokenService.GenerateTokens(user.ID, srv.extractUserRoles(user).ToStrings())
+		if err != nil {
+			return fmt.Errorf("failed to generate new access token: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		if appErr, ok := errors.AsType[domainerrors.AppError](err); ok {
+			return "", cleanupOrphanedToken, appErr
+		}
+
+		return "", cleanupOrphanedToken, fmt.Errorf("execute refresh token transaction: %w", err)
+	}
+
+	return accessToken, cleanupOrphanedToken, nil
+}
+
+func (srv *userService) ensureRefreshTokenUsable(
+	ctx context.Context,
+	refreshRepo repository.RefreshTokenRepository,
+	tokenHash string,
+) error {
+	_, err := refreshRepo.FindRefreshTokenByHash(ctx, tokenHash)
+	if err == nil {
+		return nil
+	}
+
+	switch {
+	case errors.Is(err, repository.ErrRefreshTokenNotFound):
+		return domainerrors.ErrRefreshTokenNotFound.WrapMessage("refresh token not found")
+	case errors.Is(err, repository.ErrRefreshTokenExpired):
+		return domainerrors.ErrRefreshTokenExpired.WrapMessage("refresh token expired")
+	default:
+		return fmt.Errorf("find refresh token by hash: %w", err)
+	}
+}
+
+func (srv *userService) loadRefreshTokenUser(
+	ctx context.Context,
+	userRepo repository.UserRepository,
+	userID uuid.UUID,
+) (*entity.User, bool, error) {
+	user, err := userRepo.FindByID(ctx, userID)
+	if err == nil {
+		return user, false, nil
+	}
+
+	if errors.Is(err, repository.ErrUserNotFound) {
+		return nil, true, domainerrors.ErrUnauthorized.WrapMessage("refresh token user not found")
+	}
+
+	return nil, false, fmt.Errorf("failed to find user: %w", err)
+}
+
+func (srv *userService) cleanupOrphanedRefreshToken(ctx context.Context, tokenHash string, userID uuid.UUID) {
+	cleanupErr := srv.refreshTokenRepo.DeleteRefreshTokenByHash(ctx, tokenHash)
+	if cleanupErr == nil || errors.Is(cleanupErr, repository.ErrRefreshTokenNotFound) {
+		return
+	}
+
+	srv.log(ctx).Warn(
+		"Failed to cleanup orphaned refresh token",
+		slog.Any("error", cleanupErr),
+		slog.Any("user_id", userID),
+	)
 }
 
 // Logout handles the process of invalidating a user's session by deleting their refresh token.
@@ -349,9 +419,15 @@ func (srv *userService) Logout(ctx context.Context, input *usecase.LogoutInput) 
 
 	// Single operation - use direct repository instance
 	if err := srv.refreshTokenRepo.DeleteRefreshTokenByHash(ctx, tokenHash); err != nil {
+		if errors.Is(err, repository.ErrRefreshTokenNotFound) {
+			srv.log(ctx).Info("Refresh token already invalidated during logout")
+
+			return nil
+		}
+
 		srv.log(ctx).Error("Failed to delete refresh token", slog.Any("error", err))
 
-		return fmt.Errorf("failed to delete refresh token: %w", err)
+		return domainerrors.ErrInternalError.WrapMessage("failed to delete refresh token")
 	}
 	srv.log(ctx).Info("Successfully logged out")
 
