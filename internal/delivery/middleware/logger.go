@@ -2,10 +2,12 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
 	"radar/config"
+	"radar/internal/delivery"
 	deliverycontext "radar/internal/delivery/context"
 
 	"github.com/labstack/echo/v4"
@@ -69,7 +71,7 @@ func (m *LoggerMiddleware) logRequest(c echo.Context, start time.Time, err error
 	}
 
 	// If there's an error, log error details
-	if err != nil {
+	if err != nil && !errors.Is(err, delivery.ErrResponseHandled) {
 		fields = append(fields, slog.Any("error", err))
 	}
 

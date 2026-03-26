@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 
+	"radar/internal/delivery"
 	"radar/internal/delivery/api/response"
 
 	validatorpkg "github.com/go-playground/validator/v10"
@@ -43,7 +44,7 @@ func bindQueryParams(c echo.Context, params any) error {
 
 func bindRequest(c echo.Context, req any, invalidMessage string) error {
 	if err := c.Bind(req); err != nil {
-		return response.BindingError(c, "INVALID_INPUT", invalidMessage)
+		return abortHandledResponse(response.BindingError(c, "INVALID_INPUT", invalidMessage))
 	}
 
 	return nil
@@ -51,7 +52,7 @@ func bindRequest(c echo.Context, req any, invalidMessage string) error {
 
 func validateRequest(c echo.Context, req any) error {
 	if err := c.Validate(req); err != nil {
-		return response.BadRequest(c, "VALIDATION_ERROR", validationMessage(err, req))
+		return abortHandledResponse(response.BadRequest(c, "VALIDATION_ERROR", validationMessage(err, req)))
 	}
 
 	return nil
@@ -67,7 +68,7 @@ func bindAndValidateRequest(c echo.Context, req any, invalidMessage string) erro
 
 func requireBoundPayload[T any](c echo.Context, payload *T) error {
 	if payload == nil {
-		return response.BadRequest(c, "VALIDATION_ERROR", "請檢查輸入內容")
+		return abortHandledResponse(response.BadRequest(c, "VALIDATION_ERROR", "請檢查輸入內容"))
 	}
 
 	return nil
@@ -79,6 +80,9 @@ func bindRequiredPayload[T any](c echo.Context, invalidMessage string) (*T, erro
 		return nil, err
 	}
 	if err := requireBoundPayload(c, payload); err != nil {
+		return nil, err
+	}
+	if err := validateRequest(c, payload); err != nil {
 		return nil, err
 	}
 
@@ -104,12 +108,12 @@ func bindDeviceIDPathParam(c echo.Context, invalidMessage string) (uuid.UUID, er
 func bindUUIDPathParam(c echo.Context, paramName, invalidMessage string) (uuid.UUID, error) {
 	value := strings.TrimSpace(c.Param(paramName))
 	if value == "" {
-		return uuid.Nil, response.BadRequest(c, "INVALID_ID", invalidMessage)
+		return uuid.Nil, abortHandledResponse(response.BadRequest(c, "INVALID_ID", invalidMessage))
 	}
 
 	id, err := uuid.Parse(value)
 	if err != nil {
-		return uuid.Nil, response.BadRequest(c, "INVALID_ID", invalidMessage)
+		return uuid.Nil, abortHandledResponse(response.BadRequest(c, "INVALID_ID", invalidMessage))
 	}
 
 	return id, nil
@@ -121,17 +125,25 @@ func validatePaginationQueryParams(c echo.Context, params *PaginationQueryParams
 			for _, validationErr := range validationErrors {
 				switch validationErr.StructField() {
 				case "Page":
-					return response.BadRequest(c, "VALIDATION_ERROR", "page 必須為大於 0 的整數")
+					return abortHandledResponse(response.BadRequest(c, "VALIDATION_ERROR", "page 必須為大於 0 的整數"))
 				case "PageSize":
-					return response.BadRequest(c, "VALIDATION_ERROR", "page_size 必須為大於 0 的整數")
+					return abortHandledResponse(response.BadRequest(c, "VALIDATION_ERROR", "page_size 必須為大於 0 的整數"))
 				}
 			}
 		}
 
-		return response.BadRequest(c, "VALIDATION_ERROR", "Invalid pagination query input")
+		return abortHandledResponse(response.BadRequest(c, "VALIDATION_ERROR", "Invalid pagination query input"))
 	}
 
 	return nil
+}
+
+func abortHandledResponse(err error) error {
+	if err != nil {
+		return err
+	}
+
+	return delivery.ErrResponseHandled
 }
 
 func validationMessage(err error, req any) string {

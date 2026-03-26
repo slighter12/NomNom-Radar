@@ -311,6 +311,38 @@ func TestSessionService_RevokeAllOtherSessions_FindTokensError(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to find refresh tokens")
 }
 
+func TestSessionService_RevokeAllOtherSessions_DeleteError(t *testing.T) {
+	fx := createTestSessionService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	currentSessionID := uuid.New()
+	otherSessionID := uuid.New()
+	user := &entity.User{ID: userID}
+	dbErr := errors.New("db error")
+	tokens := []*entity.RefreshToken{
+		{ID: currentSessionID, UserID: userID},
+		{ID: otherSessionID, UserID: userID},
+	}
+
+	fx.onExecute(ctx, fmt.Errorf("failed to delete session: %w", dbErr), func(factory *mockRepo.MockRepositoryFactory) {
+		mockUserRepo := mockRepo.NewMockUserRepository(t)
+		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
+
+		factory.EXPECT().UserRepo().Return(mockUserRepo)
+		factory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
+		mockRefreshRepo.EXPECT().FindRefreshTokensByUserID(ctx, userID).Return(tokens, nil)
+		mockRefreshRepo.EXPECT().DeleteRefreshToken(ctx, otherSessionID).Return(dbErr)
+	})
+
+	err := fx.service.RevokeAllOtherSessions(ctx, userID, currentSessionID)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to delete session")
+}
+
 func TestSessionService_GetSessionInfo_UserNotFound(t *testing.T) {
 	fx := createTestSessionService(t)
 

@@ -273,6 +273,42 @@ func TestSessionService_DetectAnomalousActivity_Success(t *testing.T) {
 	assert.NotEmpty(t, anomalies)
 }
 
+func TestSessionService_DetectRapidSessionCreation_DescendingOrder(t *testing.T) {
+	fx := createTestSessionService(t)
+
+	now := time.Now()
+	newestID := uuid.New()
+	middleID := uuid.New()
+	oldestID := uuid.New()
+	tokens := []*entity.RefreshToken{
+		{ID: newestID, CreatedAt: now.Add(-1 * time.Minute)},
+		{ID: middleID, CreatedAt: now.Add(-10 * time.Minute)},
+		{ID: oldestID, CreatedAt: now.Add(-12 * time.Minute)},
+	}
+
+	anomalies := fx.service.detectRapidSessionCreation(tokens, now)
+
+	require.Len(t, anomalies, 1)
+	require.NotNil(t, anomalies[0].SessionID)
+	assert.Equal(t, middleID, *anomalies[0].SessionID)
+	assert.Equal(t, newestID, tokens[0].ID)
+}
+
+func TestSessionService_DetectRapidSessionCreation_DescendingOrderWithoutFalsePositives(t *testing.T) {
+	fx := createTestSessionService(t)
+
+	now := time.Now()
+	tokens := []*entity.RefreshToken{
+		{ID: uuid.New(), CreatedAt: now.Add(-1 * time.Minute)},
+		{ID: uuid.New(), CreatedAt: now.Add(-10 * time.Minute)},
+		{ID: uuid.New(), CreatedAt: now.Add(-20 * time.Minute)},
+	}
+
+	anomalies := fx.service.detectRapidSessionCreation(tokens, now)
+
+	assert.Empty(t, anomalies)
+}
+
 func TestSessionService_GetSessionStatistics_NoSessions(t *testing.T) {
 	fx := createTestSessionService(t)
 

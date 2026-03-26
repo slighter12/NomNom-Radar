@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 
+	"radar/internal/delivery"
 	"radar/internal/delivery/api/response"
 	deliverycontext "radar/internal/delivery/context"
 	domainerrors "radar/internal/domain/errors"
@@ -25,6 +26,13 @@ func NewErrorMiddleware(logger *slog.Logger) *ErrorMiddleware {
 
 // HandleHTTPError handles errors as Echo's HTTPErrorHandler
 func (m *ErrorMiddleware) HandleHTTPError(err error, c echo.Context) {
+	if c.Response().Committed {
+		return
+	}
+	if errors.Is(err, delivery.ErrResponseHandled) {
+		return
+	}
+
 	// Attempt to parse as AppError
 	if appErr, ok := errors.AsType[domainerrors.AppError](err); ok {
 		// Use AppError information, but do not expose internal details for 5xx errors

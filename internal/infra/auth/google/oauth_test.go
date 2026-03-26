@@ -9,16 +9,18 @@ import (
 	"radar/internal/domain/entity"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAuthService_VerifyIDToken(t *testing.T) {
 	logger := slog.Default()
-	config := &config.Config{
+	cfg := &config.Config{
 		GoogleOAuth: &config.GoogleOAuthConfig{
 			ClientID: "test_client_id",
 		},
 	}
-	authService := NewOAuthService(config, logger)
+	authService, err := NewOAuthService(cfg, logger)
+	require.NoError(t, err)
 	ctx := context.Background()
 
 	// Test with a mock JWT token (this will fail validation but not parsing)
@@ -33,13 +35,49 @@ func TestAuthService_VerifyIDToken(t *testing.T) {
 
 func TestAuthService_GetProvider(t *testing.T) {
 	logger := slog.Default()
-	config := &config.Config{
+	cfg := &config.Config{
 		GoogleOAuth: &config.GoogleOAuthConfig{
 			ClientID: "test_client_id",
 		},
 	}
-	authService := NewOAuthService(config, logger)
+	authService, err := NewOAuthService(cfg, logger)
+	require.NoError(t, err)
 	provider := authService.GetProvider()
 
 	assert.Equal(t, entity.ProviderTypeGoogle, provider)
+}
+
+func TestNewOAuthService_RequiresConfig(t *testing.T) {
+	logger := slog.Default()
+
+	authService, err := NewOAuthService(nil, logger)
+
+	require.Error(t, err)
+	assert.Nil(t, authService)
+	assert.Contains(t, err.Error(), "google oauth config is required")
+}
+
+func TestNewOAuthService_RequiresGoogleOAuthSection(t *testing.T) {
+	logger := slog.Default()
+
+	authService, err := NewOAuthService(&config.Config{}, logger)
+
+	require.Error(t, err)
+	assert.Nil(t, authService)
+	assert.Contains(t, err.Error(), "google oauth config is required")
+}
+
+func TestNewOAuthService_RequiresClientID(t *testing.T) {
+	logger := slog.Default()
+	cfg := &config.Config{
+		GoogleOAuth: &config.GoogleOAuthConfig{
+			ClientID: "   ",
+		},
+	}
+
+	authService, err := NewOAuthService(cfg, logger)
+
+	require.Error(t, err)
+	assert.Nil(t, authService)
+	assert.Contains(t, err.Error(), "google oauth client_id is required")
 }

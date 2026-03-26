@@ -1,4 +1,3 @@
-// Package handlers contains the HTTP handlers for the application.
 package handler
 
 import (
@@ -182,8 +181,8 @@ func (h *UserHandler) extractGoogleCallbackInput(c echo.Context) (*usecase.Googl
 		input.State = query.State
 	}
 
-	if input.IDToken == "" {
-		return nil, response.BadRequest(c, "INVALID_INPUT", "ID token is required")
+	if err := validateRequest(c, input); err != nil {
+		return nil, err
 	}
 
 	return input, nil

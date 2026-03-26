@@ -1,4 +1,3 @@
-// Package impl contains the application-specific business rules implementations.
 package impl
 
 import (
@@ -6,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 
 	deliverycontext "radar/internal/delivery/context"
@@ -209,7 +209,7 @@ func (srv *sessionService) RevokeAllOtherSessions(ctx context.Context, userID uu
 		for _, token := range tokens {
 			if token.ID != currentSessionID {
 				if err := refreshRepo.DeleteRefreshToken(ctx, token.ID); err != nil {
-					srv.log(ctx).Warn("Failed to delete session", slog.Any("session_id", token.ID), slog.Any("error", err))
+					return fmt.Errorf("failed to delete session: %w", err)
 				}
 			}
 		}
@@ -409,10 +409,15 @@ func (srv *sessionService) detectRapidSessionCreation(tokens []*entity.RefreshTo
 		return anomalies
 	}
 
-	for i := 1; i < len(tokens); i++ {
-		timeDiff := tokens[i].CreatedAt.Sub(tokens[i-1].CreatedAt)
+	sortedTokens := append([]*entity.RefreshToken(nil), tokens...)
+	sort.SliceStable(sortedTokens, func(i, j int) bool {
+		return sortedTokens[i].CreatedAt.Before(sortedTokens[j].CreatedAt)
+	})
+
+	for i := 1; i < len(sortedTokens); i++ {
+		timeDiff := sortedTokens[i].CreatedAt.Sub(sortedTokens[i-1].CreatedAt)
 		if timeDiff < 5*time.Minute { // Sessions created within 5 minutes
-			sessionID := tokens[i].ID
+			sessionID := sortedTokens[i].ID
 			anomalies = append(anomalies, &entity.AnomalousActivity{
 				Type:        "rapid_session_creation",
 				Description: "Multiple sessions created in rapid succession",
