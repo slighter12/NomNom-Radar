@@ -6,22 +6,20 @@ import (
 	"io"
 	"os"
 	"time"
-
-	"radar/internal/errors"
 )
 
 // CalculateFileChecksum calculates the SHA256 checksum for a file.
 func CalculateFileChecksum(filePath string) (string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return "", errors.WithStack(err)
+		return "", fmt.Errorf("open %s: %w", filePath, err)
 	}
 	defer file.Close()
 
 	sha256Hash := sha256.New()
 
 	if _, err := io.Copy(sha256Hash, file); err != nil {
-		return "", errors.WithStack(err)
+		return "", fmt.Errorf("calculate checksum for %s: %w", filePath, err)
 	}
 
 	sha256Sum := fmt.Sprintf("%x", sha256Hash.Sum(nil))

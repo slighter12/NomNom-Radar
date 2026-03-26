@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"radar/internal/errors"
 	"radar/internal/util"
 )
 
@@ -22,7 +21,7 @@ func runPrepare(ctx context.Context, region, output string) error {
 	fmt.Println("=== Step 1: Downloading OSM data ===")
 	tempDir := os.TempDir()
 	if err := runDownload(ctx, region, tempDir); err != nil {
-		return errors.Wrap(err, "download failed")
+		return fmt.Errorf("download failed: %w", err)
 	}
 
 	regionConfig, _ := GetRegionConfig(region) // validated inside runDownload
@@ -45,7 +44,7 @@ func runPrepare(ctx context.Context, region, output string) error {
 	// Step 2: Convert OSM data and generate metadata
 	fmt.Println("\n=== Step 2: Converting OSM data and generating metadata ===")
 	if err := runConvert(ctx, inputFile, output, region, true); err != nil {
-		return errors.Wrap(err, "conversion failed")
+		return fmt.Errorf("conversion failed: %w", err)
 	}
 
 	metadataPath := filepath.Join(output, "metadata.json")
@@ -53,7 +52,7 @@ func runPrepare(ctx context.Context, region, output string) error {
 	// Step 3: Validate results
 	fmt.Println("\n=== Step 3: Validating results ===")
 	if err := validateRoutingData(output); err != nil {
-		return errors.Wrap(err, "validation failed")
+		return fmt.Errorf("validation failed: %w", err)
 	}
 
 	duration := time.Since(startTime)

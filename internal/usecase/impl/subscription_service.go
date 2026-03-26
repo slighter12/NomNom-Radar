@@ -2,6 +2,8 @@ package impl
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"radar/config"
@@ -9,7 +11,6 @@ import (
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
-	"radar/internal/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
@@ -52,7 +53,7 @@ func (s *subscriptionService) SubscribeToMerchant(ctx context.Context, userID, m
 	// Check if subscription already exists
 	existingSub, err := s.subscriptionRepo.FindSubscriptionByUserAndMerchant(ctx, userID, merchantID)
 	if err != nil && !errors.Is(err, repository.ErrSubscriptionNotFound) {
-		return nil, errors.Wrap(err, "failed to find subscription by user and merchant")
+		return nil, fmt.Errorf("failed to find subscription by user and merchant: %w", err)
 	}
 
 	// If subscription exists, reactivate it
@@ -68,7 +69,7 @@ func (s *subscriptionService) SubscribeToMerchant(ctx context.Context, userID, m
 func (s *subscriptionService) reactivateSubscription(ctx context.Context, userID uuid.UUID, sub *entity.UserMerchantSubscription, deviceInfo *usecase.DeviceInfo) (*entity.UserMerchantSubscription, error) {
 	if !sub.IsActive {
 		if err := s.subscriptionRepo.UpdateSubscriptionStatus(ctx, sub.ID, true); err != nil {
-			return nil, errors.Wrap(err, "failed to update subscription status")
+			return nil, fmt.Errorf("failed to update subscription status: %w", err)
 		}
 	}
 
@@ -81,7 +82,7 @@ func (s *subscriptionService) reactivateSubscription(ctx context.Context, userID
 
 	updatedSubscription, err := s.subscriptionRepo.FindSubscriptionByID(ctx, sub.ID)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to reload subscription after reactivation")
+		return nil, fmt.Errorf("failed to reload subscription after reactivation: %w", err)
 	}
 
 	return updatedSubscription, nil
@@ -100,7 +101,7 @@ func (s *subscriptionService) createNewSubscription(ctx context.Context, userID,
 	}
 
 	if err := s.subscriptionRepo.CreateSubscription(ctx, subscription); err != nil {
-		return nil, errors.Wrap(err, "failed to create subscription")
+		return nil, fmt.Errorf("failed to create subscription: %w", err)
 	}
 
 	// Register device if provided
@@ -112,7 +113,7 @@ func (s *subscriptionService) createNewSubscription(ctx context.Context, userID,
 
 	createdSubscription, err := s.subscriptionRepo.FindSubscriptionByID(ctx, subscription.ID)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to reload subscription after creation")
+		return nil, fmt.Errorf("failed to reload subscription after creation: %w", err)
 	}
 
 	return createdSubscription, nil
@@ -127,11 +128,11 @@ func (s *subscriptionService) UnsubscribeFromMerchant(ctx context.Context, userI
 			return domainerrors.ErrSubscriptionNotFound
 		}
 
-		return errors.Wrap(err, "failed to find subscription by user and merchant")
+		return fmt.Errorf("failed to find subscription by user and merchant: %w", err)
 	}
 
 	if err := s.subscriptionRepo.DeleteSubscription(ctx, subscription.ID); err != nil {
-		return errors.Wrap(err, "failed to delete subscription")
+		return fmt.Errorf("failed to delete subscription: %w", err)
 	}
 
 	return nil
@@ -141,7 +142,7 @@ func (s *subscriptionService) UnsubscribeFromMerchant(ctx context.Context, userI
 func (s *subscriptionService) GetUserSubscriptions(ctx context.Context, userID uuid.UUID) ([]*entity.UserMerchantSubscription, error) {
 	subscriptions, err := s.subscriptionRepo.FindSubscriptionsByUser(ctx, userID)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to find subscriptions by user")
+		return nil, fmt.Errorf("failed to find subscriptions by user: %w", err)
 	}
 
 	return subscriptions, nil
@@ -151,7 +152,7 @@ func (s *subscriptionService) GetUserSubscriptions(ctx context.Context, userID u
 func (s *subscriptionService) GetMerchantSubscribers(ctx context.Context, merchantID uuid.UUID) ([]*entity.UserMerchantSubscription, error) {
 	subscriptions, err := s.subscriptionRepo.FindSubscriptionsByMerchant(ctx, merchantID)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to find subscriptions by merchant")
+		return nil, fmt.Errorf("failed to find subscriptions by merchant: %w", err)
 	}
 
 	return subscriptions, nil
@@ -161,7 +162,7 @@ func (s *subscriptionService) GetMerchantSubscribers(ctx context.Context, mercha
 func (s *subscriptionService) GenerateSubscriptionQR(ctx context.Context, merchantID uuid.UUID) ([]byte, error) {
 	qrCode, err := s.qrcodeService.GenerateSubscriptionQR(merchantID)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to generate subscription QR")
+		return nil, fmt.Errorf("failed to generate subscription QR: %w", err)
 	}
 
 	return qrCode, nil

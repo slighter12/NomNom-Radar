@@ -6,7 +6,6 @@ import (
 	"log/slog"
 
 	"radar/internal/domain/repository"
-	"radar/internal/errors"
 
 	"gorm.io/gorm"
 )
@@ -60,7 +59,7 @@ func (tm *gormTransactionManager) Execute(ctx context.Context, fn func(repoFacto
 	// Begin a new transaction
 	tx := tm.db.WithContext(ctx).Begin()
 	if tx.Error != nil {
-		return errors.WithStack(tx.Error)
+		return tx.Error
 	}
 
 	// This defer block ensures that if a panic occurs within the callback function,
@@ -85,12 +84,12 @@ func (tm *gormTransactionManager) Execute(ctx context.Context, fn func(repoFacto
 			tm.logger.Error("transaction rollback failed", slog.Any("error", rbErr))
 		}
 
-		return errors.WithStack(err) // Return the original business error.
+		return err // Return the original business error.
 	}
 
 	// If the business logic completes without error, commit the transaction.
 	if err := tx.Commit().Error; err != nil {
-		return errors.WithStack(err)
+		return err
 	}
 
 	return nil

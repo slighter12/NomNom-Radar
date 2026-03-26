@@ -2,12 +2,12 @@ package loader
 
 import (
 	"encoding/csv"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strconv"
-
-	"radar/internal/errors"
 )
 
 // Vertex represents a node in the road network graph
@@ -55,17 +55,17 @@ func NewCSVLoader(dataDir string) *CSVLoader {
 func (l *CSVLoader) Load() (*GraphData, error) {
 	vertices, err := l.LoadVertices()
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, err
 	}
 
 	edges, err := l.LoadEdges()
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, err
 	}
 
 	shortcuts, err := l.LoadShortcuts()
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, err
 	}
 
 	return &GraphData{
@@ -81,7 +81,7 @@ func (l *CSVLoader) LoadVertices() ([]Vertex, error) {
 	path := filepath.Join(l.dataDir, "vertices.csv")
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
 	defer file.Close()
 
@@ -89,7 +89,7 @@ func (l *CSVLoader) LoadVertices() ([]Vertex, error) {
 
 	// Skip header row
 	if _, err := reader.Read(); err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("read %s header: %w", path, err)
 	}
 
 	var vertices []Vertex
@@ -101,12 +101,12 @@ func (l *CSVLoader) LoadVertices() ([]Vertex, error) {
 			break
 		}
 		if readErr != nil {
-			return nil, errors.WithStack(readErr)
+			return nil, fmt.Errorf("read %s line %d: %w", path, lineNum+1, readErr)
 		}
 		lineNum++
 
 		if len(record) < 5 {
-			return nil, errors.Errorf("invalid vertices.csv format at line %d: expected 5 columns, got %d", lineNum, len(record))
+			return nil, fmt.Errorf("invalid vertices.csv format at line %d: expected 5 columns, got %d", lineNum, len(record))
 		}
 
 		vertex, parseErr := parseVertex(record, lineNum)
@@ -126,7 +126,7 @@ func (l *CSVLoader) LoadEdges() ([]Edge, error) {
 	path := filepath.Join(l.dataDir, "edges.csv")
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
 	defer file.Close()
 
@@ -134,7 +134,7 @@ func (l *CSVLoader) LoadEdges() ([]Edge, error) {
 
 	// Skip header row
 	if _, err := reader.Read(); err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("read %s header: %w", path, err)
 	}
 
 	var edges []Edge
@@ -146,12 +146,12 @@ func (l *CSVLoader) LoadEdges() ([]Edge, error) {
 			break
 		}
 		if readErr != nil {
-			return nil, errors.WithStack(readErr)
+			return nil, fmt.Errorf("read %s line %d: %w", path, lineNum+1, readErr)
 		}
 		lineNum++
 
 		if len(record) < 3 {
-			return nil, errors.Errorf("invalid edges.csv format at line %d: expected 3 columns, got %d", lineNum, len(record))
+			return nil, fmt.Errorf("invalid edges.csv format at line %d: expected 3 columns, got %d", lineNum, len(record))
 		}
 
 		edge, parseErr := parseEdge(record, lineNum)
@@ -176,7 +176,7 @@ func (l *CSVLoader) LoadShortcuts() ([]Shortcut, error) {
 			return []Shortcut{}, nil
 		}
 
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
 	defer file.Close()
 
@@ -184,7 +184,7 @@ func (l *CSVLoader) LoadShortcuts() ([]Shortcut, error) {
 
 	// Skip header row
 	if _, err := reader.Read(); err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("read %s header: %w", path, err)
 	}
 
 	var shortcuts []Shortcut
@@ -196,12 +196,12 @@ func (l *CSVLoader) LoadShortcuts() ([]Shortcut, error) {
 			break
 		}
 		if readErr != nil {
-			return nil, errors.WithStack(readErr)
+			return nil, fmt.Errorf("read %s line %d: %w", path, lineNum+1, readErr)
 		}
 		lineNum++
 
 		if len(record) < 4 {
-			return nil, errors.Errorf("invalid shortcuts.csv format at line %d: expected 4 columns, got %d", lineNum, len(record))
+			return nil, fmt.Errorf("invalid shortcuts.csv format at line %d: expected 4 columns, got %d", lineNum, len(record))
 		}
 
 		shortcut, parseErr := parseShortcut(record, lineNum)
@@ -218,27 +218,27 @@ func (l *CSVLoader) LoadShortcuts() ([]Shortcut, error) {
 func parseVertex(record []string, _ int) (Vertex, error) {
 	vertexID, err := strconv.ParseInt(record[0], 10, 64)
 	if err != nil {
-		return Vertex{}, errors.WithStack(err)
+		return Vertex{}, fmt.Errorf("parse vertex id: %w", err)
 	}
 
 	lat, err := strconv.ParseFloat(record[1], 64)
 	if err != nil {
-		return Vertex{}, errors.WithStack(err)
+		return Vertex{}, fmt.Errorf("parse vertex latitude: %w", err)
 	}
 
 	lng, err := strconv.ParseFloat(record[2], 64)
 	if err != nil {
-		return Vertex{}, errors.WithStack(err)
+		return Vertex{}, fmt.Errorf("parse vertex longitude: %w", err)
 	}
 
 	orderPos, err := strconv.ParseInt(record[3], 10, 64)
 	if err != nil {
-		return Vertex{}, errors.WithStack(err)
+		return Vertex{}, fmt.Errorf("parse vertex order position: %w", err)
 	}
 
 	importance, err := strconv.ParseInt(record[4], 10, 64)
 	if err != nil {
-		return Vertex{}, errors.WithStack(err)
+		return Vertex{}, fmt.Errorf("parse vertex importance: %w", err)
 	}
 
 	return Vertex{
@@ -253,17 +253,17 @@ func parseVertex(record []string, _ int) (Vertex, error) {
 func parseEdge(record []string, _ int) (Edge, error) {
 	from, err := strconv.ParseInt(record[0], 10, 64)
 	if err != nil {
-		return Edge{}, errors.WithStack(err)
+		return Edge{}, fmt.Errorf("parse edge from vertex: %w", err)
 	}
 
 	toVertex, err := strconv.ParseInt(record[1], 10, 64)
 	if err != nil {
-		return Edge{}, errors.WithStack(err)
+		return Edge{}, fmt.Errorf("parse edge to vertex: %w", err)
 	}
 
 	weight, err := strconv.ParseFloat(record[2], 64)
 	if err != nil {
-		return Edge{}, errors.WithStack(err)
+		return Edge{}, fmt.Errorf("parse edge weight: %w", err)
 	}
 
 	return Edge{
@@ -276,22 +276,22 @@ func parseEdge(record []string, _ int) (Edge, error) {
 func parseShortcut(record []string, _ int) (Shortcut, error) {
 	from, err := strconv.ParseInt(record[0], 10, 64)
 	if err != nil {
-		return Shortcut{}, errors.WithStack(err)
+		return Shortcut{}, fmt.Errorf("parse shortcut from vertex: %w", err)
 	}
 
 	toVertex, err := strconv.ParseInt(record[1], 10, 64)
 	if err != nil {
-		return Shortcut{}, errors.WithStack(err)
+		return Shortcut{}, fmt.Errorf("parse shortcut to vertex: %w", err)
 	}
 
 	weight, err := strconv.ParseFloat(record[2], 64)
 	if err != nil {
-		return Shortcut{}, errors.WithStack(err)
+		return Shortcut{}, fmt.Errorf("parse shortcut weight: %w", err)
 	}
 
 	viaNode, err := strconv.ParseInt(record[3], 10, 64)
 	if err != nil {
-		return Shortcut{}, errors.WithStack(err)
+		return Shortcut{}, fmt.Errorf("parse shortcut via node: %w", err)
 	}
 
 	return Shortcut{

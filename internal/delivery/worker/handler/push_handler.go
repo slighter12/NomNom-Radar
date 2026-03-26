@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -14,7 +15,6 @@ import (
 	"radar/internal/domain/entity"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
-	"radar/internal/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
@@ -238,12 +238,12 @@ func (h *PushHandler) processNotification(ctx context.Context, event *service.No
 func (h *PushHandler) parseEventIDs(event *service.NotificationEvent) (notificationID, merchantID uuid.UUID, subscriberIDs []uuid.UUID, err error) {
 	notificationID, err = uuid.Parse(event.NotificationID)
 	if err != nil {
-		return uuid.Nil, uuid.Nil, nil, errors.WithStack(err)
+		return uuid.Nil, uuid.Nil, nil, fmt.Errorf("parse notification id: %w", err)
 	}
 
 	merchantID, err = uuid.Parse(event.MerchantID)
 	if err != nil {
-		return uuid.Nil, uuid.Nil, nil, errors.WithStack(err)
+		return uuid.Nil, uuid.Nil, nil, fmt.Errorf("parse merchant id: %w", err)
 	}
 
 	subscriberIDs = make([]uuid.UUID, 0, len(event.SubscriberIDs))
@@ -261,7 +261,7 @@ func (h *PushHandler) parseEventIDs(event *service.NotificationEvent) (notificat
 func (h *PushHandler) filterSubscribersByDistance(ctx context.Context, merchantID uuid.UUID, subscriberIDs []uuid.UUID, event *service.NotificationEvent) ([]uuid.UUID, error) {
 	addresses, err := h.subscriptionRepo.FindSubscriberAddressesByUserIDs(ctx, merchantID, subscriberIDs)
 	if err != nil {
-		return nil, newRetryableError(errors.WithStack(err))
+		return nil, newRetryableError(fmt.Errorf("find subscriber addresses by user ids: %w", err))
 	}
 
 	if len(addresses) == 0 {
@@ -280,7 +280,7 @@ func (h *PushHandler) filterSubscribersByDistance(ctx context.Context, merchantI
 
 	routeResults, err := h.routingSvc.OneToMany(ctx, source, targets)
 	if err != nil {
-		return nil, newRetryableError(errors.WithStack(err))
+		return nil, newRetryableError(fmt.Errorf("filter subscribers by distance: %w", err))
 	}
 
 	validUserIDs := make([]uuid.UUID, 0)
@@ -304,7 +304,7 @@ func (h *PushHandler) filterSubscribersByDistance(ctx context.Context, merchantI
 func (h *PushHandler) getDevicesForUsers(ctx context.Context, userIDs []uuid.UUID, notificationID string) ([]*entity.UserDevice, map[string]*entity.UserDevice, error) {
 	devices, err := h.subscriptionRepo.FindDevicesForUsers(ctx, userIDs)
 	if err != nil {
-		return nil, nil, newRetryableError(errors.WithStack(err))
+		return nil, nil, newRetryableError(fmt.Errorf("find devices for users: %w", err))
 	}
 
 	if len(devices) == 0 {

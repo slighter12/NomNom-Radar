@@ -1,9 +1,8 @@
 package errors
 
 import (
+	"fmt"
 	"net/http"
-
-	"radar/internal/errors"
 )
 
 // AppError defines the interface for application-specific errors
@@ -40,7 +39,7 @@ func (e *BaseError) Error() string {
 
 // WrapMessage wraps the error with additional context message
 func (e *BaseError) WrapMessage(message string) error {
-	return errors.Wrap(e, message)
+	return fmt.Errorf("%s: %w", message, e)
 }
 
 // HTTPCode returns the HTTP status code
@@ -479,7 +478,7 @@ func NewDatabaseExecuteError(err error, details string) AppError {
 
 // Error implements the error interface
 func (e *DatabaseExecuteError) Error() string {
-	return errors.Wrap(e.err, "database execution failed").Error()
+	return fmt.Sprintf("database execution failed: %v", e.err)
 }
 
 // HTTPCode returns the HTTP status code

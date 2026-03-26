@@ -7,7 +7,6 @@ import (
 	"log/slog"
 
 	"radar/internal/domain/service"
-	"radar/internal/errors"
 
 	"cloud.google.com/go/pubsub/v2"
 	pubsubpb "cloud.google.com/go/pubsub/v2/apiv1/pubsubpb"
@@ -24,7 +23,7 @@ type googlePubSubPublisher struct {
 func NewGooglePubSubPublisher(ctx context.Context, projectID, topicID string, logger *slog.Logger) (service.EventPublisher, error) {
 	client, err := pubsub.NewClient(ctx, projectID)
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("create google pubsub client: %w", err)
 	}
 
 	// Check if topic exists using TopicAdminClient
@@ -35,7 +34,7 @@ func NewGooglePubSubPublisher(ctx context.Context, projectID, topicID string, lo
 	if err != nil {
 		client.Close()
 
-		return nil, errors.Wrapf(err, "failed to get topic %s", topicID)
+		return nil, fmt.Errorf("failed to get topic %s: %w", topicID, err)
 	}
 
 	publisher := client.Publisher(topicID)
@@ -57,7 +56,7 @@ func (p *googlePubSubPublisher) PublishNotificationEvent(ctx context.Context, ev
 	// Serialize the event to JSON
 	data, err := json.Marshal(event)
 	if err != nil {
-		return errors.WithStack(err)
+		return fmt.Errorf("marshal notification event: %w", err)
 	}
 
 	// Create Pub/Sub message with attributes for filtering and tracing
@@ -85,7 +84,7 @@ func (p *googlePubSubPublisher) PublishNotificationEvent(ctx context.Context, ev
 	// Wait for publish result
 	serverID, err := result.Get(ctx)
 	if err != nil {
-		return errors.WithStack(err)
+		return fmt.Errorf("publish pubsub message: %w", err)
 	}
 
 	p.logger.Info("[GooglePubSub] Event published successfully",
@@ -102,7 +101,9 @@ func (p *googlePubSubPublisher) Close() error {
 		p.publisher.Stop()
 	}
 	if p.client != nil {
-		return errors.WithStack(p.client.Close())
+		if err := p.client.Close(); err != nil {
+			return fmt.Errorf("close google pubsub client: %w", err)
+		}
 	}
 
 	return nil

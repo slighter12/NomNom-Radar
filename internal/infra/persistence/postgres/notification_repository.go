@@ -3,11 +3,12 @@ package postgres
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
-	"radar/internal/errors"
 	"radar/internal/infra/persistence/model"
 	"radar/internal/infra/persistence/postgres/query"
 
@@ -63,7 +64,7 @@ func (repo *notificationRepository) FindNotificationByID(ctx context.Context, id
 			return nil, repository.ErrNotificationNotFound
 		}
 
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("find notification by id: %w", err)
 	}
 
 	return toNotificationDomain(notificationM), nil
@@ -84,7 +85,7 @@ func (repo *notificationRepository) FindNotificationsByMerchant(ctx context.Cont
 
 	notificationModels, err := query.Find()
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("find notifications by merchant: %w", err)
 	}
 
 	notifications := make([]*entity.MerchantLocationNotification, 0, len(notificationModels))
@@ -105,7 +106,7 @@ func (repo *notificationRepository) UpdateNotificationStatus(ctx context.Context
 		})
 
 	if err != nil {
-		return errors.WithStack(err)
+		return fmt.Errorf("update notification status: %w", err)
 	}
 
 	if result.RowsAffected == 0 {

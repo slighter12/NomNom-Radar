@@ -3,12 +3,12 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log/slog"
 	"time"
 
 	"radar/config"
 	"radar/internal/domain/lifecycle"
-	"radar/internal/errors"
 
 	pgLib "github.com/slighter12/go-lib/database/postgres"
 	"go.uber.org/fx"
@@ -33,7 +33,7 @@ type Params struct {
 func New(params Params) (*gorm.DB, error) {
 	db, err := pgLib.New(params.Config.Postgres)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create PostgreSQL client")
+		return nil, fmt.Errorf("failed to create PostgreSQL client: %w", err)
 	}
 
 	// GORM settings (SkipDefaultTransaction, PrepareStmt) are now configured via go-lib preset
@@ -44,7 +44,7 @@ func New(params Params) (*gorm.DB, error) {
 
 	sqlDB, err := db.DB()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get PostgreSQL sql.DB")
+		return nil, fmt.Errorf("failed to get PostgreSQL sql.DB: %w", err)
 	}
 
 	var stopMonitor chan struct{}
@@ -56,7 +56,7 @@ func New(params Params) (*gorm.DB, error) {
 			defer cancel()
 
 			if err := sqlDB.PingContext(ctx); err != nil {
-				return errors.Wrap(err, "failed to ping PostgreSQL")
+				return fmt.Errorf("failed to ping PostgreSQL: %w", err)
 			}
 
 			stopMonitor = make(chan struct{})

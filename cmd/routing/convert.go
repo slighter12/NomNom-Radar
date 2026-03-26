@@ -2,23 +2,22 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
-
-	"radar/internal/errors"
 )
 
 func runConvert(ctx context.Context, input, output, region string, contract bool) error {
 	absInput, err := filepath.Abs(input)
 	if err != nil {
-		return errors.Wrap(err, "failed to resolve absolute input path")
+		return fmt.Errorf("failed to resolve absolute input path: %w", err)
 	}
 	absOutput, err := filepath.Abs(output)
 	if err != nil {
-		return errors.Wrap(err, "failed to resolve absolute output path")
+		return fmt.Errorf("failed to resolve absolute output path: %w", err)
 	}
 
 	fmt.Printf("Converting OSM data from %s to %s\n", absInput, absOutput)
@@ -28,22 +27,22 @@ func runConvert(ctx context.Context, input, output, region string, contract bool
 
 	// Validate input file exists
 	if _, err := os.Stat(absInput); os.IsNotExist(err) {
-		return errors.Errorf("input file does not exist: %s", absInput)
+		return fmt.Errorf("input file does not exist: %s", absInput)
 	}
 
 	// Create output directory
 	if err := os.MkdirAll(absOutput, 0755); err != nil {
-		return errors.Wrap(err, "failed to create output directory")
+		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
 	// Run osm2ch conversion
 	if err := runOSM2CHConversion(ctx, absInput, absOutput, contract); err != nil {
-		return errors.Wrap(err, "conversion failed")
+		return fmt.Errorf("conversion failed: %w", err)
 	}
 
 	// Generate metadata
 	if err := generateMetadata(absInput, absOutput, region, contract); err != nil {
-		return errors.Wrap(err, "failed to generate metadata")
+		return fmt.Errorf("failed to generate metadata: %w", err)
 	}
 
 	fmt.Println("Conversion completed successfully!")
@@ -86,7 +85,7 @@ func runOSM2CHConversion(ctx context.Context, input, output string, contract boo
 	duration := time.Since(startTime)
 
 	if err != nil {
-		return errors.Wrapf(err, "osm2ch execution failed after %v", duration)
+		return fmt.Errorf("osm2ch execution failed after %v: %w", duration, err)
 	}
 
 	fmt.Printf("Conversion completed in %v\n", duration)
@@ -101,13 +100,13 @@ func generateMetadata(input, output, region string, contract bool) error {
 	// Generate metadata using the new structure
 	metadata, err := GenerateMetadata(input, output, region, contract)
 	if err != nil {
-		return errors.Wrap(err, "failed to generate metadata")
+		return fmt.Errorf("failed to generate metadata: %w", err)
 	}
 
 	// Write metadata file
 	metadataPath := filepath.Join(output, "metadata.json")
 	if err := WriteMetadataToFile(metadata, metadataPath); err != nil {
-		return errors.Wrap(err, "failed to write metadata file")
+		return fmt.Errorf("failed to write metadata file: %w", err)
 	}
 
 	fmt.Printf("Metadata written to: %s\n", metadataPath)

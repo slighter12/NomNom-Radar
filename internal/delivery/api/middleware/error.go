@@ -1,12 +1,12 @@
 package middleware
 
 import (
+	"errors"
 	"log/slog"
 
 	"radar/internal/delivery/api/response"
 	deliverycontext "radar/internal/delivery/context"
 	domainerrors "radar/internal/domain/errors"
-	"radar/internal/errors"
 
 	"github.com/labstack/echo/v4"
 )

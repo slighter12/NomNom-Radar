@@ -3,11 +3,12 @@ package postgres
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
-	"radar/internal/errors"
 	"radar/internal/infra/persistence/model"
 	"radar/internal/infra/persistence/postgres/query"
 
@@ -45,7 +46,7 @@ func (repo *userRepository) FindByID(ctx context.Context, id uuid.UUID) (*entity
 			return nil, repository.ErrUserNotFound
 		}
 		// Otherwise, return the original database error with stack trace.
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("find user by id: %w", err)
 	}
 
 	// Map the persistence model back to a pure domain entity before returning.
@@ -64,7 +65,7 @@ func (repo *userRepository) AcquireSessionMutex(ctx context.Context, id uuid.UUI
 			return repository.ErrUserNotFound
 		}
 
-		return errors.WithStack(err)
+		return fmt.Errorf("acquire session mutex: %w", err)
 	}
 
 	return nil
@@ -83,7 +84,7 @@ func (repo *userRepository) FindByEmail(ctx context.Context, email string) (*ent
 			return nil, repository.ErrUserNotFound
 		}
 
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("find user by email: %w", err)
 	}
 
 	return toUserDomain(userM), nil

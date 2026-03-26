@@ -1,12 +1,12 @@
 package logs
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
 
 	"radar/config"
-	"radar/internal/errors"
 
 	"go.uber.org/fx"
 )
@@ -49,6 +49,6 @@ func parseLogLevel(level string) (slog.Level, error) {
 	case "error":
 		return slog.LevelError, nil
 	default:
-		return slog.LevelInfo, errors.Errorf("unknown log level: %s", level)
+		return slog.LevelInfo, fmt.Errorf("unknown log level: %s", level)
 	}
 }

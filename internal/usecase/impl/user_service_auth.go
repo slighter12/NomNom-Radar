@@ -2,6 +2,8 @@ package impl
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -9,7 +11,6 @@ import (
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	domainservice "radar/internal/domain/service"
-	"radar/internal/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
@@ -77,14 +78,14 @@ func (srv *userService) authenticate(ctx context.Context, req *authRequest) (*us
 		return resolveErr
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to execute authentication transaction")
+		return nil, fmt.Errorf("failed to execute authentication transaction: %w", err)
 	}
 
 	// Bcrypt check is CPU-bound; run it outside the transaction to avoid holding
 	// the DB connection while hashing.
 	if resolution.StoredPasswordHash != "" {
 		if !srv.hasher.Check(req.Password, resolution.StoredPasswordHash) {
-			return nil, errors.Wrap(domainerrors.ErrInvalidCredentials, "invalid credentials")
+			return nil, fmt.Errorf("invalid credentials: %w", domainerrors.ErrInvalidCredentials)
 		}
 	}
 
@@ -102,7 +103,7 @@ func (srv *userService) verifyIdentity(ctx context.Context, req *authRequest) (*
 	case authMethodOAuth:
 		return srv.verifyOAuthIdentity(ctx, req)
 	default:
-		return nil, errors.Wrap(domainerrors.ErrValidationFailed, "unsupported authentication method")
+		return nil, fmt.Errorf("unsupported authentication method: %w", domainerrors.ErrValidationFailed)
 	}
 }
 
@@ -126,12 +127,12 @@ func (srv *userService) verifyEmailIdentity(ctx context.Context, req *authReques
 			slog.Any("error", err),
 		)
 
-		return nil, errors.Wrap(domainerrors.ErrValidationFailed, "password does not meet security requirements")
+		return nil, fmt.Errorf("password does not meet security requirements: %w", domainerrors.ErrValidationFailed)
 	}
 
 	hashedPassword, err := srv.hasher.Hash(req.Password)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to hash password during registration")
+		return nil, fmt.Errorf("failed to hash password during registration: %w", err)
 	}
 	identity.PasswordHash = hashedPassword
 
@@ -141,7 +142,7 @@ func (srv *userService) verifyEmailIdentity(ctx context.Context, req *authReques
 func (srv *userService) verifyOAuthIdentity(ctx context.Context, req *authRequest) (*verifiedIdentity, error) {
 	oauthUser, err := srv.googleAuthService.VerifyIDToken(ctx, req.IDToken)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to verify OAuth ID token")
+		return nil, fmt.Errorf("failed to verify OAuth ID token: %w", err)
 	}
 
 	provider := oauthUser.Provider
@@ -150,7 +151,7 @@ func (srv *userService) verifyOAuthIdentity(ctx context.Context, req *authReques
 	}
 
 	if !oauthUser.EmailVerified {
-		return nil, errors.Wrap(domainerrors.ErrValidationFailed, "oauth provider email must be verified")
+		return nil, fmt.Errorf("oauth provider email must be verified: %w", domainerrors.ErrValidationFailed)
 	}
 
 	return &verifiedIdentity{
@@ -173,7 +174,7 @@ func (srv *userService) resolveAuthRequest(
 
 	authRecord, err := authRepo.FindAuthentication(ctx, identity.Provider, identity.ProviderUserID)
 	if err != nil && !errors.Is(err, repository.ErrAuthNotFound) {
-		return nil, errors.Wrap(err, "failed to find authentication")
+		return nil, fmt.Errorf("failed to find authentication: %w", err)
 	}
 
 	if err == nil {
@@ -181,7 +182,7 @@ func (srv *userService) resolveAuthRequest(
 	}
 
 	if req.Method == authMethodEmailPassword && req.Intent == authIntentLogin {
-		return nil, errors.Wrap(domainerrors.ErrInvalidCredentials, "login failed")
+		return nil, fmt.Errorf("login failed: %w", domainerrors.ErrInvalidCredentials)
 	}
 
 	return srv.resolveUnlinkedIdentity(ctx, userRepo, authRepo, req, identity)
@@ -196,7 +197,7 @@ func (srv *userService) resolveExistingLinkedUser(
 ) (*authResolution, error) {
 	user, err := userRepo.FindByID(ctx, authRecord.UserID)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to find user by id")
+		return nil, fmt.Errorf("failed to find user by id: %w", err)
 	}
 
 	onboardingRequired, err := srv.ensureRequestedRole(ctx, userRepo, user, req, identity)
@@ -231,7 +232,7 @@ func (srv *userService) resolveUnlinkedIdentity(
 	case errors.Is(err, repository.ErrUserNotFound):
 		return srv.createNewUserForIdentity(ctx, userRepo, authRepo, req, identity)
 	default:
-		return nil, errors.Wrap(err, "failed to find user by email")
+		return nil, fmt.Errorf("failed to find user by email: %w", err)
 	}
 }
 
@@ -300,7 +301,7 @@ func (srv *userService) createUserSkeleton(
 				Email: identity.Email,
 			}
 			if err := userRepo.Create(ctx, user); err != nil {
-				return nil, false, errors.Wrap(err, "failed to create onboarding user")
+				return nil, false, fmt.Errorf("failed to create onboarding user: %w", err)
 			}
 
 			return user, true, nil
@@ -367,11 +368,11 @@ func (srv *userService) buildAuthenticatedResult(ctx context.Context, user *enti
 
 	accessToken, refreshToken, err := srv.tokenService.GenerateTokens(user.ID, roles.ToStrings())
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to generate tokens")
+		return nil, fmt.Errorf("failed to generate tokens: %w", err)
 	}
 
 	if err := srv.persistLoginRefreshToken(ctx, user.ID, refreshToken); err != nil {
-		return nil, errors.Wrap(err, "failed to create refresh token during authentication")
+		return nil, fmt.Errorf("failed to create refresh token during authentication: %w", err)
 	}
 
 	return &usecase.AuthResult{
@@ -385,7 +386,7 @@ func (srv *userService) buildAuthenticatedResult(ctx context.Context, user *enti
 func (srv *userService) buildOnboardingRequiredResult(user *entity.User, requestedRole entity.Role) (*usecase.AuthResult, error) {
 	onboardingToken, err := srv.tokenService.GenerateOnboardingToken(user.ID)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to generate onboarding token")
+		return nil, fmt.Errorf("failed to generate onboarding token: %w", err)
 	}
 
 	return &usecase.AuthResult{
@@ -399,10 +400,10 @@ func (srv *userService) buildOnboardingRequiredResult(user *entity.User, request
 func (srv *userService) CompleteMerchantOnboarding(ctx context.Context, input *usecase.CompleteMerchantOnboardingInput) (*usecase.AuthResult, error) {
 	claims, err := srv.tokenService.ValidateToken(input.OnboardingToken)
 	if err != nil {
-		return nil, errors.Wrap(domainerrors.ErrUnauthorized, "invalid onboarding token")
+		return nil, fmt.Errorf("invalid onboarding token: %w", domainerrors.ErrUnauthorized)
 	}
 	if claims.Type != domainservice.TokenTypeOnboarding {
-		return nil, errors.Wrap(domainerrors.ErrUnauthorized, "invalid onboarding token type")
+		return nil, fmt.Errorf("invalid onboarding token type: %w", domainerrors.ErrUnauthorized)
 	}
 
 	seed := merchantProfileSeed{
@@ -418,15 +419,15 @@ func (srv *userService) CompleteMerchantOnboarding(ctx context.Context, input *u
 		loadedUser, err := userRepo.FindByID(ctx, claims.UserID)
 		if err != nil {
 			if errors.Is(err, repository.ErrUserNotFound) {
-				return errors.Wrap(domainerrors.ErrNotFound, "user not found")
+				return fmt.Errorf("user not found: %w", domainerrors.ErrNotFound)
 			}
 
-			return errors.Wrap(err, "failed to find user")
+			return fmt.Errorf("failed to find user: %w", err)
 		}
 
 		user = loadedUser
 		if userHasMerchantProfile(user) {
-			return errors.Wrap(domainerrors.ErrConflict, "merchant onboarding already completed")
+			return fmt.Errorf("merchant onboarding already completed: %w", domainerrors.ErrConflict)
 		}
 
 		cfg := buildMerchantRegistrationConfig(user.Name, user.Email, "", seed)
@@ -437,7 +438,7 @@ func (srv *userService) CompleteMerchantOnboarding(ctx context.Context, input *u
 		return nil
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to complete merchant onboarding")
+		return nil, fmt.Errorf("failed to complete merchant onboarding: %w", err)
 	}
 
 	return srv.buildAuthenticatedResult(ctx, user)
@@ -476,7 +477,7 @@ func buildMerchantRegistrationConfig(name, email, password string, seed merchant
 		AttachProfile: attachMerchantProfileFromSeed(seed),
 		HasProfile:    userHasMerchantProfile,
 		ProfileExistsError: func() error {
-			return errors.Wrap(domainerrors.ErrMerchantAlreadyExists, "merchant profile already registered for this account")
+			return fmt.Errorf("merchant profile already registered for this account: %w", domainerrors.ErrMerchantAlreadyExists)
 		},
 	}
 }
@@ -490,7 +491,7 @@ func createEmailAuthentication(ctx context.Context, authRepo repository.AuthRepo
 	}
 
 	if err := authRepo.CreateAuthentication(ctx, newAuth); err != nil {
-		return errors.Wrap(err, "failed to create email authentication")
+		return fmt.Errorf("failed to create email authentication: %w", err)
 	}
 
 	return nil
@@ -506,14 +507,14 @@ func linkIdentityToExistingUser(
 	switch req.Method {
 	case authMethodOAuth:
 		if !identity.EmailVerified {
-			return errors.Wrap(domainerrors.ErrConflict, "account with this email already exists")
+			return fmt.Errorf("account with this email already exists: %w", domainerrors.ErrConflict)
 		}
 
 		return ensureOAuthAuthLink(ctx, authRepo, userID, identity.Provider, identity.ProviderUserID)
 	case authMethodEmailPassword:
-		return errors.Wrap(domainerrors.ErrConflict, "account with this email already exists")
+		return fmt.Errorf("account with this email already exists: %w", domainerrors.ErrConflict)
 	default:
-		return errors.Wrap(domainerrors.ErrConflict, "account with this email already exists")
+		return fmt.Errorf("account with this email already exists: %w", domainerrors.ErrConflict)
 	}
 }
 
@@ -526,7 +527,7 @@ func ensureOAuthAuthLink(
 ) error {
 	existingAuth, err := authRepo.FindAuthenticationByUserIDAndProvider(ctx, userID, provider)
 	if err != nil && !errors.Is(err, repository.ErrAuthNotFound) {
-		return errors.Wrap(err, "failed to find existing oauth authentication")
+		return fmt.Errorf("failed to find existing oauth authentication: %w", err)
 	}
 
 	if existingAuth != nil {
@@ -534,7 +535,7 @@ func ensureOAuthAuthLink(
 			return nil
 		}
 
-		return errors.Wrap(domainerrors.ErrConflict, "provider is already linked to a different account for this user")
+		return fmt.Errorf("provider is already linked to a different account for this user: %w", domainerrors.ErrConflict)
 	}
 
 	return createOAuthAuthentication(ctx, authRepo, userID, provider, providerUserID)

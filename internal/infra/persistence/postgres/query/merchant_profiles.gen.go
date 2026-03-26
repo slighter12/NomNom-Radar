@@ -7,16 +7,14 @@ package query
 import (
 	"context"
 
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
-	"gorm.io/gorm/schema"
+	"radar/internal/infra/persistence/model"
 
 	"gorm.io/gen"
 	"gorm.io/gen/field"
-
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+	"gorm.io/gorm/schema"
 	"gorm.io/plugin/dbresolver"
-
-	"radar/internal/infra/persistence/model"
 )
 
 func newMerchantProfileModel(db *gorm.DB, opts ...gen.DOOption) merchantProfileModel {

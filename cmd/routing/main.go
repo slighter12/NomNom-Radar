@@ -2,11 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
-
-	"radar/internal/errors"
 )
 
 // Supported subcommands:
@@ -14,7 +13,6 @@ import (
 // - convert:  Convert to CH format
 // - prepare:  Download + convert in one step
 // - validate: Validate data integrity
-
 func main() {
 	// Subcommand definitions
 	downloadCmd := flag.NewFlagSet("download", flag.ExitOnError)
@@ -128,7 +126,7 @@ func runSubcommand(ctx context.Context, flags *routingFlags) error {
 
 func handleDownload(ctx context.Context, flags *routingFlags) error {
 	if err := flags.Download.cmd.Parse(os.Args[2:]); err != nil {
-		return errors.Wrap(err, "failed to parse download flags")
+		return fmt.Errorf("failed to parse download flags: %w", err)
 	}
 
 	return runDownload(ctx, *flags.Download.region, *flags.Download.output)
@@ -136,7 +134,7 @@ func handleDownload(ctx context.Context, flags *routingFlags) error {
 
 func handleConvert(ctx context.Context, flags *routingFlags) error {
 	if err := flags.Convert.cmd.Parse(os.Args[2:]); err != nil {
-		return errors.Wrap(err, "failed to parse convert flags")
+		return fmt.Errorf("failed to parse convert flags: %w", err)
 	}
 
 	if *flags.Convert.input == "" {
@@ -148,7 +146,7 @@ func handleConvert(ctx context.Context, flags *routingFlags) error {
 
 func handlePrepare(ctx context.Context, flags *routingFlags) error {
 	if err := flags.Prepare.cmd.Parse(os.Args[2:]); err != nil {
-		return errors.Wrap(err, "failed to parse prepare flags")
+		return fmt.Errorf("failed to parse prepare flags: %w", err)
 	}
 
 	return runPrepare(ctx, *flags.Prepare.region, *flags.Prepare.output)
@@ -156,7 +154,7 @@ func handlePrepare(ctx context.Context, flags *routingFlags) error {
 
 func handleValidate(flags *routingFlags) error {
 	if err := flags.Validate.cmd.Parse(os.Args[2:]); err != nil {
-		return errors.Wrap(err, "failed to parse validate flags")
+		return fmt.Errorf("failed to parse validate flags: %w", err)
 	}
 
 	return runValidate(*flags.Validate.dir)

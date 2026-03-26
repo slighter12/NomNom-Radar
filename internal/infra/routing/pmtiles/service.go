@@ -2,6 +2,7 @@ package pmtiles
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -15,7 +16,6 @@ import (
 	"time"
 
 	"radar/config"
-	"radar/internal/errors"
 	"radar/internal/usecase"
 
 	"github.com/paulmach/orb"
@@ -98,7 +98,7 @@ func NewPMTilesRoutingService(params PMTilesServiceParams) (usecase.RoutingUseca
 	cacheSize := 64 // Cache up to 64 tiles in memory
 	server, err := pmtiles.NewServer(bucketURL, prefix, silentLogger, cacheSize, "")
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create PMTiles server")
+		return nil, fmt.Errorf("failed to create PMTiles server: %w", err)
 	}
 
 	// Start the server (required for serving tiles)
@@ -495,7 +495,7 @@ func (s *pmtilesRoutingService) fetchTile(ctx context.Context, tile maptile.Tile
 	}
 
 	if statusCode != http.StatusOK {
-		return nil, errors.Errorf("unexpected status code: %d", statusCode)
+		return nil, fmt.Errorf("unexpected status code: %d", statusCode)
 	}
 
 	return data, nil

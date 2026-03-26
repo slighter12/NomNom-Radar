@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"radar/internal/errors"
 	"radar/internal/util"
 )
 
@@ -49,7 +49,7 @@ func runDownload(ctx context.Context, region, outputDir string) error {
 	// Get region configuration
 	regionConfig, exists := GetRegionConfig(region)
 	if !exists {
-		return errors.Errorf("unsupported region '%s'. Supported regions: %s", region, strings.Join(ListRegions(), ", "))
+		return fmt.Errorf("unsupported region '%s'. Supported regions: %s", region, strings.Join(ListRegions(), ", "))
 	}
 
 	// Create download config
@@ -70,7 +70,7 @@ func runDownload(ctx context.Context, region, outputDir string) error {
 
 	// Download the file
 	if err := downloadFile(ctx, &config); err != nil {
-		return errors.Wrap(err, "failed to download file")
+		return fmt.Errorf("failed to download file: %w", err)
 	}
 
 	fmt.Printf("\nDownload completed successfully!\n")
@@ -82,7 +82,7 @@ func runDownload(ctx context.Context, region, outputDir string) error {
 func downloadFile(ctx context.Context, config *DownloadConfig) error {
 	// Ensure output directory exists
 	if err := os.MkdirAll(config.OutputDir, 0755); err != nil {
-		return errors.Wrap(err, "failed to create output directory")
+		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
 	outputPath := filepath.Join(config.OutputDir, config.Filename)
@@ -91,7 +91,7 @@ func downloadFile(ctx context.Context, config *DownloadConfig) error {
 	// Create HTTP request with context
 	req, err := http.NewRequestWithContext(ctx, "GET", config.URL, nil)
 	if err != nil {
-		return errors.Wrap(err, "failed to create request")
+		return fmt.Errorf("failed to create request: %w", err)
 	}
 
 	if existingSize > 0 {
@@ -101,7 +101,7 @@ func downloadFile(ctx context.Context, config *DownloadConfig) error {
 	// Make request
 	resp, err := getHTTPClient().Do(req)
 	if err != nil {
-		return errors.Wrap(err, "failed to make request")
+		return fmt.Errorf("failed to make request: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -134,7 +134,7 @@ func checkResponseStatus(resp *http.Response, config *DownloadConfig) error {
 	case http.StatusOK, http.StatusPartialContent:
 		return nil
 	default:
-		return errors.Errorf("unexpected status code: %d", resp.StatusCode)
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 }
 
@@ -159,7 +159,7 @@ func performDownload(ctx context.Context, resp *http.Response, path string, exis
 	}
 
 	if _, err := io.Copy(io.MultiWriter(file, progress), reader); err != nil {
-		return errors.Wrap(err, "failed to download file")
+		return fmt.Errorf("failed to download file: %w", err)
 	}
 
 	fmt.Println()
@@ -178,7 +178,7 @@ type contextReader struct {
 
 func (cr *contextReader) Read(p []byte) (int, error) {
 	if err := cr.ctx.Err(); err != nil {
-		return 0, errors.Wrap(err, "context canceled during read")
+		return 0, fmt.Errorf("context canceled during read: %w", err)
 	}
 
 	bytesRead, err := cr.r.Read(p)
@@ -187,7 +187,7 @@ func (cr *contextReader) Read(p []byte) (int, error) {
 			return bytesRead, io.EOF
 		}
 
-		return bytesRead, errors.Wrap(err, "read failed")
+		return bytesRead, fmt.Errorf("read failed: %w", err)
 	}
 
 	return bytesRead, nil
@@ -197,7 +197,7 @@ func openOutputFile(path string, existingSize int64, statusCode int) (*os.File, 
 	if existingSize > 0 && statusCode == http.StatusPartialContent {
 		file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to open file for appending")
+			return nil, fmt.Errorf("failed to open file for appending: %w", err)
 		}
 
 		return file, nil
@@ -205,7 +205,7 @@ func openOutputFile(path string, existingSize int64, statusCode int) (*os.File, 
 
 	file, err := os.Create(path)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create file")
+		return nil, fmt.Errorf("failed to create file: %w", err)
 	}
 
 	return file, nil
@@ -276,7 +276,7 @@ func (dp *DownloadProgress) displayProgress() {
 func parseContentLength(length string) (int64, error) {
 	size, err := strconv.ParseInt(length, 10, 64)
 	if err != nil {
-		return 0, errors.Wrap(err, "failed to parse content length")
+		return 0, fmt.Errorf("failed to parse content length: %w", err)
 	}
 
 	return size, nil
@@ -290,25 +290,25 @@ func verifyFileIntegrity(config *DownloadConfig) error {
 
 	file, err := os.Open(outputPath)
 	if err != nil {
-		return errors.Wrap(err, "failed to open file for verification")
+		return fmt.Errorf("failed to open file for verification: %w", err)
 	}
 	defer file.Close()
 
 	sha256Sum, err := util.CalculateFileChecksum(outputPath)
 	if err != nil {
-		return errors.Wrap(err, "failed to calculate checksum")
+		return fmt.Errorf("failed to calculate checksum: %w", err)
 	}
 
 	fmt.Printf("SHA256 (calculated): %s\n", sha256Sum)
 
 	expected, source, err := loadExpectedChecksum(outputPath)
 	if err != nil {
-		return errors.Wrap(err, "failed to load expected checksum")
+		return fmt.Errorf("failed to load expected checksum: %w", err)
 	}
 
 	if expected != "" {
 		if sha256Sum != expected {
-			return errors.Errorf("checksum mismatch: expected %s (%s), got %s", expected, source, sha256Sum)
+			return fmt.Errorf("checksum mismatch: expected %s (%s), got %s", expected, source, sha256Sum)
 		}
 
 		fmt.Printf("Checksum verified against expected value (%s).\n", source)
@@ -331,7 +331,7 @@ func loadExpectedChecksum(filePath string) (value string, source string, err err
 			return "", "", nil
 		}
 
-		return "", "", errors.Wrapf(err, "failed to open checksum sidecar %s", sidecarPath)
+		return "", "", fmt.Errorf("failed to open checksum sidecar %s: %w", sidecarPath, err)
 	}
 	defer file.Close()
 
@@ -340,7 +340,7 @@ func loadExpectedChecksum(filePath string) (value string, source string, err err
 	}
 
 	if err := json.NewDecoder(file).Decode(&payload); err != nil {
-		return "", "", errors.Wrapf(err, "failed to decode checksum sidecar %s", sidecarPath)
+		return "", "", fmt.Errorf("failed to decode checksum sidecar %s: %w", sidecarPath, err)
 	}
 
 	if payload.SHA256 == "" {

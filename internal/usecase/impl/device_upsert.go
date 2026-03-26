@@ -2,13 +2,14 @@ package impl
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
-	"radar/internal/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
@@ -27,18 +28,18 @@ func upsertUserDevice(
 	device, err := deviceRepo.FindDeviceByUserAndDeviceID(ctx, userID, deviceInfo.DeviceID)
 	if err == nil {
 		if err := deviceRepo.UpdateFCMToken(ctx, device.ID, deviceInfo.FCMToken); err != nil {
-			return nil, errors.Wrap(err, "failed to update FCM token")
+			return nil, fmt.Errorf("failed to update FCM token: %w", err)
 		}
 
 		updatedDevice, err := deviceRepo.FindDeviceByID(ctx, device.ID)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to find device by ID")
+			return nil, fmt.Errorf("failed to find device by ID: %w", err)
 		}
 
 		return updatedDevice, nil
 	}
 	if !errors.Is(err, repository.ErrDeviceNotFound) {
-		return nil, errors.Wrap(err, "failed to find device by user and device ID")
+		return nil, fmt.Errorf("failed to find device by user and device ID: %w", err)
 	}
 
 	newDevice := &entity.UserDevice{
@@ -53,7 +54,7 @@ func upsertUserDevice(
 	}
 
 	if err := deviceRepo.CreateDevice(ctx, newDevice); err != nil {
-		return nil, errors.Wrap(err, "failed to create device")
+		return nil, fmt.Errorf("failed to create device: %w", err)
 	}
 
 	return newDevice, nil
@@ -61,7 +62,7 @@ func upsertUserDevice(
 
 func validateDeviceInfo(deviceInfo *usecase.DeviceInfo) error {
 	if deviceInfo == nil {
-		return errors.Wrap(domainerrors.ErrValidationFailed, "device info is required")
+		return fmt.Errorf("device info is required: %w", domainerrors.ErrValidationFailed)
 	}
 
 	deviceInfo.FCMToken = strings.TrimSpace(deviceInfo.FCMToken)
@@ -69,13 +70,13 @@ func validateDeviceInfo(deviceInfo *usecase.DeviceInfo) error {
 	deviceInfo.Platform = strings.ToLower(strings.TrimSpace(deviceInfo.Platform))
 
 	if deviceInfo.FCMToken == "" {
-		return errors.Wrap(domainerrors.ErrValidationFailed, "fcm_token is required")
+		return fmt.Errorf("fcm_token is required: %w", domainerrors.ErrValidationFailed)
 	}
 	if deviceInfo.DeviceID == "" {
-		return errors.Wrap(domainerrors.ErrValidationFailed, "device_id is required")
+		return fmt.Errorf("device_id is required: %w", domainerrors.ErrValidationFailed)
 	}
 	if deviceInfo.Platform != "ios" && deviceInfo.Platform != "android" {
-		return errors.Wrap(domainerrors.ErrValidationFailed, "platform must be ios or android")
+		return fmt.Errorf("platform must be ios or android: %w", domainerrors.ErrValidationFailed)
 	}
 
 	return nil

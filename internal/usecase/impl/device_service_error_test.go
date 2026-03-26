@@ -2,12 +2,12 @@ package impl
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
-	"radar/internal/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"

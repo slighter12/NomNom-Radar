@@ -2,6 +2,7 @@ package impl
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -9,7 +10,6 @@ import (
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
-	"radar/internal/errors"
 	mockRepo "radar/internal/mocks/repository"
 	"radar/internal/usecase"
 

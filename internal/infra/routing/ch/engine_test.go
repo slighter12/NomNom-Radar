@@ -3,6 +3,7 @@ package ch
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -10,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"radar/internal/errors"
 	"radar/internal/infra/routing/loader"
 
 	"github.com/stretchr/testify/assert"
@@ -285,7 +285,7 @@ func TestEngine_OneToMany_Concurrent(t *testing.T) {
 				return
 			}
 			if len(results) != numTargets {
-				errCh <- errors.Errorf("unexpected result count: got %d, want %d", len(results), numTargets)
+				errCh <- fmt.Errorf("unexpected result count: got %d, want %d", len(results), numTargets)
 
 				return
 			}

@@ -9,7 +9,6 @@ import (
 	deliverycontext "radar/internal/delivery/context"
 	"radar/internal/domain/entity"
 	"radar/internal/domain/service"
-	"radar/internal/errors"
 
 	"google.golang.org/api/idtoken"
 )
@@ -41,7 +40,7 @@ func (s *OAuthService) VerifyIDToken(ctx context.Context, idToken string) (*serv
 	if err != nil {
 		s.log(ctx).Error("Google token validation failed", slog.Any("error", err))
 
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("validate Google ID token: %w", err)
 	}
 
 	// After validation, the payload is trustworthy.

@@ -58,14 +58,6 @@ jobs:
           fi
           echo "IMAGE_NAME=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
-      - name: Set up Go version
-        id: setup-go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-          cache-dependency-path: go.mod
-
       - name: Detect changed paths
         id: changes
         uses: dorny/paths-filter@v3
@@ -105,7 +97,7 @@ jobs:
         if: steps.build-flags.outputs.any == 'true'
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          credentials_json: "${{ secrets.GCP_SA_KEY }}"
 
       - name: Set up Cloud SDK
         if: steps.build-flags.outputs.any == 'true'
@@ -135,8 +127,8 @@ jobs:
             BUILT=${{ github.event.head_commit.timestamp }}
             GIT_COMMIT=${{ github.sha }}
             IMAGE_NAME=${{ steps.set-vars.outputs.IMAGE_NAME }}
-          cache-from: type=gha,scope=radar-${{ steps.setup-go.outputs.go-version }}
-          cache-to: type=gha,mode=max,scope=radar-${{ steps.setup-go.outputs.go-version }}
+          cache-from: type=gha,scope=radar-latest
+          cache-to: type=gha,mode=max,scope=radar-latest
 
       - name: Build and push Geoworker image
         if: steps.build-flags.outputs.geoworker == 'true'
@@ -158,5 +150,5 @@ jobs:
             BUILT=${{ github.event.head_commit.timestamp }}
             GIT_COMMIT=${{ github.sha }}
             IMAGE_NAME=${{ steps.set-vars.outputs.IMAGE_NAME }}
-          cache-from: type=gha,scope=geoworker-${{ steps.setup-go.outputs.go-version }}
-          cache-to: type=gha,mode=max,scope=geoworker-${{ steps.setup-go.outputs.go-version }}
+          cache-from: type=gha,scope=geoworker-latest
+          cache-to: type=gha,mode=max,scope=geoworker-latest

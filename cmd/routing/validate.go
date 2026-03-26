@@ -2,12 +2,12 @@ package main
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
-	"radar/internal/errors"
 	"radar/internal/util"
 )
 
@@ -15,7 +15,7 @@ func runValidate(dir string) error {
 	fmt.Printf("Validating routing data in directory: %s\n", dir)
 
 	if err := validateRoutingData(dir); err != nil {
-		return errors.Wrap(err, "validation failed")
+		return fmt.Errorf("validation failed: %w", err)
 	}
 
 	fmt.Println("✅ Validation passed!")
@@ -26,7 +26,7 @@ func runValidate(dir string) error {
 func validateRoutingData(dir string) error {
 	// Check if directory exists
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		return errors.Wrapf(err, "directory does not exist: %s", dir)
+		return fmt.Errorf("directory does not exist: %s: %w", dir, err)
 	}
 
 	// Load and validate metadata
@@ -58,12 +58,12 @@ func loadAndValidateMetadata(dir string) (*RoutingMetadata, error) {
 
 	metadata, err := LoadMetadataFromFile(metadataPath)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to load metadata")
+		return nil, fmt.Errorf("failed to load metadata: %w", err)
 	}
 
 	// Validate metadata structure
 	if metadata.Version != "1.0" {
-		return nil, errors.Errorf("unsupported metadata version: %s", metadata.Version)
+		return nil, fmt.Errorf("unsupported metadata version: %s", metadata.Version)
 	}
 
 	fmt.Printf("  ✅ Version: %s\n", metadata.Version)
@@ -81,11 +81,11 @@ func validateFilesAgainstMetadata(dir string, metadata *RoutingMetadata) error {
 
 		info, err := os.Stat(filePath)
 		if err != nil {
-			return errors.Wrapf(err, "output file not found: %s", filename)
+			return fmt.Errorf("output file not found: %s: %w", filename, err)
 		}
 
 		if info.Size() != fileMeta.SizeBytes {
-			return errors.Errorf("file size mismatch for %s: expected %d, got %d",
+			return fmt.Errorf("file size mismatch for %s: expected %d, got %d",
 				filename, fileMeta.SizeBytes, info.Size())
 		}
 
@@ -93,11 +93,11 @@ func validateFilesAgainstMetadata(dir string, metadata *RoutingMetadata) error {
 		if fileMeta.SHA256 != "" {
 			sha256Hash, err := util.CalculateFileChecksum(filePath)
 			if err != nil {
-				return errors.Wrapf(err, "failed to calculate checksum for %s", filename)
+				return fmt.Errorf("failed to calculate checksum for %s: %w", filename, err)
 			}
 
 			if sha256Hash != fileMeta.SHA256 {
-				return errors.Errorf("checksum mismatch for %s: expected %s, got %s",
+				return fmt.Errorf("checksum mismatch for %s: expected %s, got %s",
 					filename, fileMeta.SHA256, sha256Hash)
 			}
 		}
@@ -125,7 +125,7 @@ func validateCSVFormats(dir string, metadata *RoutingMetadata) error {
 
 		filePath := filepath.Join(dir, filename)
 		if err := validator(filePath); err != nil {
-			return errors.Wrapf(err, "CSV validation failed for %s", filename)
+			return fmt.Errorf("CSV validation failed for %s: %w", filename, err)
 		}
 
 		fmt.Printf("  ✅ %s format\n", filename)
@@ -175,7 +175,7 @@ func validateShortcutsCSV(filePath string) error {
 func validateCSVHasColumns(filePath string, expectedColumns []string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return errors.Wrap(err, "failed to open file")
+		return fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
@@ -187,7 +187,7 @@ func validateCSVHasColumns(filePath string, expectedColumns []string) error {
 			return errors.New("file is empty or has no header")
 		}
 
-		return errors.Wrap(err, "failed to read CSV header")
+		return fmt.Errorf("failed to read CSV header: %w", err)
 	}
 
 	headerSet := make(map[string]struct{}, len(header))
@@ -197,7 +197,7 @@ func validateCSVHasColumns(filePath string, expectedColumns []string) error {
 
 	for _, expected := range expectedColumns {
 		if _, ok := headerSet[expected]; !ok {
-			return errors.Errorf("missing required column '%s' in header. Got: %v", expected, header)
+			return fmt.Errorf("missing required column '%s' in header. Got: %v", expected, header)
 		}
 	}
 

@@ -2,11 +2,11 @@ package loader
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
-
-	"radar/internal/errors"
 )
 
 // RoutingMetadata represents the metadata for routing data files
@@ -60,15 +60,15 @@ func LoadMetadata(dataDir string) (*RoutingMetadata, error) {
 	data, err := os.ReadFile(metadataPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, errors.WithStack(err)
+			return nil, fmt.Errorf("read routing metadata %s: %w", metadataPath, err)
 		}
 
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("read routing metadata %s: %w", metadataPath, err)
 	}
 
 	var metadata RoutingMetadata
 	if err := json.Unmarshal(data, &metadata); err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("unmarshal routing metadata %s: %w", metadataPath, err)
 	}
 
 	return &metadata, nil
