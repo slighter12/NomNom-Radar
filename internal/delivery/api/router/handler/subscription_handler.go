@@ -108,14 +108,6 @@ func (h *SubscriptionHandler) GenerateSubscriptionQR(c echo.Context) error {
 		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
 	}
 
-	pathMerchantID, err := h.parseMerchantID(c)
-	if err != nil {
-		return err
-	}
-	if pathMerchantID != authenticatedMerchantID {
-		return response.Forbidden(c, "FORBIDDEN", "Permission denied: merchant ID mismatch")
-	}
-
 	qrCode, err := h.subscriptionUC.GenerateSubscriptionQR(c.Request().Context(), authenticatedMerchantID)
 	if err != nil {
 		return response.HandleAppError(c, err)

@@ -1,4 +1,3 @@
-// Package router contains routing and server setup for the HTTP delivery.
 package router
 
 import (
@@ -59,7 +58,12 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 	// Health check endpoint
 	e.GET("/health", handler.HealthCheck)
 
-	// Auth routes
+	r.registerPublicRoutes(e)
+	r.registerAuthenticatedRootRoutes(e)
+	r.registerAPIV1Routes(e)
+}
+
+func (r *router) registerPublicRoutes(e *echo.Echo) {
 	authGroup := e.Group("/auth")
 	{
 		authGroup.POST("/register/user", r.userHandler.RegisterUser)
@@ -70,65 +74,46 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 		authGroup.POST("/logout", r.userHandler.Logout)
 	}
 
-	// OAuth routes - separate group for better organization
 	oauthGroup := e.Group("/oauth")
 	{
-		oauthGroup.POST("/google/callback", r.userHandler.GoogleCallback) // Handle callback
+		oauthGroup.POST("/google/callback", r.userHandler.GoogleCallback)
 	}
+}
 
-	// User routes that require authentication
+func (r *router) registerAuthenticatedRootRoutes(e *echo.Echo) {
 	userGroup := e.Group("/user")
-	userGroup.Use(r.authMiddleware.Authenticate) // Apply JWT authentication middleware
+	userGroup.Use(r.authMiddleware.Authenticate)
 	{
 		userGroup.GET("/profile", r.userHandler.GetProfile)
 	}
 
-	// Merchant routes that require authentication and "merchant" role
 	merchantGroup := e.Group("/merchant")
-	merchantGroup.Use(r.authMiddleware.Authenticate)                     // First, check if logged in
-	merchantGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant)) // Then, check for the role
+	merchantGroup.Use(r.authMiddleware.Authenticate)
+	merchantGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant))
 	{
-		// ... merchant-specific handlers
-		// merchantGroup.GET("/dashboard", r.merchantHandler.GetDashboard)
+		// Reserved for non-versioned merchant-only routes.
 	}
+}
 
-	// API v1 routes
+func (r *router) registerAPIV1Routes(e *echo.Echo) {
 	apiV1 := e.Group("/api/v1")
-	apiV1.Use(r.authMiddleware.Authenticate) // All API v1 routes require authentication
+	apiV1.Use(r.authMiddleware.Authenticate)
 
-	// Location management routes
+	r.registerAPIV1UserRoutes(apiV1)
+	r.registerAPIV1SharedRoutes(apiV1)
+	r.registerAPIV1ConsumerRoutes(apiV1)
+	r.registerAPIV1MerchantRoutes(apiV1)
+}
+
+func (r *router) registerAPIV1UserRoutes(apiV1 *echo.Group) {
 	locationsGroup := apiV1.Group("/locations")
 	{
-		// User location routes
 		locationsGroup.POST("/user", r.locationHandler.CreateUserLocation)
 		locationsGroup.GET("/user", r.locationHandler.GetUserLocations)
 		locationsGroup.PUT("/user/:locationId", r.locationHandler.UpdateUserLocation)
 		locationsGroup.DELETE("/user/:locationId", r.locationHandler.DeleteUserLocation)
-
-		// Merchant location routes (require merchant role)
-		merchantLocGroup := locationsGroup.Group("/merchant")
-		merchantLocGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant))
-		{
-			merchantLocGroup.POST("", r.locationHandler.CreateMerchantLocation)
-			merchantLocGroup.GET("", r.locationHandler.GetMerchantLocations)
-			merchantLocGroup.PUT("/:locationId", r.locationHandler.UpdateMerchantLocation)
-			merchantLocGroup.DELETE("/:locationId", r.locationHandler.DeleteMerchantLocation)
-		}
 	}
 
-	// Merchant menu routes (require merchant role)
-	menusGroup := apiV1.Group("/menus/merchant")
-	menusGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant))
-	{
-		menusGroup.GET("", r.menuHandler.GetMerchantMenuItems)
-		menusGroup.POST("", r.menuHandler.CreateMenuItem)
-		menusGroup.PATCH("/reorder", r.menuHandler.ReorderMenuItems)
-		menusGroup.PUT("/:menuItemId", r.menuHandler.UpdateMenuItem)
-		menusGroup.PATCH("/:menuItemId/status", r.menuHandler.UpdateMenuItemStatus)
-		menusGroup.DELETE("/:menuItemId", r.menuHandler.DeleteMenuItem)
-	}
-
-	// Device management routes
 	devicesGroup := apiV1.Group("/devices")
 	{
 		devicesGroup.POST("", r.deviceHandler.RegisterDevice)
@@ -137,7 +122,6 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 		devicesGroup.DELETE("/:deviceId", r.deviceHandler.DeactivateDevice)
 	}
 
-	// Subscription management routes
 	subscriptionsGroup := apiV1.Group("/subscriptions")
 	{
 		subscriptionsGroup.POST("", r.subscriptionHandler.SubscribeToMerchant)
@@ -145,8 +129,20 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 		subscriptionsGroup.GET("", r.subscriptionHandler.GetUserSubscriptions)
 		subscriptionsGroup.POST("/qr", r.subscriptionHandler.ProcessQRSubscription)
 	}
+}
 
-	// Consumer-facing merchant menu routes.
+func (r *router) registerAPIV1SharedRoutes(apiV1 *echo.Group) {
+	locationsGroup := apiV1.Group("/locations/merchant")
+	locationsGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant))
+	{
+		locationsGroup.POST("", r.locationHandler.CreateMerchantLocation)
+		locationsGroup.GET("", r.locationHandler.GetMerchantLocations)
+		locationsGroup.PUT("/:locationId", r.locationHandler.UpdateMerchantLocation)
+		locationsGroup.DELETE("/:locationId", r.locationHandler.DeleteMerchantLocation)
+	}
+}
+
+func (r *router) registerAPIV1ConsumerRoutes(apiV1 *echo.Group) {
 	// These endpoints are intentionally limited to authenticated user-role accounts.
 	// Merchant-only accounts are excluded even though the menu data is consumer-visible.
 	consumerMerchantsGroup := apiV1.Group("/merchants")
@@ -154,15 +150,26 @@ func (r *router) RegisterRoutes(e *echo.Echo) {
 	{
 		consumerMerchantsGroup.GET("/:merchantId/menu", r.menuHandler.GetPublicMerchantMenu)
 	}
+}
 
-	// Merchant QR code generation (requires merchant role)
-	merchantAdminGroup := apiV1.Group("/merchants")
-	merchantAdminGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant))
+func (r *router) registerAPIV1MerchantRoutes(apiV1 *echo.Group) {
+	merchantGroup := apiV1.Group("/merchant")
+	merchantGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant))
 	{
-		merchantAdminGroup.GET("/:merchantId/qr", r.subscriptionHandler.GenerateSubscriptionQR)
+		merchantGroup.GET("/qr", r.subscriptionHandler.GenerateSubscriptionQR)
 	}
 
-	// Notification management routes (require merchant role)
+	merchantMenusGroup := apiV1.Group("/menus/merchant")
+	merchantMenusGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant))
+	{
+		merchantMenusGroup.GET("", r.menuHandler.GetMerchantMenuItems)
+		merchantMenusGroup.POST("", r.menuHandler.CreateMenuItem)
+		merchantMenusGroup.PATCH("/reorder", r.menuHandler.ReorderMenuItems)
+		merchantMenusGroup.PUT("/:menuItemId", r.menuHandler.UpdateMenuItem)
+		merchantMenusGroup.PATCH("/:menuItemId/status", r.menuHandler.UpdateMenuItemStatus)
+		merchantMenusGroup.DELETE("/:menuItemId", r.menuHandler.DeleteMenuItem)
+	}
+
 	notificationsGroup := apiV1.Group("/notifications")
 	notificationsGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant))
 	{
