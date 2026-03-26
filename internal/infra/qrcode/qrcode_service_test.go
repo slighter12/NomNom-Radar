@@ -3,7 +3,9 @@ package qrcode
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"image"
+	"image/color"
 	"image/png"
 	"testing"
 
@@ -11,15 +13,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/makiuchi-d/gozxing"
-	gozxingqrcode "github.com/makiuchi-d/gozxing/qrcode"
+	"github.com/makiuchi-d/gozxing/qrcode"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func newTestConfig(size int, level string) *config.Config {
+func newTestConfig(level string) *config.Config {
 	return &config.Config{
 		QRCode: &config.QRCodeConfig{
-			Size:                 size,
 			ErrorCorrectionLevel: level,
 		},
 	}
@@ -27,19 +28,18 @@ func newTestConfig(size int, level string) *config.Config {
 func TestNewQRCodeService(t *testing.T) {
 	tests := []struct {
 		name                 string
-		size                 int
 		errorCorrectionLevel string
 	}{
-		{"Low error correction", 256, "L"},
-		{"Medium error correction", 256, "M"},
-		{"High error correction", 256, "Q"},
-		{"Highest error correction", 256, "H"},
-		{"Default error correction", 256, "invalid"},
+		{"Low error correction", "L"},
+		{"Medium error correction", "M"},
+		{"High error correction", "Q"},
+		{"Highest error correction", "H"},
+		{"Default error correction", "invalid"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := newTestConfig(tt.size, tt.errorCorrectionLevel)
+			cfg := newTestConfig(tt.errorCorrectionLevel)
 			service := NewQRCodeService(cfg)
 			assert.NotNil(t, service)
 		})
@@ -47,7 +47,7 @@ func TestNewQRCodeService(t *testing.T) {
 }
 
 func TestQRCodeService_GenerateSubscriptionQR(t *testing.T) {
-	cfg := newTestConfig(256, "M")
+	cfg := newTestConfig("M")
 	service := NewQRCodeService(cfg)
 	merchantID := uuid.New()
 
@@ -62,35 +62,17 @@ func TestQRCodeService_GenerateSubscriptionQR(t *testing.T) {
 	assert.Equal(t, byte(0x47), qrBytes[3])
 }
 
-func TestQRCodeService_GenerateSubscriptionQR_DifferentSizes(t *testing.T) {
-	tests := []struct {
-		name string
-		size int
-	}{
-		{"Small QR", 128},
-		{"Medium QR", 256},
-		{"Large QR", 512},
-	}
+func TestQRCodeService_GenerateSubscriptionQR_IsDecodable(t *testing.T) {
+	service := NewQRCodeService(newTestConfig("M"))
+	merchantID := uuid.New()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := newTestConfig(tt.size, "M")
-			service := NewQRCodeService(cfg)
-			merchantID := uuid.New()
+	qrBytes, err := service.GenerateSubscriptionQR(merchantID)
+	require.NoError(t, err)
+	assert.NotEmpty(t, qrBytes)
 
-			qrBytes, err := service.GenerateSubscriptionQR(merchantID)
-			require.NoError(t, err)
-			assert.NotEmpty(t, qrBytes)
-
-			imgCfg, err := png.DecodeConfig(bytes.NewReader(qrBytes))
-			require.NoError(t, err)
-			assert.Equal(t, tt.size, imgCfg.Width)
-			assert.Equal(t, tt.size, imgCfg.Height)
-
-			decodedPayload := decodeQRCodePayload(t, qrBytes)
-			assert.Equal(t, expectedSubscriptionPayload(t, merchantID), decodedPayload)
-		})
-	}
+	decodedPayload, err := decodeQRCodePayload(qrBytes)
+	require.NoError(t, err)
+	assert.Equal(t, expectedSubscriptionPayload(t, merchantID), decodedPayload)
 }
 
 func TestQRCodeService_GenerateSubscriptionQR_ErrorCorrectionLevels(t *testing.T) {
@@ -98,19 +80,22 @@ func TestQRCodeService_GenerateSubscriptionQR_ErrorCorrectionLevels(t *testing.T
 
 	for _, level := range levels {
 		t.Run(level, func(t *testing.T) {
-			service := NewQRCodeService(newTestConfig(256, level))
+			service := NewQRCodeService(newTestConfig(level))
 			merchantID := uuid.New()
 
 			qrBytes, err := service.GenerateSubscriptionQR(merchantID)
 			require.NoError(t, err)
 			assert.NotEmpty(t, qrBytes)
-			assert.Equal(t, expectedSubscriptionPayload(t, merchantID), decodeQRCodePayload(t, qrBytes))
+
+			decodedPayload, err := decodeQRCodePayload(qrBytes)
+			require.NoError(t, err)
+			assert.Equal(t, expectedSubscriptionPayload(t, merchantID), decodedPayload)
 		})
 	}
 }
 
 func TestQRCodeService_ParseSubscriptionQR(t *testing.T) {
-	cfg := newTestConfig(256, "M")
+	cfg := newTestConfig("M")
 	service := NewQRCodeService(cfg)
 	merchantID := uuid.New()
 
@@ -129,7 +114,7 @@ func TestQRCodeService_ParseSubscriptionQR(t *testing.T) {
 }
 
 func TestQRCodeService_ParseSubscriptionQR_InvalidJSON(t *testing.T) {
-	cfg := newTestConfig(256, "M")
+	cfg := newTestConfig("M")
 	service := NewQRCodeService(cfg)
 
 	_, err := service.ParseSubscriptionQR("invalid json")
@@ -138,7 +123,7 @@ func TestQRCodeService_ParseSubscriptionQR_InvalidJSON(t *testing.T) {
 }
 
 func TestQRCodeService_ParseSubscriptionQR_InvalidType(t *testing.T) {
-	cfg := newTestConfig(256, "M")
+	cfg := newTestConfig("M")
 	service := NewQRCodeService(cfg)
 
 	// Create QR data with invalid type
@@ -155,7 +140,7 @@ func TestQRCodeService_ParseSubscriptionQR_InvalidType(t *testing.T) {
 }
 
 func TestQRCodeService_ParseSubscriptionQR_InvalidUUID(t *testing.T) {
-	cfg := newTestConfig(256, "M")
+	cfg := newTestConfig("M")
 	service := NewQRCodeService(cfg)
 
 	// Create QR data with invalid UUID
@@ -172,7 +157,7 @@ func TestQRCodeService_ParseSubscriptionQR_InvalidUUID(t *testing.T) {
 }
 
 func TestQRCodeService_RoundTrip(t *testing.T) {
-	cfg := newTestConfig(256, "M")
+	cfg := newTestConfig("M")
 	service := NewQRCodeService(cfg)
 	originalMerchantID := uuid.New()
 
@@ -181,34 +166,86 @@ func TestQRCodeService_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, qrBytes)
 
-	decodedPayload := decodeQRCodePayload(t, qrBytes)
+	decodedPayload, err := decodeQRCodePayload(qrBytes)
+	require.NoError(t, err)
 
 	parsedID, err := service.ParseSubscriptionQR(decodedPayload)
 	require.NoError(t, err)
 	assert.Equal(t, originalMerchantID, parsedID)
 }
 
-func decodeQRCodePayload(t *testing.T, qrBytes []byte) string {
-	t.Helper()
-
+func decodeQRCodePayload(qrBytes []byte) (string, error) {
 	img, err := png.Decode(bytes.NewReader(qrBytes))
-	require.NoError(t, err)
+	if err != nil {
+		return "", fmt.Errorf("decode PNG payload: %w", err)
+	}
 
-	result := decodeQRImage(t, img)
+	result, err := decodeQRImage(img)
+	if err != nil {
+		return "", err
+	}
 
-	return result.GetText()
+	return result.GetText(), nil
 }
 
-func decodeQRImage(t *testing.T, img image.Image) *gozxing.Result {
-	t.Helper()
+func decodeQRImage(img image.Image) (*gozxing.Result, error) {
+	tunedHints := map[gozxing.DecodeHintType]any{
+		gozxing.DecodeHintType_TRY_HARDER: true,
+	}
+	pureHints := map[gozxing.DecodeHintType]any{
+		gozxing.DecodeHintType_TRY_HARDER:   true,
+		gozxing.DecodeHintType_PURE_BARCODE: true,
+	}
+	var lastErr error
 
-	bitmap, err := gozxing.NewBinaryBitmapFromImage(img)
-	require.NoError(t, err)
+	for _, tc := range []struct {
+		source image.Image
+		hints  map[gozxing.DecodeHintType]any
+	}{
+		{source: img, hints: nil},
+		{source: img, hints: tunedHints},
+		{source: thresholdQRCodeImage(img), hints: tunedHints},
+		{source: thresholdQRCodeImage(img), hints: pureHints},
+	} {
+		bitmap, err := gozxing.NewBinaryBitmapFromImage(tc.source)
+		if err != nil {
+			lastErr = fmt.Errorf("build binary bitmap: %w", err)
+			continue
+		}
 
-	result, err := gozxingqrcode.NewQRCodeReader().Decode(bitmap, nil)
-	require.NoError(t, err)
+		result, err := qrcode.NewQRCodeReader().Decode(bitmap, tc.hints)
+		if err == nil {
+			return result, nil
+		}
 
-	return result
+		lastErr = err
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no decode attempts were executed")
+	}
+
+	return nil, fmt.Errorf("failed to decode QR image: %w", lastErr)
+}
+
+func thresholdQRCodeImage(img image.Image) image.Image {
+	bounds := img.Bounds()
+	dst := image.NewGray(bounds)
+
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r, g, b, _ := img.At(x, y).RGBA()
+			luminance := (299*r + 587*g + 114*b) / 1000
+			if luminance >= 0x8000 {
+				dst.SetGray(x, y, color.Gray{Y: 0xFF})
+				continue
+			}
+
+			dst.SetGray(x, y, color.Gray{Y: 0x00})
+		}
+	}
+
+	return dst
 }
 
 func expectedSubscriptionPayload(t *testing.T, merchantID uuid.UUID) string {

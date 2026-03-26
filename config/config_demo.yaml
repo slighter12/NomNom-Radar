@@ -68,9 +68,7 @@ firebase:
   credentialsPath: "/path/to/demo-firebase-service-account.json"
 
 qrcode:
-  size: 256
   errorCorrectionLevel: "M"
-  baseUrl: "https://demo-app.com/subscribe"
 
 routing:
   maxSnapDistanceM: 500.0         # Maximum 500m for GPS coordinate snapping
