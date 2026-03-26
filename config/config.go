@@ -129,9 +129,7 @@ type FirebaseConfig struct {
 
 // QRCodeConfig defines QR code generation configuration
 type QRCodeConfig struct {
-	Size                 int    `json:"size" yaml:"size"`
 	ErrorCorrectionLevel string `json:"errorCorrectionLevel" yaml:"errorCorrectionLevel"`
-	BaseURL              string `json:"baseUrl" yaml:"baseUrl"`
 }
 
 // RoutingConfig defines routing engine configuration

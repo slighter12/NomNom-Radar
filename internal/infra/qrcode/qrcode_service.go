@@ -4,23 +4,24 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"image"
-	"image/color"
-	"image/png"
+	"io"
 
 	"radar/config"
 	"radar/internal/domain/service"
 
 	"github.com/google/uuid"
-	goqrcode "github.com/yeqown/go-qrcode/v2"
+	"github.com/yeqown/go-qrcode/v2"
+	"github.com/yeqown/go-qrcode/writer/standard"
 )
 
 type qrcodeService struct {
-	size                 int
-	errorCorrectionLevel string
+	errorCorrectionOption qrcode.EncodeOption
 }
 
-const quietZoneModules = 4
+const (
+	qrBlockWidth     = 20
+	quietZoneModules = 4
+)
 
 // QRCodeData represents the QR code data structure
 type QRCodeData struct {
@@ -30,22 +31,24 @@ type QRCodeData struct {
 
 // NewQRCodeService creates a new QR code service instance
 func NewQRCodeService(cfg *config.Config) service.QRCodeService {
+	level := qrcode.ErrorCorrectionMedium
 	if cfg.QRCode == nil {
 		return &qrcodeService{
-			size:                 256,
-			errorCorrectionLevel: "M",
+			errorCorrectionOption: qrcode.WithErrorCorrectionLevel(level),
 		}
 	}
 
-	level := "M"
 	switch cfg.QRCode.ErrorCorrectionLevel {
-	case "L", "M", "Q", "H":
-		level = cfg.QRCode.ErrorCorrectionLevel
+	case "L":
+		level = qrcode.ErrorCorrectionLow
+	case "Q":
+		level = qrcode.ErrorCorrectionQuart
+	case "H":
+		level = qrcode.ErrorCorrectionHighest
 	}
 
 	return &qrcodeService{
-		size:                 cfg.QRCode.Size,
-		errorCorrectionLevel: level,
+		errorCorrectionOption: qrcode.WithErrorCorrectionLevel(level),
 	}
 }
 
@@ -63,20 +66,26 @@ func (s *qrcodeService) GenerateSubscriptionQR(merchantID uuid.UUID) ([]byte, er
 		return nil, fmt.Errorf("marshal QR payload: %w", err)
 	}
 
-	qrCode, err := goqrcode.NewWith(
+	qrCode, err := qrcode.NewWith(
 		string(jsonData),
-		mapErrorCorrectionLevel(s.errorCorrectionLevel),
+		s.errorCorrectionOption,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create QR code: %w", err)
 	}
 
-	writer := &pngWriter{requestedSize: s.size}
+	var buf bytes.Buffer
+	writer := standard.NewWithWriter(
+		bufferWriteCloser{Writer: &buf},
+		standard.WithQRWidth(qrBlockWidth),
+		standard.WithBorderWidth(qrBlockWidth*quietZoneModules),
+		standard.WithBuiltinImageEncoder(standard.PNG_FORMAT),
+	)
 	if err := qrCode.Save(writer); err != nil {
 		return nil, fmt.Errorf("render QR PNG: %w", err)
 	}
 
-	return writer.bytes, nil
+	return buf.Bytes(), nil
 }
 
 // ParseSubscriptionQR parses QR code data and returns the merchant ID
@@ -100,88 +109,11 @@ func (s *qrcodeService) ParseSubscriptionQR(qrData string) (uuid.UUID, error) {
 	return merchantID, nil
 }
 
-func mapErrorCorrectionLevel(level string) goqrcode.EncodeOption {
-	switch level {
-	case "L":
-		return goqrcode.WithErrorCorrectionLevel(goqrcode.ErrorCorrectionLow)
-	case "Q":
-		return goqrcode.WithErrorCorrectionLevel(goqrcode.ErrorCorrectionQuart)
-	case "H":
-		return goqrcode.WithErrorCorrectionLevel(goqrcode.ErrorCorrectionHighest)
-	default:
-		return goqrcode.WithErrorCorrectionLevel(goqrcode.ErrorCorrectionMedium)
-	}
+type bufferWriteCloser struct {
+	io.Writer
 }
 
-type pngWriter struct {
-	requestedSize int
-	bytes         []byte
-}
-
-func (w *pngWriter) Write(mat goqrcode.Matrix) error {
-	bitmap := mat.Bitmap()
-	realSize := mat.Width() + quietZoneModules*2
-	outputSize := normalizeOutputSize(w.requestedSize, realSize)
-
-	rect := image.Rectangle{
-		Min: image.Point{},
-		Max: image.Point{X: outputSize, Y: outputSize},
-	}
-	palette := color.Palette([]color.Color{color.White, color.Black})
-	img := image.NewPaletted(rect, palette)
-	fgColor := uint8(img.Palette.Index(color.Black))
-
-	modulesPerPixel := float64(realSize) / float64(outputSize)
-	for y := 0; y < outputSize; y++ {
-		srcY := int(float64(y) * modulesPerPixel)
-		for x := 0; x < outputSize; x++ {
-			srcX := int(float64(x) * modulesPerPixel)
-			if moduleAt(bitmap, srcX, srcY) {
-				img.Pix[img.PixOffset(x, y)] = fgColor
-			}
-		}
-	}
-
-	var buf bytes.Buffer
-	encoder := png.Encoder{CompressionLevel: png.BestCompression}
-	if err := encoder.Encode(&buf, img); err != nil {
-		return fmt.Errorf("encode QR PNG: %w", err)
-	}
-
-	w.bytes = buf.Bytes()
-
+func (w bufferWriteCloser) Close() error {
+	// bytes.Buffer does not hold external resources, so Close is a no-op adapter.
 	return nil
-}
-
-func (w *pngWriter) Close() error {
-	return nil
-}
-
-func normalizeOutputSize(size, realSize int) int {
-	if size < 0 {
-		return -size * realSize
-	}
-	if size < realSize {
-		return realSize
-	}
-
-	return size
-}
-
-func moduleAt(bitmap [][]bool, moduleX, moduleY int) bool {
-	if moduleX < quietZoneModules || moduleY < quietZoneModules {
-		return false
-	}
-
-	bitmapY := moduleY - quietZoneModules
-	if bitmapY >= len(bitmap) {
-		return false
-	}
-
-	bitmapX := moduleX - quietZoneModules
-	if bitmapX >= len(bitmap[bitmapY]) {
-		return false
-	}
-
-	return bitmap[bitmapY][bitmapX]
 }
