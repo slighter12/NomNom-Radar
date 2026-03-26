@@ -4,18 +4,18 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: 'Deploy target'
+        description: "Deploy target"
         required: true
         type: choice
         options:
           - radar
           - geoworker
       image_ref:
-        description: 'Required image tag or commit SHA to deploy.'
+        description: "Required image tag or commit SHA to deploy."
         required: true
-        default: ''
+        default: ""
       run_migration:
-        description: 'Run database migration before deploy'
+        description: "Run database migration before deploy"
         required: false
         type: boolean
         default: false
@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: 'read'
+      contents: "read"
 
     steps:
       - name: Checkout
@@ -41,9 +41,9 @@ jobs:
 
       - name: Google Auth
         id: auth
-        uses: 'google-github-actions/auth@v2'
+        uses: "google-github-actions/auth@v2"
         with:
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          credentials_json: "${{ secrets.GCP_SA_KEY }}"
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2

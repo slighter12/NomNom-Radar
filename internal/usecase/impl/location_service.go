@@ -2,13 +2,14 @@ package impl
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"radar/config"
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
-	"radar/internal/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
@@ -121,7 +122,7 @@ func (s *locationService) DeleteMerchantLocation(ctx context.Context, merchantID
 func (s *locationService) getLocations(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType) ([]*entity.Address, error) {
 	addresses, err := s.addressRepo.FindAddressesByOwner(ctx, ownerID, ownerType)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to find addresses by owner")
+		return nil, fmt.Errorf("failed to find addresses by owner: %w", err)
 	}
 
 	return addresses, nil
@@ -135,12 +136,12 @@ func (s *locationService) addLocation(
 	input *usecase.AddLocationInput,
 ) (*entity.Address, error) {
 	if input == nil {
-		return nil, errors.Wrap(domainerrors.ErrValidationFailed, "location input is required")
+		return nil, fmt.Errorf("location input is required: %w", domainerrors.ErrValidationFailed)
 	}
 
 	count, err := s.addressRepo.CountAddressesByOwner(ctx, ownerID, ownerType)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to count addresses by owner")
+		return nil, fmt.Errorf("failed to count addresses by owner: %w", err)
 	}
 
 	if count >= int64(maxLocations) {
@@ -149,7 +150,7 @@ func (s *locationService) addLocation(
 
 	address := s.newAddress(ownerID, ownerType, input)
 	if err := s.addressRepo.CreateAddress(ctx, address); err != nil {
-		return nil, errors.Wrap(err, "failed to create address")
+		return nil, fmt.Errorf("failed to create address: %w", err)
 	}
 
 	return address, nil
@@ -162,7 +163,7 @@ func (s *locationService) updateLocation(
 	input *usecase.UpdateLocationInput,
 ) (*entity.Address, error) {
 	if input == nil {
-		return nil, errors.Wrap(domainerrors.ErrValidationFailed, "location update input is required")
+		return nil, fmt.Errorf("location update input is required: %w", domainerrors.ErrValidationFailed)
 	}
 
 	address, err := s.findOwnedAddress(ctx, ownerID, locationID, ownerType)
@@ -172,7 +173,7 @@ func (s *locationService) updateLocation(
 
 	s.applyAddressUpdates(address, input)
 	if err := s.addressRepo.UpdateAddress(ctx, address); err != nil {
-		return nil, errors.Wrap(err, "failed to update address")
+		return nil, fmt.Errorf("failed to update address: %w", err)
 	}
 
 	return address, nil
@@ -188,7 +189,7 @@ func (s *locationService) deleteLocation(
 	}
 
 	if err := s.addressRepo.DeleteAddress(ctx, locationID); err != nil {
-		return errors.Wrap(err, "failed to delete address")
+		return fmt.Errorf("failed to delete address: %w", err)
 	}
 
 	return nil
@@ -205,7 +206,7 @@ func (s *locationService) findOwnedAddress(
 			return nil, ErrLocationNotFound
 		}
 
-		return nil, errors.Wrap(err, "failed to find address by ID")
+		return nil, fmt.Errorf("failed to find address by ID: %w", err)
 	}
 
 	if address.OwnerID != ownerID || address.OwnerType != ownerType {

@@ -4,11 +4,11 @@ package postgres
 import (
 	"context"
 	"database/sql/driver"
+	"fmt"
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
-	"radar/internal/errors"
 	"radar/internal/infra/persistence/model"
 	"radar/internal/infra/persistence/postgres/query"
 
@@ -74,7 +74,7 @@ func (repo *subscriptionRepository) FindSubscriptionByID(ctx context.Context, su
 		Scan(&subscriptionMs)
 
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("find subscription by id: %w", err)
 	}
 
 	if len(subscriptionMs) == 0 {
@@ -98,7 +98,7 @@ func (repo *subscriptionRepository) FindSubscriptionByUserAndMerchant(ctx contex
 		Scan(&subscriptionMs)
 
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("find subscription by user and merchant: %w", err)
 	}
 
 	if len(subscriptionMs) == 0 {
@@ -123,7 +123,7 @@ func (repo *subscriptionRepository) FindSubscriptionsByUser(ctx context.Context,
 		Scan(&subscriptionModels)
 
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("find subscriptions by user: %w", err)
 	}
 
 	subscriptions := make([]*entity.UserMerchantSubscription, 0, len(subscriptionModels))
@@ -149,7 +149,7 @@ func (repo *subscriptionRepository) FindSubscriptionsByMerchant(ctx context.Cont
 		Scan(&subscriptionModels)
 
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("find subscriptions by merchant: %w", err)
 	}
 
 	subscriptions := make([]*entity.UserMerchantSubscription, 0, len(subscriptionModels))
@@ -167,7 +167,7 @@ func (repo *subscriptionRepository) UpdateSubscriptionStatus(ctx context.Context
 		Update(repo.q.UserMerchantSubscriptionModel.IsActive, isActive)
 
 	if err != nil {
-		return errors.WithStack(err)
+		return fmt.Errorf("update subscription status: %w", err)
 	}
 
 	if result.RowsAffected == 0 {
@@ -184,7 +184,7 @@ func (repo *subscriptionRepository) UpdateNotificationRadius(ctx context.Context
 		Update(repo.q.UserMerchantSubscriptionModel.NotificationRadius, radius)
 
 	if err != nil {
-		return errors.WithStack(err)
+		return fmt.Errorf("update subscription notification radius: %w", err)
 	}
 
 	if result.RowsAffected == 0 {
@@ -201,7 +201,7 @@ func (repo *subscriptionRepository) DeleteSubscription(ctx context.Context, subs
 		Delete()
 
 	if err != nil {
-		return errors.WithStack(err)
+		return fmt.Errorf("delete subscription: %w", err)
 	}
 
 	if result.RowsAffected == 0 {
@@ -236,7 +236,7 @@ func (repo *subscriptionRepository) FindSubscribersWithinRadius(ctx context.Cont
 		Find(&subscriptionModels).Error
 
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("find subscribers within radius: %w", err)
 	}
 
 	subscriptions := make([]*entity.UserMerchantSubscription, 0, len(subscriptionModels))
@@ -277,7 +277,7 @@ func (repo *subscriptionRepository) FindSubscriberAddressesWithinRadius(ctx cont
 		Find(&addressModels).Error
 
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("find subscriber addresses within radius: %w", err)
 	}
 
 	addresses := make([]*entity.SubscriberAddress, 0, len(addressModels))
@@ -309,7 +309,7 @@ func (repo *subscriptionRepository) FindDevicesForUsers(ctx context.Context, use
 		Find()
 
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("find devices for users: %w", err)
 	}
 
 	devices := make([]*entity.UserDevice, 0, len(deviceModels))
@@ -353,7 +353,7 @@ func (repo *subscriptionRepository) FindSubscriberAddressesByUserIDs(ctx context
 		Find(&addressModels).Error
 
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("find subscriber addresses by user ids: %w", err)
 	}
 
 	addresses := make([]*entity.SubscriberAddress, 0, len(addressModels))

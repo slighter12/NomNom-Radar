@@ -4,9 +4,9 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"radar/internal/domain/entity"
-	"radar/internal/errors"
 
 	"github.com/google/uuid"
 )

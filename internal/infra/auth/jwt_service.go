@@ -5,12 +5,12 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
 	"radar/config"
 	"radar/internal/domain/service"
-	"radar/internal/errors"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -54,12 +54,12 @@ func NewJWTService(cfg *config.Config) (service.TokenService, error) {
 func (s *jwtService) GenerateTokens(userID uuid.UUID, roles []string) (accessToken string, refreshToken string, err error) {
 	accessToken, err = s.generateToken(userID, roles, s.accessTTL, s.accessSecret, service.TokenTypeAccess)
 	if err != nil {
-		return "", "", errors.WithStack(err)
+		return "", "", err
 	}
 
 	refreshToken, err = s.generateToken(userID, nil, s.refreshTTL, s.refreshSecret, service.TokenTypeRefresh)
 	if err != nil {
-		return "", "", errors.WithStack(err)
+		return "", "", err
 	}
 
 	return accessToken, refreshToken, nil
@@ -84,7 +84,7 @@ func (s *jwtService) ValidateToken(tokenString string) (*service.Claims, error) 
 func (s *jwtService) GenerateOnboardingToken(userID uuid.UUID) (string, error) {
 	token, err := s.generateToken(userID, nil, s.onboardingTTL, s.onboardingSecret, service.TokenTypeOnboarding)
 	if err != nil {
-		return "", errors.WithStack(err)
+		return "", err
 	}
 
 	return token, nil
@@ -93,7 +93,7 @@ func (s *jwtService) GenerateOnboardingToken(userID uuid.UUID) (string, error) {
 func parseUnverifiedClaims(tokenString string) (*service.Claims, error) {
 	unverifiedToken, _, err := new(jwt.Parser).ParseUnverified(tokenString, &service.Claims{})
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("parse unverified token claims: %w", err)
 	}
 
 	unverifiedClaims, ok := unverifiedToken.Claims.(*service.Claims)
@@ -126,7 +126,7 @@ func parseAndValidateClaims(tokenString string, secret []byte) (*service.Claims,
 		return secret, nil
 	})
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("parse and validate token claims: %w", err)
 	}
 
 	claims, ok := token.Claims.(*service.Claims)
@@ -158,7 +158,7 @@ func (s *jwtService) RotateTokens(userID uuid.UUID, roles []string) (accessToken
 	// Generate new token pair
 	accessToken, refreshToken, err = s.GenerateTokens(userID, roles)
 	if err != nil {
-		return "", "", "", errors.WithStack(err)
+		return "", "", "", err
 	}
 
 	// Hash the refresh token for secure storage
@@ -185,7 +185,7 @@ func (s *jwtService) generateToken(userID uuid.UUID, roles []string, ttl time.Du
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signedToken, err := token.SignedString([]byte(secret))
 	if err != nil {
-		return "", errors.WithStack(err)
+		return "", fmt.Errorf("sign token: %w", err)
 	}
 
 	return signedToken, nil

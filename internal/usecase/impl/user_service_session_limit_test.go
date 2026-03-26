@@ -2,6 +2,7 @@ package impl
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -12,7 +13,6 @@ import (
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
-	"radar/internal/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
@@ -142,7 +142,7 @@ func (r *sessionLimitTestUserRepo) AcquireSessionMutex(ctx context.Context, id u
 	if err := r.txManager.registerUnlock(ctx, unlockFn); err != nil {
 		unlockFn()
 
-		return errors.Wrap(err, "failed to register transaction unlock")
+		return fmt.Errorf("failed to register transaction unlock: %w", err)
 	}
 
 	r.lockCalls.Add(1)

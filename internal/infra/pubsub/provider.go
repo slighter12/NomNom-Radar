@@ -2,17 +2,17 @@ package pubsub
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 
 	"radar/config"
 	"radar/internal/domain/constants"
 	"radar/internal/domain/service"
-	"radar/internal/errors"
 
 	"go.uber.org/fx"
 )
 
-// PublisherParams holds dependencies for EventPublisher, injected by Fx
 type PublisherParams struct {
 	fx.In
 
@@ -64,7 +64,7 @@ func NewEventPublisher(params PublisherParams) (service.EventPublisher, error) {
 		}
 
 	default:
-		return nil, errors.Errorf("unknown pubsub provider: %s", cfg.Provider)
+		return nil, fmt.Errorf("unknown pubsub provider: %s", cfg.Provider)
 	}
 
 	// Register lifecycle hook to close publisher on shutdown

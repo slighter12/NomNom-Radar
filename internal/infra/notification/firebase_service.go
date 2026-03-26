@@ -2,12 +2,13 @@ package notification
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 
 	"radar/config"
 	"radar/internal/domain/service"
-	"radar/internal/errors"
 
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/messaging"
@@ -35,7 +36,7 @@ func NewFirebaseService(params FirebaseDependencies) (service.NotificationServic
 
 	credentialsJSON, readErr := os.ReadFile(params.Config.Firebase.CredentialsPath)
 	if readErr != nil {
-		return nil, errors.Wrap(readErr, "failed to read firebase credentials")
+		return nil, fmt.Errorf("failed to read firebase credentials: %w", readErr)
 	}
 
 	config := &firebase.Config{
@@ -44,12 +45,12 @@ func NewFirebaseService(params FirebaseDependencies) (service.NotificationServic
 	opt := option.WithAuthCredentialsJSON(option.ServiceAccount, credentialsJSON)
 	app, err := firebase.NewApp(params.LC, config, opt)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to initialize firebase app")
+		return nil, fmt.Errorf("failed to initialize firebase app: %w", err)
 	}
 
 	client, err := app.Messaging(params.LC)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create firebase messaging client")
+		return nil, fmt.Errorf("failed to create firebase messaging client: %w", err)
 	}
 
 	params.Logger.Info("Firebase notification service initialized successfully")
@@ -79,7 +80,7 @@ func (s *firebaseService) SendSingleNotification(ctx context.Context, token, tit
 
 	_, err := s.client.Send(ctx, message)
 	if err != nil {
-		return errors.WithStack(err)
+		return fmt.Errorf("send firebase notification: %w", err)
 	}
 
 	return nil
@@ -93,7 +94,7 @@ func (s *firebaseService) SendBatchNotification(ctx context.Context, tokens []st
 
 	// Firebase limits to 500 tokens per request
 	if len(tokens) > 500 {
-		return 0, 0, nil, errors.Errorf("token count exceeds limit: %d (max 500)", len(tokens))
+		return 0, 0, nil, fmt.Errorf("token count exceeds limit: %d (max 500)", len(tokens))
 	}
 
 	message := &messaging.MulticastMessage{
@@ -107,7 +108,7 @@ func (s *firebaseService) SendBatchNotification(ctx context.Context, tokens []st
 
 	response, err := s.client.SendEachForMulticast(ctx, message)
 	if err != nil {
-		return 0, 0, nil, errors.WithStack(err)
+		return 0, 0, nil, fmt.Errorf("send firebase multicast notification: %w", err)
 	}
 
 	successCount = response.SuccessCount

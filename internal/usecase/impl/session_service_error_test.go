@@ -2,13 +2,14 @@ package impl
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
-	"radar/internal/errors"
 	mockRepo "radar/internal/mocks/repository"
 
 	"github.com/google/uuid"
@@ -21,7 +22,7 @@ func TestSessionService_CleanupExpiredSessions_Error(t *testing.T) {
 	ctx := context.Background()
 	dbError := errors.New("database connection failed")
 
-	fx.onExecute(ctx, errors.Wrap(dbError, "failed to delete expired sessions"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, fmt.Errorf("failed to delete expired sessions: %w", dbError), func(factory *mockRepo.MockRepositoryFactory) {
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 		factory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
 		mockRefreshRepo.EXPECT().DeleteExpiredRefreshTokens(ctx).Return(dbError)
@@ -43,7 +44,7 @@ func TestSessionService_GetSessionInfo_OwnerMismatch(t *testing.T) {
 	user := &entity.User{ID: userID}
 	token := &entity.RefreshToken{ID: sessionID, UserID: tokenOwner}
 
-	fx.onExecute(ctx, errors.Wrap(domainerrors.ErrForbidden, "session does not belong to user"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, fmt.Errorf("session does not belong to user: %w", domainerrors.ErrForbidden), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 
@@ -67,7 +68,7 @@ func TestSessionService_GetActiveSessions_UserNotFound(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 
-	fx.onExecute(ctx, errors.Wrap(domainerrors.ErrNotFound, "user not found"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, fmt.Errorf("user not found: %w", domainerrors.ErrNotFound), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
@@ -89,7 +90,7 @@ func TestSessionService_GetActiveSessions_FindError(t *testing.T) {
 	userID := uuid.New()
 	user := &entity.User{ID: userID}
 
-	fx.onExecute(ctx, errors.Wrap(errors.New("db error"), "failed to find user"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, fmt.Errorf("failed to find user: %w", errors.New("db error")), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
@@ -104,7 +105,7 @@ func TestSessionService_GetActiveSessions_FindError(t *testing.T) {
 
 	// Test FindRefreshTokensByUserID error
 	fx2 := createTestSessionService(t)
-	fx2.onExecute(ctx, errors.Wrap(errors.New("db error"), "failed to find refresh tokens"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx2.onExecute(ctx, fmt.Errorf("failed to find refresh tokens: %w", errors.New("db error")), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 
@@ -127,7 +128,7 @@ func TestSessionService_RevokeSession_UserNotFound(t *testing.T) {
 	userID := uuid.New()
 	sessionID := uuid.New()
 
-	fx.onExecute(ctx, errors.Wrap(domainerrors.ErrNotFound, "user not found"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, fmt.Errorf("user not found: %w", domainerrors.ErrNotFound), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
@@ -149,7 +150,7 @@ func TestSessionService_RevokeSession_SessionNotFound(t *testing.T) {
 	sessionID := uuid.New()
 	user := &entity.User{ID: userID}
 
-	fx.onExecute(ctx, errors.Wrap(domainerrors.ErrNotFound, "session not found"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, fmt.Errorf("session not found: %w", domainerrors.ErrNotFound), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 
@@ -176,7 +177,7 @@ func TestSessionService_RevokeSession_Forbidden(t *testing.T) {
 	user := &entity.User{ID: userID}
 	token := &entity.RefreshToken{ID: sessionID, UserID: otherUserID}
 
-	fx.onExecute(ctx, errors.Wrap(domainerrors.ErrForbidden, "session does not belong to user"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, fmt.Errorf("session does not belong to user: %w", domainerrors.ErrForbidden), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 
@@ -202,7 +203,7 @@ func TestSessionService_RevokeSession_DeleteError(t *testing.T) {
 	user := &entity.User{ID: userID}
 	token := &entity.RefreshToken{ID: sessionID, UserID: userID}
 
-	fx.onExecute(ctx, errors.Wrap(errors.New("db error"), "failed to delete session"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, fmt.Errorf("failed to delete session: %w", errors.New("db error")), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 
@@ -226,7 +227,7 @@ func TestSessionService_RevokeAllSessions_UserNotFound(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 
-	fx.onExecute(ctx, errors.Wrap(domainerrors.ErrNotFound, "user not found"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, fmt.Errorf("user not found: %w", domainerrors.ErrNotFound), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
@@ -247,7 +248,7 @@ func TestSessionService_RevokeAllSessions_DeleteError(t *testing.T) {
 	userID := uuid.New()
 	user := &entity.User{ID: userID}
 
-	fx.onExecute(ctx, errors.Wrap(errors.New("db error"), "failed to delete all sessions"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, fmt.Errorf("failed to delete all sessions: %w", errors.New("db error")), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 
@@ -271,7 +272,7 @@ func TestSessionService_RevokeAllOtherSessions_UserNotFound(t *testing.T) {
 	userID := uuid.New()
 	currentSessionID := uuid.New()
 
-	fx.onExecute(ctx, errors.Wrap(domainerrors.ErrNotFound, "user not found"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, fmt.Errorf("user not found: %w", domainerrors.ErrNotFound), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
@@ -293,7 +294,7 @@ func TestSessionService_RevokeAllOtherSessions_FindTokensError(t *testing.T) {
 	currentSessionID := uuid.New()
 	user := &entity.User{ID: userID}
 
-	fx.onExecute(ctx, errors.Wrap(errors.New("db error"), "failed to find refresh tokens"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, fmt.Errorf("failed to find refresh tokens: %w", errors.New("db error")), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 
@@ -317,7 +318,7 @@ func TestSessionService_GetSessionInfo_UserNotFound(t *testing.T) {
 	userID := uuid.New()
 	sessionID := uuid.New()
 
-	fx.onExecute(ctx, errors.Wrap(domainerrors.ErrNotFound, "user not found"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, fmt.Errorf("user not found: %w", domainerrors.ErrNotFound), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
@@ -340,7 +341,7 @@ func TestSessionService_GetSessionInfo_SessionNotFound(t *testing.T) {
 	sessionID := uuid.New()
 	user := &entity.User{ID: userID}
 
-	fx.onExecute(ctx, errors.Wrap(domainerrors.ErrNotFound, "session not found"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, fmt.Errorf("session not found: %w", domainerrors.ErrNotFound), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 
@@ -364,7 +365,7 @@ func TestSessionService_DetectAnomalousActivity_UserNotFound(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 
-	fx.onExecute(ctx, errors.Wrap(domainerrors.ErrNotFound, "user not found"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, fmt.Errorf("user not found: %w", domainerrors.ErrNotFound), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
@@ -386,7 +387,7 @@ func TestSessionService_DetectAnomalousActivity_FindTokensError(t *testing.T) {
 	userID := uuid.New()
 	user := &entity.User{ID: userID}
 
-	fx.onExecute(ctx, errors.Wrap(errors.New("db error"), "failed to find refresh tokens"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, fmt.Errorf("failed to find refresh tokens: %w", errors.New("db error")), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 
@@ -409,7 +410,7 @@ func TestSessionService_GetSessionStatistics_UserNotFound(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 
-	fx.onExecute(ctx, errors.Wrap(domainerrors.ErrNotFound, "user not found"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, fmt.Errorf("user not found: %w", domainerrors.ErrNotFound), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
@@ -431,7 +432,7 @@ func TestSessionService_GetSessionStatistics_FindTokensError(t *testing.T) {
 	userID := uuid.New()
 	user := &entity.User{ID: userID}
 
-	fx.onExecute(ctx, errors.Wrap(errors.New("db error"), "failed to find refresh tokens"), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, fmt.Errorf("failed to find refresh tokens: %w", errors.New("db error")), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 

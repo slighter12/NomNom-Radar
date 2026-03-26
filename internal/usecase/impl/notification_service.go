@@ -2,6 +2,7 @@ package impl
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -12,7 +13,6 @@ import (
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
-	"radar/internal/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
@@ -83,7 +83,7 @@ func (s *notificationService) PublishLocationNotification(
 		return nil, domainerrors.ErrInvalidNotificationData
 	}
 	if addressID != nil && locationData != nil {
-		return nil, errors.Wrap(domainerrors.ErrInvalidNotificationData, "address_id and location_data are mutually exclusive")
+		return nil, fmt.Errorf("address_id and location_data are mutually exclusive: %w", domainerrors.ErrInvalidNotificationData)
 	}
 
 	// Get location information
@@ -110,7 +110,7 @@ func (s *notificationService) PublishLocationNotification(
 	}
 
 	if err := s.notificationRepo.CreateNotification(ctx, notification); err != nil {
-		return nil, errors.Wrap(err, "failed to create notification")
+		return nil, fmt.Errorf("failed to create notification: %w", err)
 	}
 
 	return s.publishAsync(ctx, notification, merchantID, latitude, longitude, locationName, fullAddress, hintMessage)
@@ -221,7 +221,7 @@ func (s *notificationService) GetMerchantNotificationHistory(
 ) ([]*entity.MerchantLocationNotification, error) {
 	notifications, err := s.notificationRepo.FindNotificationsByMerchant(ctx, merchantID, limit, offset)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to find notifications by merchant")
+		return nil, fmt.Errorf("failed to find notifications by merchant: %w", err)
 	}
 
 	return notifications, nil
@@ -242,7 +242,7 @@ func (s *notificationService) getLocationInfo(
 				return "", "", 0, 0, domainerrors.ErrAddressNotFound
 			}
 
-			return "", "", 0, 0, errors.Wrap(fetchErr, "failed to fetch address")
+			return "", "", 0, 0, fmt.Errorf("failed to fetch address: %w", fetchErr)
 		}
 
 		// Verify ownership
@@ -365,7 +365,7 @@ func (s *notificationService) getSubscriberDevices(
 ) (tokens []string, deviceMap map[string]*entity.UserDevice, err error) {
 	candidateAddresses, err := s.subscriptionRepo.FindSubscriberAddressesWithinRadius(ctx, merchantID, latitude, longitude)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to find subscriber addresses")
+		return nil, nil, fmt.Errorf("failed to find subscriber addresses: %w", err)
 	}
 
 	if len(candidateAddresses) == 0 {
@@ -377,7 +377,7 @@ func (s *notificationService) getSubscriberDevices(
 	source := usecase.Coordinate{Lat: latitude, Lng: longitude}
 	routeResults, err := s.routingSvc.OneToMany(ctx, source, targets)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "routing service failed")
+		return nil, nil, fmt.Errorf("routing service failed: %w", err)
 	}
 
 	validAddresses := filterReachableAddresses(candidateAddresses, routeResults.Results)
@@ -389,7 +389,7 @@ func (s *notificationService) getSubscriberDevices(
 
 	devices, err := s.subscriptionRepo.FindDevicesForUsers(ctx, userIDs)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to fetch devices")
+		return nil, nil, fmt.Errorf("failed to fetch devices: %w", err)
 	}
 
 	if len(devices) == 0 {
@@ -494,7 +494,7 @@ func (s *notificationService) sendAndProcessNotifications(
 
 	// Update notification statistics
 	if err := s.notificationRepo.UpdateNotificationStatus(ctx, notification.ID, totalSent, totalFailed); err != nil {
-		return errors.Wrap(err, "failed to update notification status")
+		return fmt.Errorf("failed to update notification status: %w", err)
 	}
 
 	// Update notification object

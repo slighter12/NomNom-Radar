@@ -3,12 +3,13 @@ package ch
 import (
 	"container/heap"
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"math"
 	"sync"
 	"time"
 
-	"radar/internal/errors"
 	"radar/internal/infra/routing/loader"
 )
 
@@ -129,7 +130,7 @@ func (e *Engine) LoadData(dataDir string) error {
 	csvLoader := loader.NewCSVLoader(dataDir)
 	graphData, err := csvLoader.Load()
 	if err != nil {
-		return errors.WithStack(err)
+		return fmt.Errorf("load routing graph data: %w", err)
 	}
 
 	e.vertices = graphData.Vertices

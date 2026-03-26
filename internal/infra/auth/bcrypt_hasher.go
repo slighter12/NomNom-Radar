@@ -2,12 +2,13 @@
 package auth
 
 import (
+	"errors"
+	"fmt"
 	"regexp"
 	"unicode"
 
 	"radar/config"
 	"radar/internal/domain/service"
-	"radar/internal/errors"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -41,12 +42,12 @@ func NewBcryptHasher(cfg *config.Config) (service.PasswordHasher, error) {
 func (h *bcryptHasher) Hash(password string) (string, error) {
 	// Validate password strength before hashing
 	if err := h.ValidatePasswordStrength(password); err != nil {
-		return "", errors.WithStack(err)
+		return "", err
 	}
 
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), h.bcryptCost)
 	if err != nil {
-		return "", errors.WithStack(err)
+		return "", fmt.Errorf("generate password hash: %w", err)
 	}
 
 	return string(bytes), nil
@@ -76,11 +77,11 @@ func (h *bcryptHasher) ValidatePasswordStrength(password string) error {
 // validatePasswordLength checks if password meets length requirements
 func (h *bcryptHasher) validatePasswordLength(password string, minLength, maxLength int) error {
 	if len(password) < minLength {
-		return errors.Errorf("password must be at least %d characters long", minLength)
+		return fmt.Errorf("password must be at least %d characters long", minLength)
 	}
 
 	if maxLength > 0 && len(password) > maxLength {
-		return errors.Errorf("password must be no more than %d characters long", maxLength)
+		return fmt.Errorf("password must be no more than %d characters long", maxLength)
 	}
 
 	return nil

@@ -1,9 +1,8 @@
 package postgres
 
 import (
+	"errors"
 	"strings"
-
-	"radar/internal/errors"
 
 	"gorm.io/gorm"
 )

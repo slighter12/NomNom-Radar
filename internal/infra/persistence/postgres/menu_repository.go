@@ -2,12 +2,13 @@ package postgres
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
-	"radar/internal/errors"
 	"radar/internal/infra/persistence/model"
 
 	"github.com/google/uuid"
@@ -67,7 +68,7 @@ func (repo *menuRepository) FindMenuItemByID(ctx context.Context, id uuid.UUID) 
 			return nil, repository.ErrMenuItemNotFound
 		}
 
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("find menu item by id: %w", err)
 	}
 
 	return toMenuItemDomain(&itemM), nil
@@ -80,7 +81,7 @@ func (repo *menuRepository) ListActiveMenuItemIDsByMerchant(ctx context.Context,
 		Where("merchant_id = ?", merchantID).
 		Order("display_order ASC").
 		Pluck("id", &itemIDs).Error; err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("list active menu item ids by merchant: %w", err)
 	}
 
 	return itemIDs, nil
@@ -91,7 +92,7 @@ func (repo *menuRepository) ListMenuItemsByMerchant(ctx context.Context, merchan
 
 	var total int64
 	if err := countQuery.Count(&total).Error; err != nil {
-		return nil, 0, errors.WithStack(err)
+		return nil, 0, fmt.Errorf("count menu items by merchant: %w", err)
 	}
 
 	dataQuery := repo.buildMenuItemListQuery(ctx, merchantID, filter).
@@ -106,7 +107,7 @@ func (repo *menuRepository) ListMenuItemsByMerchant(ctx context.Context, merchan
 
 	var itemModels []*model.MenuItemModel
 	if err := dataQuery.Find(&itemModels).Error; err != nil {
-		return nil, 0, errors.WithStack(err)
+		return nil, 0, fmt.Errorf("list menu items by merchant: %w", err)
 	}
 
 	items := make([]*entity.MenuItem, 0, len(itemModels))
@@ -144,7 +145,7 @@ func (repo *menuRepository) UpdateMenuItem(ctx context.Context, item *entity.Men
 
 	updatedItem, err := repo.FindMenuItemByID(ctx, item.ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("find updated menu item by id: %w", err)
 	}
 	item.CreatedAt = updatedItem.CreatedAt
 	item.UpdatedAt = updatedItem.UpdatedAt
@@ -172,7 +173,7 @@ func (repo *menuRepository) UpdateMenuItemAvailability(ctx context.Context, id u
 func (repo *menuRepository) DeleteMenuItem(ctx context.Context, merchantID, menuItemID uuid.UUID) error {
 	return repo.withTransaction(ctx, func(tx *gorm.DB) error {
 		if err := repo.lockMerchantProfileForMenuWrite(tx, merchantID); err != nil {
-			return err
+			return fmt.Errorf("lock menu item for delete: %w", err)
 		}
 
 		var itemM model.MenuItemModel
@@ -184,14 +185,14 @@ func (repo *menuRepository) DeleteMenuItem(ctx context.Context, merchantID, menu
 				return repository.ErrMenuItemNotFound
 			}
 
-			return errors.WithStack(err)
+			return fmt.Errorf("delete menu item: %w", err)
 		}
 
 		if err := tx.
 			Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("id = ?", menuItemID).
 			Delete(&model.MenuItemModel{}).Error; err != nil {
-			return errors.WithStack(err)
+			return err
 		}
 
 		if err := tx.Model(&model.MenuItemModel{}).
@@ -216,7 +217,7 @@ func (repo *menuRepository) getNextDisplayOrder(db *gorm.DB, merchantID uuid.UUI
 		Where("merchant_id = ?", merchantID).
 		Scan(&result).Error
 	if err != nil {
-		return 0, errors.WithStack(err)
+		return 0, fmt.Errorf("calculate next menu item display order: %w", err)
 	}
 	if result.NextDisplayOrder <= 0 {
 		return 1, nil
@@ -240,7 +241,7 @@ func (repo *menuRepository) lockMerchantProfileForMenuWrite(tx *gorm.DB, merchan
 			return domainerrors.ErrMenuItemCreationFailed.WrapMessage("invalid merchant reference")
 		}
 
-		return errors.WithStack(err)
+		return fmt.Errorf("lock merchant profile for menu write: %w", err)
 	}
 
 	return nil
@@ -286,7 +287,7 @@ func (repo *menuRepository) ReorderMenuItems(ctx context.Context, merchantID uui
 
 func (repo *menuRepository) withTransaction(ctx context.Context, fn func(tx *gorm.DB) error) error {
 	if err := repo.db.WithContext(ctx).Transaction(fn); err != nil {
-		return errors.WithStack(err)
+		return fmt.Errorf("execute menu transaction: %w", err)
 	}
 
 	return nil
@@ -321,7 +322,7 @@ func (repo *menuRepository) listScopedMenuItemIDs(tx *gorm.DB, merchantID uuid.U
 		Where("merchant_id = ?", merchantID).
 		Order("display_order ASC").
 		Pluck("id", &scopedItemIDs).Error; err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("list scoped menu item ids: %w", err)
 	}
 
 	return scopedItemIDs, nil
@@ -369,7 +370,7 @@ func (repo *menuRepository) listProvidedMenuItems(tx *gorm.DB, itemIDs []uuid.UU
 		Select("merchant_id").
 		Where("id IN ?", itemIDs).
 		Find(&providedItems).Error; err != nil {
-		return nil, errors.WithStack(err)
+		return nil, err
 	}
 
 	return providedItems, nil

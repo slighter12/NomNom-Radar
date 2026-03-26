@@ -3,11 +3,12 @@ package postgres
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
-	"radar/internal/errors"
 	"radar/internal/infra/persistence/model"
 	"radar/internal/infra/persistence/postgres/query"
 
@@ -69,7 +70,7 @@ func (repo *authRepository) FindAuthentication(ctx context.Context, provider ent
 			return nil, repository.ErrAuthNotFound
 		}
 
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("find authentication by provider and provider user id: %w", err)
 	}
 
 	return toAuthenticationDomain(authM), nil
@@ -89,7 +90,7 @@ func (repo *authRepository) FindAuthenticationByUserIDAndProvider(ctx context.Co
 			return nil, repository.ErrAuthNotFound
 		}
 
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("find authentication by user id and provider: %w", err)
 	}
 
 	return toAuthenticationDomain(authM), nil
@@ -124,7 +125,7 @@ func (repo *authRepository) DeleteAuthentication(ctx context.Context, id uuid.UU
 		Delete()
 
 	if err != nil {
-		return errors.WithStack(err)
+		return fmt.Errorf("delete authentication: %w", err)
 	}
 
 	// If no rows were affected, it means the authentication was not found.
@@ -142,7 +143,7 @@ func (repo *authRepository) ListAuthenticationsByUserID(ctx context.Context, use
 		Find()
 
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("list authentications by user id: %w", err)
 	}
 
 	authentications := make([]*entity.Authentication, 0, len(authModels))

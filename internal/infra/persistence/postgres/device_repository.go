@@ -3,11 +3,12 @@ package postgres
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
-	"radar/internal/errors"
 	"radar/internal/infra/persistence/model"
 	"radar/internal/infra/persistence/postgres/query"
 
@@ -65,7 +66,7 @@ func (repo *deviceRepository) FindDeviceByID(ctx context.Context, id uuid.UUID) 
 			return nil, repository.ErrDeviceNotFound
 		}
 
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("find device by id: %w", err)
 	}
 
 	return toDeviceDomain(deviceM), nil
@@ -85,7 +86,7 @@ func (repo *deviceRepository) FindDeviceByUserAndDeviceID(ctx context.Context, u
 			return nil, repository.ErrDeviceNotFound
 		}
 
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("find device by user and device id: %w", err)
 	}
 
 	return toDeviceDomain(deviceM), nil
@@ -99,7 +100,7 @@ func (repo *deviceRepository) FindDevicesByUser(ctx context.Context, userID uuid
 		Find()
 
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("find devices by user: %w", err)
 	}
 
 	devices := make([]*entity.UserDevice, 0, len(deviceModels))
@@ -121,7 +122,7 @@ func (repo *deviceRepository) FindActiveDevicesByUser(ctx context.Context, userI
 		Find()
 
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, fmt.Errorf("find active devices by user: %w", err)
 	}
 
 	devices := make([]*entity.UserDevice, 0, len(deviceModels))
@@ -143,7 +144,7 @@ func (repo *deviceRepository) UpdateFCMToken(ctx context.Context, deviceID uuid.
 			return repository.ErrDuplicateDevice
 		}
 
-		return errors.WithStack(err)
+		return fmt.Errorf("update device fcm token: %w", err)
 	}
 
 	if result.RowsAffected == 0 {
@@ -160,7 +161,7 @@ func (repo *deviceRepository) DeleteDevice(ctx context.Context, id uuid.UUID) er
 		Delete()
 
 	if err != nil {
-		return errors.WithStack(err)
+		return fmt.Errorf("delete device: %w", err)
 	}
 
 	if result.RowsAffected == 0 {

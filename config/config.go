@@ -1,14 +1,13 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
-
-	"radar/internal/errors"
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -202,7 +201,7 @@ func LoadWithEnv[T any](currEnv string, configPath ...string) (*T, error) {
 	if len(configPath) != 0 {
 		pwd, err := os.Getwd()
 		if err != nil {
-			return nil, errors.Wrap(err, "os.Getwd")
+			return nil, fmt.Errorf("os.Getwd: %w", err)
 		}
 		for _, path := range configPath {
 			abs := filepath.Join(pwd, path)
@@ -224,12 +223,12 @@ func LoadWithEnv[T any](currEnv string, configPath ...string) (*T, error) {
 	}
 
 	if !found {
-		return nil, errors.Errorf("config file %s.yaml not found in any search path", currEnv)
+		return nil, fmt.Errorf("config file %s.yaml not found in any search path", currEnv)
 	}
 
 	// Load YAML config file
 	if err := koanfInstance.Load(file.Provider(configFile), yaml.Parser()); err != nil {
-		return nil, errors.Wrapf(err, "read %s config failed", currEnv)
+		return nil, fmt.Errorf("read %s config failed: %w", currEnv, err)
 	}
 
 	existingConfigMap := koanfInstance.Raw()
@@ -244,7 +243,7 @@ func LoadWithEnv[T any](currEnv string, configPath ...string) (*T, error) {
 			return key, v
 		},
 	}), nil); err != nil {
-		return nil, errors.Wrap(err, "load env variables failed")
+		return nil, fmt.Errorf("load env variables failed: %w", err)
 	}
 
 	// Unmarshal into the config struct (case-insensitive to match env vars)
@@ -261,7 +260,7 @@ func LoadWithEnv[T any](currEnv string, configPath ...string) (*T, error) {
 			},
 		},
 	}); err != nil {
-		return nil, errors.Wrapf(err, "unmarshal %s config failed", currEnv)
+		return nil, fmt.Errorf("unmarshal %s config failed: %w", currEnv, err)
 	}
 
 	return cfg, nil
@@ -377,12 +376,12 @@ func applyPostgresMasterDSNFromEnv(cfg *Config) error {
 	}
 
 	if cfg.Postgres == nil {
-		return errors.Errorf("%s is set but postgres config is nil", postgresMasterDSNEnvKey)
+		return fmt.Errorf("%s is set but postgres config is nil", postgresMasterDSNEnvKey)
 	}
 
 	parsed, err := pgconn.ParseConfig(dsn)
 	if err != nil {
-		return errors.Wrapf(err, "parse %s", postgresMasterDSNEnvKey)
+		return fmt.Errorf("parse %s: %w", postgresMasterDSNEnvKey, err)
 	}
 
 	cfg.Postgres.Master.Host = parsed.Host

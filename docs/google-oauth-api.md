@@ -68,7 +68,7 @@ func (h *UserHandler) GoogleCallback(c echo.Context) error {
     // Verify the token using Google's official idtoken.Validate function
     oauthUser, err := h.googleAuthService.VerifyIDToken(ctx, idToken)
     if err != nil {
-        return errors.WithStack(err)
+        return err
     }
 
     // Process the verified user information

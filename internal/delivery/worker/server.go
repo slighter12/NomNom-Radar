@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
@@ -12,7 +13,6 @@ import (
 	"radar/internal/delivery/middleware"
 	"radar/internal/delivery/worker/handler"
 	"radar/internal/domain/lifecycle"
-	"radar/internal/errors"
 
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
@@ -86,7 +86,7 @@ func (s *workerServer) Serve(ctx context.Context) error {
 		IdleTimeout: s.cfg.HTTP.Timeouts.IdleTimeout,
 	}
 	if err := s.server.StartH2CServer(hostPort, h2Server); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return errors.WithStack(err)
+		return err
 	}
 
 	return nil
@@ -99,5 +99,5 @@ func (s *workerServer) stop(ctx context.Context) error {
 
 	s.logger.Info("Shutting down Worker HTTP server")
 
-	return errors.WithStack(s.server.Shutdown(shutdownCtx))
+	return s.server.Shutdown(shutdownCtx)
 }

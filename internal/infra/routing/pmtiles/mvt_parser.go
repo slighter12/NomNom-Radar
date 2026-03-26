@@ -1,9 +1,8 @@
 package pmtiles
 
 import (
+	"fmt"
 	"math"
-
-	"radar/internal/errors"
 
 	"github.com/paulmach/orb"
 	"github.com/paulmach/orb/encoding/mvt"
@@ -41,7 +40,7 @@ func (p *MVTParser) ParseTile(data []byte, tile maptile.Tile) ([]RoadSegment, er
 		// Try regular unmarshal
 		layers, err = mvt.Unmarshal(data)
 		if err != nil {
-			return nil, errors.WithStack(err)
+			return nil, fmt.Errorf("unmarshal MVT tile: %w", err)
 		}
 	}
 

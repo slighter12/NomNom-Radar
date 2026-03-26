@@ -3,13 +3,13 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"time"
 
-	"radar/internal/errors"
 	"radar/internal/util"
 )
 
@@ -61,7 +61,7 @@ func GenerateMetadata(inputFile, outputDir string, region string, contract bool)
 	// Get source information
 	source, err := getSourceMetadata(inputFile, region)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get source metadata")
+		return nil, fmt.Errorf("failed to get source metadata: %w", err)
 	}
 
 	// Get processing information
@@ -76,7 +76,7 @@ func GenerateMetadata(inputFile, outputDir string, region string, contract bool)
 	// Get output information
 	output, err := getOutputMetadata(outputDir)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get output metadata")
+		return nil, fmt.Errorf("failed to get output metadata: %w", err)
 	}
 
 	metadata := &RoutingMetadata{
@@ -93,13 +93,13 @@ func GenerateMetadata(inputFile, outputDir string, region string, contract bool)
 func getSourceMetadata(inputFile, region string) (*SourceMetadata, error) {
 	info, err := os.Stat(inputFile)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to stat input file")
+		return nil, fmt.Errorf("failed to stat input file: %w", err)
 	}
 
 	// Calculate checksum
 	sha256Hash, err := util.CalculateFileChecksum(inputFile)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to calculate checksums")
+		return nil, fmt.Errorf("failed to calculate checksums: %w", err)
 	}
 
 	// Get region config for URL
@@ -139,7 +139,7 @@ func getOutputMetadata(outputDir string) (*OutputMetadata, error) {
 				continue
 			}
 
-			return nil, errors.Wrapf(err, "failed to stat file %s", filePath)
+			return nil, fmt.Errorf("failed to stat file %s: %w", filePath, err)
 		}
 
 		// Calculate checksum
@@ -178,7 +178,7 @@ func getOutputMetadata(outputDir string) (*OutputMetadata, error) {
 func estimateLineCount(filePath string) (int, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return 0, errors.Wrap(err, "failed to open file")
+		return 0, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
@@ -194,7 +194,7 @@ func estimateLineCount(filePath string) (int, error) {
 				return count, nil
 			}
 
-			return count, errors.Wrap(err, "failed to read file")
+			return count, fmt.Errorf("failed to read file: %w", err)
 		}
 	}
 }
@@ -203,7 +203,7 @@ func estimateLineCount(filePath string) (int, error) {
 func WriteMetadataToFile(metadata *RoutingMetadata, filePath string) error {
 	file, err := os.Create(filePath)
 	if err != nil {
-		return errors.Wrap(err, "failed to create metadata file")
+		return fmt.Errorf("failed to create metadata file: %w", err)
 	}
 	defer file.Close()
 
@@ -211,7 +211,7 @@ func WriteMetadataToFile(metadata *RoutingMetadata, filePath string) error {
 	encoder.SetIndent("", "  ")
 
 	if err := encoder.Encode(metadata); err != nil {
-		return errors.Wrap(err, "failed to encode metadata")
+		return fmt.Errorf("failed to encode metadata: %w", err)
 	}
 
 	return nil
@@ -221,7 +221,7 @@ func WriteMetadataToFile(metadata *RoutingMetadata, filePath string) error {
 func LoadMetadataFromFile(filePath string) (*RoutingMetadata, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to open metadata file")
+		return nil, fmt.Errorf("failed to open metadata file: %w", err)
 	}
 	defer file.Close()
 
@@ -229,7 +229,7 @@ func LoadMetadataFromFile(filePath string) (*RoutingMetadata, error) {
 	decoder := json.NewDecoder(file)
 
 	if err := decoder.Decode(&metadata); err != nil {
-		return nil, errors.Wrap(err, "failed to decode metadata")
+		return nil, fmt.Errorf("failed to decode metadata: %w", err)
 	}
 
 	return &metadata, nil

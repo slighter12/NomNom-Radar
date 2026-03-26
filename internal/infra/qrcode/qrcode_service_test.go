@@ -1,12 +1,17 @@
 package qrcode
 
 import (
+	"bytes"
 	"encoding/json"
+	"image"
+	"image/png"
 	"testing"
 
 	"radar/config"
 
 	"github.com/google/uuid"
+	"github.com/makiuchi-d/gozxing"
+	gozxingqrcode "github.com/makiuchi-d/gozxing/qrcode"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -76,6 +81,30 @@ func TestQRCodeService_GenerateSubscriptionQR_DifferentSizes(t *testing.T) {
 			qrBytes, err := service.GenerateSubscriptionQR(merchantID)
 			require.NoError(t, err)
 			assert.NotEmpty(t, qrBytes)
+
+			imgCfg, err := png.DecodeConfig(bytes.NewReader(qrBytes))
+			require.NoError(t, err)
+			assert.Equal(t, tt.size, imgCfg.Width)
+			assert.Equal(t, tt.size, imgCfg.Height)
+
+			decodedPayload := decodeQRCodePayload(t, qrBytes)
+			assert.Equal(t, expectedSubscriptionPayload(t, merchantID), decodedPayload)
+		})
+	}
+}
+
+func TestQRCodeService_GenerateSubscriptionQR_ErrorCorrectionLevels(t *testing.T) {
+	levels := []string{"L", "M", "Q", "H"}
+
+	for _, level := range levels {
+		t.Run(level, func(t *testing.T) {
+			service := NewQRCodeService(newTestConfig(256, level))
+			merchantID := uuid.New()
+
+			qrBytes, err := service.GenerateSubscriptionQR(merchantID)
+			require.NoError(t, err)
+			assert.NotEmpty(t, qrBytes)
+			assert.Equal(t, expectedSubscriptionPayload(t, merchantID), decodeQRCodePayload(t, qrBytes))
 		})
 	}
 }
@@ -152,18 +181,46 @@ func TestQRCodeService_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, qrBytes)
 
-	// Note: We can't directly parse the PNG bytes back to JSON
-	// In real usage, the QR code would be scanned by a device
-	// and the JSON string would be extracted
-	// For testing, we verify the data structure manually
+	decodedPayload := decodeQRCodePayload(t, qrBytes)
+
+	parsedID, err := service.ParseSubscriptionQR(decodedPayload)
+	require.NoError(t, err)
+	assert.Equal(t, originalMerchantID, parsedID)
+}
+
+func decodeQRCodePayload(t *testing.T, qrBytes []byte) string {
+	t.Helper()
+
+	img, err := png.Decode(bytes.NewReader(qrBytes))
+	require.NoError(t, err)
+
+	result := decodeQRImage(t, img)
+
+	return result.GetText()
+}
+
+func decodeQRImage(t *testing.T, img image.Image) *gozxing.Result {
+	t.Helper()
+
+	bitmap, err := gozxing.NewBinaryBitmapFromImage(img)
+	require.NoError(t, err)
+
+	result, err := gozxingqrcode.NewQRCodeReader().Decode(bitmap, nil)
+	require.NoError(t, err)
+
+	return result
+}
+
+func expectedSubscriptionPayload(t *testing.T, merchantID uuid.UUID) string {
+	t.Helper()
+
 	data := QRCodeData{
-		MerchantID: originalMerchantID.String(),
+		MerchantID: merchantID.String(),
 		Type:       "subscription",
 	}
+
 	jsonData, err := json.Marshal(data)
 	require.NoError(t, err)
 
-	parsedID, err := service.ParseSubscriptionQR(string(jsonData))
-	require.NoError(t, err)
-	assert.Equal(t, originalMerchantID, parsedID)
+	return string(jsonData)
 }

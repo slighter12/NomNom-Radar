@@ -1,11 +1,12 @@
 package response
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 
 	deliverycontext "radar/internal/delivery/context"
 	domainerrors "radar/internal/domain/errors"
-	"radar/internal/errors"
 
 	"github.com/labstack/echo/v4"
 )
@@ -109,5 +110,5 @@ func HandleAppError(c echo.Context, err error) error {
 		return Error(c, appErr.HTTPCode(), appErr.ErrorCode(), appErr.Message(), nil)
 	}
 
-	return errors.Wrap(err, "internal server error")
+	return fmt.Errorf("internal server error: %w", err)
 }

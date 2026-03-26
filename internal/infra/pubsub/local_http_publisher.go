@@ -5,12 +5,12 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"radar/internal/domain/service"
-	"radar/internal/errors"
 )
 
 // localHTTPPublisher implements EventPublisher by sending HTTP POST requests
@@ -49,7 +49,7 @@ func (p *localHTTPPublisher) PublishNotificationEvent(ctx context.Context, event
 	// Serialize the event to JSON
 	eventData, err := json.Marshal(event)
 	if err != nil {
-		return errors.WithStack(err)
+		return fmt.Errorf("marshal notification event: %w", err)
 	}
 
 	// Create a Pub/Sub push message structure
@@ -73,7 +73,7 @@ func (p *localHTTPPublisher) PublishNotificationEvent(ctx context.Context, event
 	// Serialize the push message
 	body, err := json.Marshal(pushMsg)
 	if err != nil {
-		return errors.WithStack(err)
+		return fmt.Errorf("marshal pubsub push message: %w", err)
 	}
 
 	p.logger.Info("[LocalPubSub] Publishing event",
@@ -85,7 +85,7 @@ func (p *localHTTPPublisher) PublishNotificationEvent(ctx context.Context, event
 	// Send HTTP POST request
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, bytes.NewReader(body))
 	if err != nil {
-		return errors.WithStack(err)
+		return fmt.Errorf("build local pubsub request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -96,12 +96,12 @@ func (p *localHTTPPublisher) PublishNotificationEvent(ctx context.Context, event
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
-		return errors.WithStack(err)
+		return fmt.Errorf("send local pubsub request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return errors.Errorf("worker returned non-success status: %d", resp.StatusCode)
+		return fmt.Errorf("worker returned non-success status: %d", resp.StatusCode)
 	}
 
 	p.logger.Info("[LocalPubSub] Event published successfully",

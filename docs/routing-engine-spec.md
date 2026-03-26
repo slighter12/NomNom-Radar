@@ -236,9 +236,9 @@ package service
 
 import (
     "context"
+    "errors"
+    "fmt"
     "time"
-
-    "github.com/pkg/errors"
 )
 
 // Coordinate represents a geographic coordinate
@@ -464,7 +464,7 @@ func (s *notificationService) PublishLocationNotification(ctx context.Context, m
     // This keeps the routing workload bounded.
     candidates, err := s.subscriptionRepo.FindSubscriberAddressesWithinRadius(ctx, merchantID, input.Latitude, input.Longitude)
     if err != nil {
-        return errors.Wrap(err, "failed to find subscriber candidate addresses")
+        return fmt.Errorf("failed to find subscriber candidate addresses: %w", err)
     }
 
     // 2) Build target coordinates (index-aligned)
@@ -479,7 +479,7 @@ func (s *notificationService) PublishLocationNotification(ctx context.Context, m
     routeResults, err := s.routingService.OneToMany(ctx, service.Coordinate{Lat: input.Latitude, Lng: input.Longitude}, targets)
     if err != nil {
         // Only context cancellation/timeouts should bubble up here.
-        return errors.Wrap(err, "routing one-to-many failed")
+        return fmt.Errorf("routing one-to-many failed: %w", err)
     }
 
     // 4) Filter (road distance, reachability, snap validation)

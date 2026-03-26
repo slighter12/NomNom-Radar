@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -9,7 +10,6 @@ import (
 
 	"radar/internal/delivery/api/middleware"
 	"radar/internal/delivery/api/response"
-	"radar/internal/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"

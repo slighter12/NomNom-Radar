@@ -2,6 +2,8 @@ package impl
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"math"
 	"sync"
@@ -9,7 +11,6 @@ import (
 
 	"radar/config"
 	deliverycontext "radar/internal/delivery/context"
-	"radar/internal/errors"
 	"radar/internal/infra/routing/ch"
 	"radar/internal/usecase"
 
@@ -217,7 +218,7 @@ func (s *routingService) oneToManyHaversine(ctx context.Context, source usecase.
 
 	// Check for context cancellation
 	if ctx.Err() != nil {
-		return nil, errors.Wrap(ctx.Err(), "routing calculation canceled")
+		return nil, fmt.Errorf("routing calculation canceled: %w", ctx.Err())
 	}
 
 	return &usecase.OneToManyResult{
@@ -244,7 +245,7 @@ func (s *routingService) FindNearestNode(ctx context.Context, coord usecase.Coor
 		result, findErr := s.engine.FindNearestNode(ctx, chCoord)
 		if findErr != nil {
 			// Return mock on error (GPS too far from road)
-			return nil, false, errors.Wrap(findErr, "failed to find nearest node")
+			return nil, false, fmt.Errorf("failed to find nearest node: %w", findErr)
 		}
 
 		nodeInfo := &usecase.NodeInfo{
