@@ -345,6 +345,10 @@ func (srv *userService) generateAccessTokenFromRefresh(
 		return nil
 	})
 	if err != nil {
+		if appErr, ok := errors.AsType[domainerrors.AppError](err); ok {
+			return "", cleanupOrphanedToken, appErr
+		}
+
 		return "", cleanupOrphanedToken, fmt.Errorf("execute refresh token transaction: %w", err)
 	}
 
