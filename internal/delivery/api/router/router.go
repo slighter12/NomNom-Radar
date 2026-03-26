@@ -1,4 +1,3 @@
-// Package router contains routing and server setup for the HTTP delivery.
 package router
 
 import (
