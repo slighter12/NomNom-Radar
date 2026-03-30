@@ -305,11 +305,11 @@ func (srv *userService) RefreshToken(ctx context.Context, input *usecase.Refresh
 func (srv *userService) validateRefreshTokenInput(refreshToken string) (*service.Claims, error) {
 	claims, err := srv.tokenService.ValidateToken(refreshToken)
 	if err != nil {
-		return nil, domainerrors.ErrRefreshTokenInvalid.WrapMessage("invalid refresh token")
+		return nil, domainerrors.ErrRefreshTokenInvalid
 	}
 
 	if claims.Type != service.TokenTypeRefresh {
-		return nil, domainerrors.ErrUnauthorized.WrapMessage("invalid token type for refresh flow")
+		return nil, domainerrors.ErrUnauthorized
 	}
 
 	return claims, nil
@@ -367,9 +367,9 @@ func (srv *userService) ensureRefreshTokenUsable(
 
 	switch {
 	case errors.Is(err, domainerrors.ErrRefreshTokenNotFound):
-		return domainerrors.ErrRefreshTokenNotFound.WrapMessage("refresh token not found")
+		return domainerrors.ErrRefreshTokenNotFound
 	case errors.Is(err, domainerrors.ErrRefreshTokenExpired):
-		return domainerrors.ErrRefreshTokenExpired.WrapMessage("refresh token expired")
+		return domainerrors.ErrRefreshTokenExpired
 	default:
 		return err
 	}
@@ -386,7 +386,7 @@ func (srv *userService) loadRefreshTokenUser(
 	}
 
 	if errors.Is(err, domainerrors.ErrUserNotFound) {
-		return nil, true, domainerrors.ErrUnauthorized.WrapMessage("refresh token user not found")
+		return nil, true, domainerrors.ErrUnauthorized
 	}
 
 	return nil, false, err
@@ -427,7 +427,7 @@ func (srv *userService) Logout(ctx context.Context, input *usecase.LogoutInput) 
 
 		srv.log(ctx).Error("Failed to delete refresh token", slog.Any("error", err))
 
-		return domainerrors.ErrInternalError.WrapMessage("failed to delete refresh token")
+		return domainerrors.ErrInternalError
 	}
 	srv.log(ctx).Info("Successfully logged out")
 

@@ -63,11 +63,7 @@ func Error(c echo.Context, statusCode int, errorCode string, message string, det
 }
 
 func appErrorDetails(appErr domainerrors.AppError) any {
-	statusCode := appErr.HTTPCode()
 	details := appErr.Details()
-	if statusCode >= 500 || statusCode == 401 || statusCode == 403 {
-		return nil
-	}
 	if details == "" {
 		return nil
 	}

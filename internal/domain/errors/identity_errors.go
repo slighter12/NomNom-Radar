@@ -8,7 +8,6 @@ var (
 	ErrUserCreateFailed          = NewBaseError(http.StatusInternalServerError, "USER_CREATE_FAILED", "建立使用者失敗", "")
 	ErrUserUpdateFailed          = NewBaseError(http.StatusInternalServerError, "USER_UPDATE_FAILED", "更新使用者失敗", "")
 	ErrAuthNotFound              = NewBaseError(http.StatusNotFound, "AUTH_NOT_FOUND", "找不到認證方式", "")
-	ErrTokenNotFound             = NewBaseError(http.StatusNotFound, "TOKEN_NOT_FOUND", "找不到權杖", "")
 	ErrAuthAlreadyExists         = NewBaseError(http.StatusConflict, "AUTH_ALREADY_EXISTS", "認證方式已存在", "")
 	ErrAuthCreateFailed          = NewBaseError(http.StatusInternalServerError, "AUTH_CREATE_FAILED", "建立認證方式失敗", "")
 	ErrAuthUpdateFailed          = NewBaseError(http.StatusInternalServerError, "AUTH_UPDATE_FAILED", "更新認證方式失敗", "")
