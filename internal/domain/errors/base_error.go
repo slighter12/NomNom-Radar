@@ -1,7 +1,5 @@
 package errors
 
-import "fmt"
-
 // BaseError is the shared concrete implementation used by all sentinels.
 type BaseError struct {
 	httpCode  int
@@ -33,11 +31,6 @@ func (e *BaseError) Is(target error) bool {
 	}
 
 	return e.errorCode == targetErr.ErrorCode()
-}
-
-// WrapMessage wraps the error with an additional context message.
-func (e *BaseError) WrapMessage(message string) error {
-	return fmt.Errorf("%s: %w", message, e)
 }
 
 // WithDetails returns a copy of the error with client-facing details attached.
