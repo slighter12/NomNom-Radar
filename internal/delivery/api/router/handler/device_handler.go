@@ -67,7 +67,7 @@ func (h *DeviceHandler) RegisterDevice(c echo.Context) error {
 
 	device, err := h.deviceUC.RegisterDevice(c.Request().Context(), userID, deviceInfo)
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusCreated, device)
@@ -82,7 +82,7 @@ func (h *DeviceHandler) GetUserDevices(c echo.Context) error {
 
 	devices, err := h.deviceUC.GetUserDevices(c.Request().Context(), userID)
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, devices)
@@ -106,7 +106,7 @@ func (h *DeviceHandler) UpdateFCMToken(c echo.Context) error {
 	}
 
 	if err := h.deviceUC.UpdateFCMToken(c.Request().Context(), userID, deviceID, req.FCMToken); err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, map[string]string{"message": "FCM token updated successfully"})
@@ -125,7 +125,7 @@ func (h *DeviceHandler) DeactivateDevice(c echo.Context) error {
 	}
 
 	if err := h.deviceUC.DeactivateDevice(c.Request().Context(), userID, deviceID); err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, map[string]string{"message": "Device deactivated successfully"})

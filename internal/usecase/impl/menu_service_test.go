@@ -311,7 +311,7 @@ func TestMenuService_GetPublicMerchantMenu_MerchantNotFound(t *testing.T) {
 	}{
 		{
 			name:        "missing user",
-			findByIDErr: repository.ErrUserNotFound,
+			findByIDErr: domainerrors.ErrUserNotFound,
 		},
 		{
 			name: "user without merchant profile",
@@ -474,7 +474,7 @@ func TestMenuService_UpdateMenuItemStatus_NotFound(t *testing.T) {
 			assert.Equal(t, itemID, id)
 			assert.False(t, isAvailable)
 
-			return repository.ErrMenuItemNotFound
+			return domainerrors.ErrMenuItemNotFound
 		},
 	}
 

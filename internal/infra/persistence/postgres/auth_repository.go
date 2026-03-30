@@ -1,10 +1,8 @@
-// Package postgres contains the concrete implementation of the persistence layer using GORM and PostgreSQL.
 package postgres
 
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
@@ -36,18 +34,17 @@ func (repo *authRepository) CreateAuthentication(ctx context.Context, auth *enti
 	authM := fromAuthenticationDomain(auth)
 
 	if err := repo.q.AuthenticationModel.WithContext(ctx).Create(authM); err != nil {
-		// Convert PostgreSQL errors to domain errors
 		if isUniqueConstraintViolation(err) {
-			return domainerrors.ErrUserAlreadyExists.WrapMessage("authentication method already exists")
+			return domainerrors.ErrAuthAlreadyExists
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrAuthCreationFailed.WrapMessage("invalid user reference")
+			return domainerrors.ErrAuthCreateFailed
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrAuthCreationFailed.WrapMessage("missing required authentication information")
+			return domainerrors.ErrAuthCreateFailed
 		}
-		// For other database errors, return a generic database error
-		return domainerrors.NewDatabaseExecuteError(err, "failed to create authentication")
+
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	// Update the entity with generated values
@@ -67,10 +64,10 @@ func (repo *authRepository) FindAuthentication(ctx context.Context, provider ent
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, repository.ErrAuthNotFound
+			return nil, domainerrors.ErrAuthNotFound
 		}
 
-		return nil, fmt.Errorf("find authentication by provider and provider user id: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	return toAuthenticationDomain(authM), nil
@@ -87,10 +84,10 @@ func (repo *authRepository) FindAuthenticationByUserIDAndProvider(ctx context.Co
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, repository.ErrAuthNotFound
+			return nil, domainerrors.ErrAuthNotFound
 		}
 
-		return nil, fmt.Errorf("find authentication by user id and provider: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	return toAuthenticationDomain(authM), nil
@@ -101,18 +98,17 @@ func (repo *authRepository) UpdateAuthentication(ctx context.Context, auth *enti
 	authM := fromAuthenticationDomain(auth)
 
 	if err := repo.q.AuthenticationModel.WithContext(ctx).Save(authM); err != nil {
-		// Convert PostgreSQL errors to domain errors
 		if isUniqueConstraintViolation(err) {
-			return domainerrors.ErrUserAlreadyExists.WrapMessage("authentication method already exists")
+			return domainerrors.ErrAuthAlreadyExists
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrAuthUpdateFailed.WrapMessage("invalid user reference")
+			return domainerrors.ErrAuthUpdateFailed
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrAuthUpdateFailed.WrapMessage("missing required authentication information")
+			return domainerrors.ErrAuthUpdateFailed
 		}
-		// For other database errors, return a generic database error
-		return domainerrors.NewDatabaseExecuteError(err, "failed to update authentication")
+
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	return nil
@@ -125,12 +121,12 @@ func (repo *authRepository) DeleteAuthentication(ctx context.Context, id uuid.UU
 		Delete()
 
 	if err != nil {
-		return fmt.Errorf("delete authentication: %w", err)
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	// If no rows were affected, it means the authentication was not found.
 	if result.RowsAffected == 0 {
-		return repository.ErrAuthNotFound
+		return domainerrors.ErrAuthNotFound
 	}
 
 	return nil
@@ -143,7 +139,7 @@ func (repo *authRepository) ListAuthenticationsByUserID(ctx context.Context, use
 		Find()
 
 	if err != nil {
-		return nil, fmt.Errorf("list authentications by user id: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	authentications := make([]*entity.Authentication, 0, len(authModels))

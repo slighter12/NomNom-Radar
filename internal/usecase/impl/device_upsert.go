@@ -28,18 +28,18 @@ func upsertUserDevice(
 	device, err := deviceRepo.FindDeviceByUserAndDeviceID(ctx, userID, deviceInfo.DeviceID)
 	if err == nil {
 		if err := deviceRepo.UpdateFCMToken(ctx, device.ID, deviceInfo.FCMToken); err != nil {
-			return nil, fmt.Errorf("failed to update FCM token: %w", err)
+			return nil, err
 		}
 
 		updatedDevice, err := deviceRepo.FindDeviceByID(ctx, device.ID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to find device by ID: %w", err)
+			return nil, err
 		}
 
 		return updatedDevice, nil
 	}
-	if !errors.Is(err, repository.ErrDeviceNotFound) {
-		return nil, fmt.Errorf("failed to find device by user and device ID: %w", err)
+	if !errors.Is(err, domainerrors.ErrDeviceNotFound) {
+		return nil, err
 	}
 
 	newDevice := &entity.UserDevice{
@@ -54,7 +54,7 @@ func upsertUserDevice(
 	}
 
 	if err := deviceRepo.CreateDevice(ctx, newDevice); err != nil {
-		return nil, fmt.Errorf("failed to create device: %w", err)
+		return nil, err
 	}
 
 	return newDevice, nil

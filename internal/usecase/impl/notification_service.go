@@ -110,7 +110,7 @@ func (s *notificationService) PublishLocationNotification(
 	}
 
 	if err := s.notificationRepo.CreateNotification(ctx, notification); err != nil {
-		return nil, fmt.Errorf("failed to create notification: %w", err)
+		return nil, err
 	}
 
 	return s.publishAsync(ctx, notification, merchantID, latitude, longitude, locationName, fullAddress, hintMessage)
@@ -221,7 +221,7 @@ func (s *notificationService) GetMerchantNotificationHistory(
 ) ([]*entity.MerchantLocationNotification, error) {
 	notifications, err := s.notificationRepo.FindNotificationsByMerchant(ctx, merchantID, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find notifications by merchant: %w", err)
+		return nil, err
 	}
 
 	return notifications, nil
@@ -238,11 +238,11 @@ func (s *notificationService) getLocationInfo(
 		// Fetch address from repository
 		address, fetchErr := s.addressRepo.FindAddressByID(ctx, *addressID)
 		if fetchErr != nil {
-			if errors.Is(fetchErr, repository.ErrAddressNotFound) {
+			if errors.Is(fetchErr, domainerrors.ErrAddressNotFound) {
 				return "", "", 0, 0, domainerrors.ErrAddressNotFound
 			}
 
-			return "", "", 0, 0, fmt.Errorf("failed to fetch address: %w", fetchErr)
+			return "", "", 0, 0, fetchErr
 		}
 
 		// Verify ownership

@@ -1,10 +1,8 @@
-// Package postgres contains the concrete implementation of the persistence layer using GORM and PostgreSQL.
 package postgres
 
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
@@ -43,10 +41,10 @@ func (repo *userRepository) FindByID(ctx context.Context, id uuid.UUID) (*entity
 	if err != nil {
 		// If the error is 'record not found', return a domain-specific error.
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, repository.ErrUserNotFound
+			return nil, domainerrors.ErrUserNotFound
 		}
-		// Otherwise, return the original database error with stack trace.
-		return nil, fmt.Errorf("find user by id: %w", err)
+
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	// Map the persistence model back to a pure domain entity before returning.
@@ -62,10 +60,10 @@ func (repo *userRepository) AcquireSessionMutex(ctx context.Context, id uuid.UUI
 		First()
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return repository.ErrUserNotFound
+			return domainerrors.ErrUserNotFound
 		}
 
-		return fmt.Errorf("acquire session mutex: %w", err)
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	return nil
@@ -81,10 +79,10 @@ func (repo *userRepository) FindByEmail(ctx context.Context, email string) (*ent
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, repository.ErrUserNotFound
+			return nil, domainerrors.ErrUserNotFound
 		}
 
-		return nil, fmt.Errorf("find user by email: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	return toUserDomain(userM), nil
@@ -99,18 +97,17 @@ func (repo *userRepository) Create(ctx context.Context, user *entity.User) error
 
 	// Execute the creation using the database connection.
 	if err := repo.q.UserModel.WithContext(ctx).Create(userM); err != nil {
-		// Convert PostgreSQL errors to domain errors
 		if isUniqueConstraintViolation(err) {
-			return domainerrors.ErrUserAlreadyExists.WrapMessage("email already exists")
+			return domainerrors.ErrUserAlreadyExists
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrUserCreationFailed.WrapMessage("missing required user information")
+			return domainerrors.ErrUserCreateFailed
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrUserCreationFailed.WrapMessage("invalid foreign key reference")
+			return domainerrors.ErrUserCreateFailed
 		}
-		// For other database errors, return a generic database error
-		return domainerrors.NewDatabaseExecuteError(err, "failed to create user")
+
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	// Update the user entity with the generated ID and timestamps
@@ -139,18 +136,17 @@ func (repo *userRepository) Update(ctx context.Context, user *entity.User) error
 	// Execute the update using the database connection.
 	// Use Session with FullSaveAssociations to update nested associations
 	if err := repo.q.UserModel.WithContext(ctx).Session(&gorm.Session{FullSaveAssociations: true}).Save(userM); err != nil {
-		// Convert PostgreSQL errors to domain errors
 		if isUniqueConstraintViolation(err) {
-			return domainerrors.ErrUserAlreadyExists.WrapMessage("email already exists")
+			return domainerrors.ErrUserAlreadyExists
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrUserUpdateFailed.WrapMessage("missing required user information")
+			return domainerrors.ErrUserUpdateFailed
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrUserUpdateFailed.WrapMessage("invalid foreign key reference")
+			return domainerrors.ErrUserUpdateFailed
 		}
-		// For other database errors, return a generic database error
-		return domainerrors.NewDatabaseExecuteError(err, "failed to update user")
+
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	// Update the user entity with the updated timestamps

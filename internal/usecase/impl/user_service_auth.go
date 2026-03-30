@@ -173,8 +173,8 @@ func (srv *userService) resolveAuthRequest(
 	userRepo := repoFactory.UserRepo()
 
 	authRecord, err := authRepo.FindAuthentication(ctx, identity.Provider, identity.ProviderUserID)
-	if err != nil && !errors.Is(err, repository.ErrAuthNotFound) {
-		return nil, fmt.Errorf("failed to find authentication: %w", err)
+	if err != nil && !errors.Is(err, domainerrors.ErrAuthNotFound) {
+		return nil, err
 	}
 
 	if err == nil {
@@ -197,7 +197,7 @@ func (srv *userService) resolveExistingLinkedUser(
 ) (*authResolution, error) {
 	user, err := userRepo.FindByID(ctx, authRecord.UserID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find user by id: %w", err)
+		return nil, err
 	}
 
 	onboardingRequired, err := srv.ensureRequestedRole(ctx, userRepo, user, req, identity)
@@ -229,10 +229,10 @@ func (srv *userService) resolveUnlinkedIdentity(
 	switch {
 	case err == nil:
 		return srv.resolveExistingEmailAccount(ctx, userRepo, authRepo, req, identity, existingUser)
-	case errors.Is(err, repository.ErrUserNotFound):
+	case errors.Is(err, domainerrors.ErrUserNotFound):
 		return srv.createNewUserForIdentity(ctx, userRepo, authRepo, req, identity)
 	default:
-		return nil, fmt.Errorf("failed to find user by email: %w", err)
+		return nil, err
 	}
 }
 
@@ -418,11 +418,11 @@ func (srv *userService) CompleteMerchantOnboarding(ctx context.Context, input *u
 
 		loadedUser, err := userRepo.FindByID(ctx, claims.UserID)
 		if err != nil {
-			if errors.Is(err, repository.ErrUserNotFound) {
-				return fmt.Errorf("user not found: %w", domainerrors.ErrNotFound)
+			if errors.Is(err, domainerrors.ErrUserNotFound) {
+				return domainerrors.ErrNotFound
 			}
 
-			return fmt.Errorf("failed to find user: %w", err)
+			return err
 		}
 
 		user = loadedUser
@@ -438,7 +438,7 @@ func (srv *userService) CompleteMerchantOnboarding(ctx context.Context, input *u
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to complete merchant onboarding: %w", err)
+		return nil, err
 	}
 
 	return srv.buildAuthenticatedResult(ctx, user)
@@ -460,7 +460,7 @@ func buildUserRegistrationConfig(name, email, password string) *registrationConf
 		},
 		HasProfile: userHasUserProfile,
 		ProfileExistsError: func() error {
-			return domainerrors.ErrUserAlreadyExists.WrapMessage("user profile already registered for this account")
+			return fmt.Errorf("user profile already registered for this account: %w", domainerrors.ErrUserAlreadyExists)
 		},
 	}
 }
@@ -526,7 +526,7 @@ func ensureOAuthAuthLink(
 	providerUserID string,
 ) error {
 	existingAuth, err := authRepo.FindAuthenticationByUserIDAndProvider(ctx, userID, provider)
-	if err != nil && !errors.Is(err, repository.ErrAuthNotFound) {
+	if err != nil && !errors.Is(err, domainerrors.ErrAuthNotFound) {
 		return fmt.Errorf("failed to find existing oauth authentication: %w", err)
 	}
 

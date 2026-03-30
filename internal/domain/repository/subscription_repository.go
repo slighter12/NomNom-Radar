@@ -1,21 +1,11 @@
-// Package repository defines the interfaces for the persistence layer.
 package repository
 
 import (
 	"context"
-	"errors"
 
 	"radar/internal/domain/entity"
 
 	"github.com/google/uuid"
-)
-
-// Domain-specific errors for subscription persistence.
-var (
-	// ErrSubscriptionNotFound is returned when a subscription is not found.
-	ErrSubscriptionNotFound = errors.New("subscription not found")
-	// ErrDuplicateSubscription is returned when trying to create a subscription that already exists.
-	ErrDuplicateSubscription = errors.New("subscription already exists")
 )
 
 // SubscriptionRepository defines the interface for subscription-related database operations.

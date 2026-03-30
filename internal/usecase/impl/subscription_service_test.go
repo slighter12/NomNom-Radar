@@ -6,7 +6,7 @@ import (
 
 	"radar/config"
 	"radar/internal/domain/entity"
-	"radar/internal/domain/repository"
+	domainerrors "radar/internal/domain/errors"
 	mockRepo "radar/internal/mocks/repository"
 	mockSvc "radar/internal/mocks/service"
 	"radar/internal/usecase"
@@ -69,7 +69,7 @@ func TestSubscriptionService_SubscribeToMerchant_NewSubscription(t *testing.T) {
 
 	fx.subRepo.EXPECT().
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
-		Return(nil, repository.ErrSubscriptionNotFound)
+		Return(nil, domainerrors.ErrSubscriptionNotFound)
 
 	fx.subRepo.EXPECT().
 		CreateSubscription(ctx, mock.AnythingOfType("*entity.UserMerchantSubscription")).
@@ -136,7 +136,7 @@ func TestSubscriptionService_SubscribeToMerchant_WithDevice(t *testing.T) {
 
 	fx.subRepo.EXPECT().
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
-		Return(nil, repository.ErrSubscriptionNotFound)
+		Return(nil, domainerrors.ErrSubscriptionNotFound)
 
 	fx.subRepo.EXPECT().
 		CreateSubscription(ctx, mock.AnythingOfType("*entity.UserMerchantSubscription")).
@@ -144,7 +144,7 @@ func TestSubscriptionService_SubscribeToMerchant_WithDevice(t *testing.T) {
 
 	fx.deviceRepo.EXPECT().
 		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
-		Return(nil, repository.ErrDeviceNotFound)
+		Return(nil, domainerrors.ErrDeviceNotFound)
 
 	fx.deviceRepo.EXPECT().
 		CreateDevice(ctx, mock.AnythingOfType("*entity.UserDevice")).
@@ -253,7 +253,7 @@ func TestSubscriptionService_ProcessQRSubscription_Success(t *testing.T) {
 
 	fx.subRepo.EXPECT().
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
-		Return(nil, repository.ErrSubscriptionNotFound)
+		Return(nil, domainerrors.ErrSubscriptionNotFound)
 
 	fx.subRepo.EXPECT().
 		CreateSubscription(ctx, mock.AnythingOfType("*entity.UserMerchantSubscription")).
@@ -290,7 +290,7 @@ func TestSubscriptionService_SubscribeToMerchant_ExistingDeviceUpdate(t *testing
 
 	fx.subRepo.EXPECT().
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
-		Return(nil, repository.ErrSubscriptionNotFound)
+		Return(nil, domainerrors.ErrSubscriptionNotFound)
 
 	fx.subRepo.EXPECT().
 		CreateSubscription(ctx, mock.AnythingOfType("*entity.UserMerchantSubscription")).
@@ -337,7 +337,7 @@ func TestSubscriptionService_ProcessQRSubscription_WithDevice(t *testing.T) {
 
 	fx.subRepo.EXPECT().
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
-		Return(nil, repository.ErrSubscriptionNotFound)
+		Return(nil, domainerrors.ErrSubscriptionNotFound)
 
 	fx.subRepo.EXPECT().
 		CreateSubscription(ctx, mock.AnythingOfType("*entity.UserMerchantSubscription")).
@@ -345,7 +345,7 @@ func TestSubscriptionService_ProcessQRSubscription_WithDevice(t *testing.T) {
 
 	fx.deviceRepo.EXPECT().
 		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
-		Return(nil, repository.ErrDeviceNotFound)
+		Return(nil, domainerrors.ErrDeviceNotFound)
 
 	fx.deviceRepo.EXPECT().
 		CreateDevice(ctx, mock.AnythingOfType("*entity.UserDevice")).

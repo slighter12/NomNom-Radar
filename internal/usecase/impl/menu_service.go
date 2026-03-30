@@ -83,7 +83,7 @@ func (s *menuService) ListMerchantMenuItems(ctx context.Context, merchantID uuid
 
 	items, total, err := s.menuRepo.ListMenuItemsByMerchant(ctx, merchantID, filter)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list menu items by merchant: %w", err)
+		return nil, err
 	}
 
 	return &usecase.MerchantMenuItemsResult{
@@ -140,7 +140,7 @@ func (s *menuService) CreateMenuItem(ctx context.Context, merchantID uuid.UUID, 
 	}
 
 	if err := s.menuRepo.CreateMenuItem(ctx, item); err != nil {
-		return nil, fmt.Errorf("failed to create menu item: %w", err)
+		return nil, err
 	}
 
 	return item, nil
@@ -180,7 +180,7 @@ func (s *menuService) UpdateMenuItem(ctx context.Context, merchantID, itemID uui
 	item.UpdatedAt = time.Now()
 
 	if err := s.menuRepo.UpdateMenuItem(ctx, item); err != nil {
-		return nil, fmt.Errorf("failed to update menu item: %w", err)
+		return nil, err
 	}
 
 	return item, nil
@@ -192,11 +192,7 @@ func (s *menuService) UpdateMenuItemStatus(ctx context.Context, merchantID, item
 	}
 
 	if err := s.menuRepo.UpdateMenuItemAvailability(ctx, itemID, isAvailable); err != nil {
-		if errors.Is(err, repository.ErrMenuItemNotFound) {
-			return nil, domainerrors.ErrMenuItemNotFound
-		}
-
-		return nil, fmt.Errorf("failed to update menu item status: %w", err)
+		return nil, err
 	}
 
 	updatedItem, err := s.findOwnedMenuItem(ctx, merchantID, itemID)
@@ -214,7 +210,7 @@ func (s *menuService) ReorderMenuItems(ctx context.Context, merchantID uuid.UUID
 
 	currentItemIDs, err := s.menuRepo.ListActiveMenuItemIDsByMerchant(ctx, merchantID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list active menu item ids by merchant: %w", err)
+		return nil, err
 	}
 
 	if err := validateCompleteMenuReorder(currentItemIDs, input.ItemIDs); err != nil {
@@ -222,7 +218,7 @@ func (s *menuService) ReorderMenuItems(ctx context.Context, merchantID uuid.UUID
 	}
 
 	if err := s.menuRepo.ReorderMenuItems(ctx, merchantID, input.ItemIDs); err != nil {
-		return nil, fmt.Errorf("failed to reorder menu items: %w", err)
+		return nil, err
 	}
 
 	return &usecase.ReorderMenuItemsResult{UpdatedCount: len(input.ItemIDs)}, nil
@@ -235,7 +231,7 @@ func (s *menuService) DeleteMenuItem(ctx context.Context, merchantID, itemID uui
 	}
 
 	if err := s.menuRepo.DeleteMenuItem(ctx, merchantID, item.ID); err != nil {
-		return fmt.Errorf("failed to delete menu item: %w", err)
+		return err
 	}
 
 	return nil
@@ -244,11 +240,7 @@ func (s *menuService) DeleteMenuItem(ctx context.Context, merchantID, itemID uui
 func (s *menuService) findOwnedMenuItem(ctx context.Context, merchantID, itemID uuid.UUID) (*entity.MenuItem, error) {
 	item, err := s.menuRepo.FindMenuItemByID(ctx, itemID)
 	if err != nil {
-		if errors.Is(err, repository.ErrMenuItemNotFound) {
-			return nil, domainerrors.ErrMenuItemNotFound
-		}
-
-		return nil, fmt.Errorf("failed to find menu item by id: %w", err)
+		return nil, err
 	}
 
 	if item.MerchantID != merchantID {
@@ -261,11 +253,11 @@ func (s *menuService) findOwnedMenuItem(ctx context.Context, merchantID, itemID 
 func (s *menuService) validatePublicMerchant(ctx context.Context, merchantID uuid.UUID) error {
 	merchant, err := s.userRepo.FindByID(ctx, merchantID)
 	if err != nil {
-		if errors.Is(err, repository.ErrUserNotFound) {
+		if errors.Is(err, domainerrors.ErrUserNotFound) {
 			return domainerrors.ErrMerchantNotFound
 		}
 
-		return fmt.Errorf("failed to find merchant by id: %w", err)
+		return err
 	}
 
 	if merchant.MerchantProfile == nil {

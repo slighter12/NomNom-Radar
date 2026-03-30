@@ -1,10 +1,8 @@
-// Package postgres contains the concrete implementation of the persistence layer using GORM and PostgreSQL.
 package postgres
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"radar/internal/domain/entity"
@@ -37,18 +35,17 @@ func (repo *refreshTokenRepository) CreateRefreshToken(ctx context.Context, toke
 	tokenM := fromRefreshTokenDomain(token)
 
 	if err := repo.q.RefreshTokenModel.WithContext(ctx).Create(tokenM); err != nil {
-		// Convert PostgreSQL errors to domain errors
 		if isUniqueConstraintViolation(err) {
-			return domainerrors.ErrRefreshTokenInvalid.WrapMessage("refresh token already exists")
+			return domainerrors.ErrRefreshTokenAlreadyExists
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrRefreshTokenCreationFailed.WrapMessage("invalid user reference")
+			return domainerrors.ErrRefreshTokenCreateFailed
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrRefreshTokenCreationFailed.WrapMessage("missing required token information")
+			return domainerrors.ErrRefreshTokenCreateFailed
 		}
-		// For other database errors, return a generic database error
-		return domainerrors.NewDatabaseExecuteError(err, "failed to create refresh token")
+
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	// Update the entity with generated values
@@ -66,17 +63,17 @@ func (repo *refreshTokenRepository) FindRefreshTokenByHash(ctx context.Context, 
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, repository.ErrRefreshTokenNotFound
+			return nil, domainerrors.ErrRefreshTokenNotFound
 		}
 
-		return nil, fmt.Errorf("find refresh token by hash: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	token := toRefreshTokenDomain(tokenM)
 
 	// Check if token has expired
 	if token.ExpiresAt.Before(time.Now()) {
-		return nil, repository.ErrRefreshTokenExpired
+		return nil, domainerrors.ErrRefreshTokenExpired
 	}
 
 	return token, nil
@@ -90,17 +87,17 @@ func (repo *refreshTokenRepository) FindRefreshTokenByID(ctx context.Context, id
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, repository.ErrRefreshTokenNotFound
+			return nil, domainerrors.ErrRefreshTokenNotFound
 		}
 
-		return nil, fmt.Errorf("find refresh token by id: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	token := toRefreshTokenDomain(tokenM)
 
 	// Check if token has expired
 	if token.ExpiresAt.Before(time.Now()) {
-		return nil, repository.ErrRefreshTokenExpired
+		return nil, domainerrors.ErrRefreshTokenExpired
 	}
 
 	return token, nil
@@ -119,7 +116,7 @@ func (repo *refreshTokenRepository) FindRefreshTokensByUserID(ctx context.Contex
 		Find()
 
 	if err != nil {
-		return nil, fmt.Errorf("find refresh tokens by user id: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	tokens := make([]*entity.RefreshToken, 0, len(tokenModels))
@@ -135,18 +132,17 @@ func (repo *refreshTokenRepository) UpdateRefreshToken(ctx context.Context, toke
 	tokenM := fromRefreshTokenDomain(token)
 
 	if err := repo.q.RefreshTokenModel.WithContext(ctx).Save(tokenM); err != nil {
-		// Convert PostgreSQL errors to domain errors
 		if isUniqueConstraintViolation(err) {
-			return domainerrors.ErrRefreshTokenInvalid.WrapMessage("refresh token already exists")
+			return domainerrors.ErrRefreshTokenAlreadyExists
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrRefreshTokenUpdateFailed.WrapMessage("invalid user reference")
+			return domainerrors.ErrRefreshTokenUpdateFailed
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrRefreshTokenUpdateFailed.WrapMessage("missing required token information")
+			return domainerrors.ErrRefreshTokenUpdateFailed
 		}
-		// For other database errors, return a generic database error
-		return domainerrors.NewDatabaseExecuteError(err, "failed to update refresh token")
+
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	return nil
@@ -159,12 +155,12 @@ func (repo *refreshTokenRepository) DeleteRefreshToken(ctx context.Context, id u
 		Delete()
 
 	if err != nil {
-		return fmt.Errorf("delete refresh token: %w", err)
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	// If no rows were affected, it means the token was not found.
 	if result.RowsAffected == 0 {
-		return repository.ErrRefreshTokenNotFound
+		return domainerrors.ErrRefreshTokenNotFound
 	}
 
 	return nil
@@ -177,12 +173,12 @@ func (repo *refreshTokenRepository) DeleteRefreshTokenByHash(ctx context.Context
 		Delete()
 
 	if err != nil {
-		return fmt.Errorf("delete refresh token by hash: %w", err)
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	// If no rows were affected, it means the token was not found.
 	if result.RowsAffected == 0 {
-		return repository.ErrRefreshTokenNotFound
+		return domainerrors.ErrRefreshTokenNotFound
 	}
 
 	return nil
@@ -193,7 +189,7 @@ func (repo *refreshTokenRepository) DeleteRefreshTokensByUserID(ctx context.Cont
 	if _, err := repo.q.RefreshTokenModel.WithContext(ctx).
 		Where(repo.q.RefreshTokenModel.UserID.Eq(userID)).
 		Delete(); err != nil {
-		return fmt.Errorf("delete refresh tokens by user id: %w", err)
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	return nil
@@ -206,7 +202,7 @@ func (repo *refreshTokenRepository) DeleteExpiredRefreshTokens(ctx context.Conte
 	if _, err := repo.q.RefreshTokenModel.WithContext(ctx).
 		Where(repo.q.RefreshTokenModel.ExpiresAt.Lt(now)).
 		Delete(); err != nil {
-		return fmt.Errorf("delete expired refresh tokens: %w", err)
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	return nil
@@ -224,7 +220,7 @@ func (repo *refreshTokenRepository) CountActiveSessionsByUserID(ctx context.Cont
 		Count()
 
 	if err != nil {
-		return 0, fmt.Errorf("count active sessions by user id: %w", err)
+		return 0, domainerrors.ErrPersistenceFailed
 	}
 
 	return int(count), nil

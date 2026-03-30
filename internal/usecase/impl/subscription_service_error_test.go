@@ -7,7 +7,6 @@ import (
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
-	"radar/internal/domain/repository"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
@@ -40,7 +39,7 @@ func TestSubscriptionService_UnsubscribeFromMerchant_NotFound(t *testing.T) {
 
 	fx.subRepo.EXPECT().
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
-		Return(nil, repository.ErrSubscriptionNotFound)
+		Return(nil, domainerrors.ErrSubscriptionNotFound)
 
 	err := fx.service.UnsubscribeFromMerchant(ctx, userID, merchantID)
 	assert.Error(t, err)
@@ -70,14 +69,15 @@ func TestSubscriptionService_GetUserSubscriptions_Error(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 
+	expectedErr := errors.New("database error")
 	fx.subRepo.EXPECT().
 		FindSubscriptionsByUser(ctx, userID).
-		Return(nil, errors.New("database error"))
+		Return(nil, expectedErr)
 
 	subs, err := fx.service.GetUserSubscriptions(ctx, userID)
 	assert.Error(t, err)
 	assert.Nil(t, subs)
-	assert.Contains(t, err.Error(), "failed to find subscriptions by user")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestSubscriptionService_GetMerchantSubscribers_Error(t *testing.T) {
@@ -86,14 +86,15 @@ func TestSubscriptionService_GetMerchantSubscribers_Error(t *testing.T) {
 	ctx := context.Background()
 	merchantID := uuid.New()
 
+	expectedErr := errors.New("database error")
 	fx.subRepo.EXPECT().
 		FindSubscriptionsByMerchant(ctx, merchantID).
-		Return(nil, errors.New("database error"))
+		Return(nil, expectedErr)
 
 	subs, err := fx.service.GetMerchantSubscribers(ctx, merchantID)
 	assert.Error(t, err)
 	assert.Nil(t, subs)
-	assert.Contains(t, err.Error(), "failed to find subscriptions by merchant")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestSubscriptionService_GenerateSubscriptionQR_Error(t *testing.T) {
@@ -119,13 +120,14 @@ func TestSubscriptionService_UnsubscribeFromMerchant_FindError(t *testing.T) {
 	userID := uuid.New()
 	merchantID := uuid.New()
 
+	expectedErr := errors.New("database error")
 	fx.subRepo.EXPECT().
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
-		Return(nil, errors.New("database error"))
+		Return(nil, expectedErr)
 
 	err := fx.service.UnsubscribeFromMerchant(ctx, userID, merchantID)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to find subscription by user and merchant")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestSubscriptionService_UnsubscribeFromMerchant_DeleteError(t *testing.T) {
@@ -147,13 +149,14 @@ func TestSubscriptionService_UnsubscribeFromMerchant_DeleteError(t *testing.T) {
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
 		Return(existingSub, nil)
 
+	expectedErr := errors.New("database error")
 	fx.subRepo.EXPECT().
 		DeleteSubscription(ctx, subID).
-		Return(errors.New("database error"))
+		Return(expectedErr)
 
 	err := fx.service.UnsubscribeFromMerchant(ctx, userID, merchantID)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to delete subscription")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestSubscriptionService_SubscribeToMerchant_CreateError(t *testing.T) {
@@ -165,16 +168,17 @@ func TestSubscriptionService_SubscribeToMerchant_CreateError(t *testing.T) {
 
 	fx.subRepo.EXPECT().
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
-		Return(nil, repository.ErrSubscriptionNotFound)
+		Return(nil, domainerrors.ErrSubscriptionNotFound)
 
+	expectedErr := errors.New("database error")
 	fx.subRepo.EXPECT().
 		CreateSubscription(ctx, mock.AnythingOfType("*entity.UserMerchantSubscription")).
-		Return(errors.New("database error"))
+		Return(expectedErr)
 
 	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, nil)
 	assert.Error(t, err)
 	assert.Nil(t, subscription)
-	assert.Contains(t, err.Error(), "failed to create subscription")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestSubscriptionService_SubscribeToMerchant_WithDevice_FindDeviceError(t *testing.T) {
@@ -191,20 +195,21 @@ func TestSubscriptionService_SubscribeToMerchant_WithDevice_FindDeviceError(t *t
 
 	fx.subRepo.EXPECT().
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
-		Return(nil, repository.ErrSubscriptionNotFound)
+		Return(nil, domainerrors.ErrSubscriptionNotFound)
 
 	fx.subRepo.EXPECT().
 		CreateSubscription(ctx, mock.AnythingOfType("*entity.UserMerchantSubscription")).
 		Return(nil)
 
+	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
 		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
-		Return(nil, errors.New("database error"))
+		Return(nil, expectedErr)
 
 	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, deviceInfo)
 	assert.Error(t, err)
 	assert.Nil(t, subscription)
-	assert.Contains(t, err.Error(), "failed to find device by user and device ID")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestSubscriptionService_SubscribeToMerchant_WithDevice_UpdateTokenError(t *testing.T) {
@@ -228,7 +233,7 @@ func TestSubscriptionService_SubscribeToMerchant_WithDevice_UpdateTokenError(t *
 
 	fx.subRepo.EXPECT().
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
-		Return(nil, repository.ErrSubscriptionNotFound)
+		Return(nil, domainerrors.ErrSubscriptionNotFound)
 
 	fx.subRepo.EXPECT().
 		CreateSubscription(ctx, mock.AnythingOfType("*entity.UserMerchantSubscription")).
@@ -238,14 +243,15 @@ func TestSubscriptionService_SubscribeToMerchant_WithDevice_UpdateTokenError(t *
 		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
 		Return(existingDevice, nil)
 
+	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
 		UpdateFCMToken(ctx, deviceID, "new-token").
-		Return(errors.New("database error"))
+		Return(expectedErr)
 
 	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, deviceInfo)
 	assert.Error(t, err)
 	assert.Nil(t, subscription)
-	assert.Contains(t, err.Error(), "failed to update FCM token")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestSubscriptionService_SubscribeToMerchant_WithDevice_CreateDeviceError(t *testing.T) {
@@ -262,7 +268,7 @@ func TestSubscriptionService_SubscribeToMerchant_WithDevice_CreateDeviceError(t 
 
 	fx.subRepo.EXPECT().
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
-		Return(nil, repository.ErrSubscriptionNotFound)
+		Return(nil, domainerrors.ErrSubscriptionNotFound)
 
 	fx.subRepo.EXPECT().
 		CreateSubscription(ctx, mock.AnythingOfType("*entity.UserMerchantSubscription")).
@@ -270,16 +276,17 @@ func TestSubscriptionService_SubscribeToMerchant_WithDevice_CreateDeviceError(t 
 
 	fx.deviceRepo.EXPECT().
 		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
-		Return(nil, repository.ErrDeviceNotFound)
+		Return(nil, domainerrors.ErrDeviceNotFound)
 
+	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
 		CreateDevice(ctx, mock.AnythingOfType("*entity.UserDevice")).
-		Return(errors.New("database error"))
+		Return(expectedErr)
 
 	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, deviceInfo)
 	assert.Error(t, err)
 	assert.Nil(t, subscription)
-	assert.Contains(t, err.Error(), "failed to create device")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestSubscriptionService_ReactivateSubscription_UpdateStatusError(t *testing.T) {
@@ -301,14 +308,15 @@ func TestSubscriptionService_ReactivateSubscription_UpdateStatusError(t *testing
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
 		Return(existingSub, nil)
 
+	expectedErr := errors.New("database error")
 	fx.subRepo.EXPECT().
 		UpdateSubscriptionStatus(ctx, subID, true).
-		Return(errors.New("database error"))
+		Return(expectedErr)
 
 	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, nil)
 	assert.Error(t, err)
 	assert.Nil(t, subscription)
-	assert.Contains(t, err.Error(), "failed to update subscription status")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestSubscriptionService_SubscribeToMerchant_CreateReloadError(t *testing.T) {
@@ -320,20 +328,21 @@ func TestSubscriptionService_SubscribeToMerchant_CreateReloadError(t *testing.T)
 
 	fx.subRepo.EXPECT().
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
-		Return(nil, repository.ErrSubscriptionNotFound)
+		Return(nil, domainerrors.ErrSubscriptionNotFound)
 
 	fx.subRepo.EXPECT().
 		CreateSubscription(ctx, mock.AnythingOfType("*entity.UserMerchantSubscription")).
 		Return(nil)
 
+	expectedErr := errors.New("database error")
 	fx.subRepo.EXPECT().
 		FindSubscriptionByID(ctx, mock.Anything).
-		Return(nil, errors.New("database error"))
+		Return(nil, expectedErr)
 
 	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, nil)
 	assert.Error(t, err)
 	assert.Nil(t, subscription)
-	assert.Contains(t, err.Error(), "failed to reload subscription after creation")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestSubscriptionService_ReactivateSubscription_ReloadError(t *testing.T) {
@@ -359,14 +368,15 @@ func TestSubscriptionService_ReactivateSubscription_ReloadError(t *testing.T) {
 		UpdateSubscriptionStatus(ctx, subID, true).
 		Return(nil)
 
+	expectedErr := errors.New("database error")
 	fx.subRepo.EXPECT().
 		FindSubscriptionByID(ctx, subID).
-		Return(nil, errors.New("database error"))
+		Return(nil, expectedErr)
 
 	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, nil)
 	assert.Error(t, err)
 	assert.Nil(t, subscription)
-	assert.Contains(t, err.Error(), "failed to reload subscription after reactivation")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestSubscriptionService_ReactivateSubscription_WithDevice_FindDeviceError(t *testing.T) {
@@ -393,12 +403,13 @@ func TestSubscriptionService_ReactivateSubscription_WithDevice_FindDeviceError(t
 		FindSubscriptionByUserAndMerchant(ctx, userID, merchantID).
 		Return(existingSub, nil)
 
+	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
 		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
-		Return(nil, errors.New("database error"))
+		Return(nil, expectedErr)
 
 	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, deviceInfo)
 	assert.Error(t, err)
 	assert.Nil(t, subscription)
-	assert.Contains(t, err.Error(), "failed to find device by user and device ID")
+	assert.ErrorIs(t, err, expectedErr)
 }

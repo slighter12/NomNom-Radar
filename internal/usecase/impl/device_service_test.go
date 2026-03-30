@@ -6,7 +6,6 @@ import (
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
-	"radar/internal/domain/repository"
 	mockRepo "radar/internal/mocks/repository"
 	"radar/internal/usecase"
 
@@ -47,7 +46,7 @@ func TestDeviceService_RegisterDevice_NewDevice(t *testing.T) {
 
 	fx.deviceRepo.EXPECT().
 		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
-		Return(nil, repository.ErrDeviceNotFound)
+		Return(nil, domainerrors.ErrDeviceNotFound)
 
 	fx.deviceRepo.EXPECT().
 		CreateDevice(ctx, mock.AnythingOfType("*entity.UserDevice")).
@@ -124,7 +123,7 @@ func TestDeviceService_RegisterDevice_NormalizesDeviceInfo(t *testing.T) {
 
 	fx.deviceRepo.EXPECT().
 		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
-		Return(nil, repository.ErrDeviceNotFound)
+		Return(nil, domainerrors.ErrDeviceNotFound)
 
 	fx.deviceRepo.EXPECT().
 		CreateDevice(ctx, mock.AnythingOfType("*entity.UserDevice")).

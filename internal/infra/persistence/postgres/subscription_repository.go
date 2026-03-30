@@ -1,10 +1,8 @@
-// Package postgres contains the concrete implementation of the persistence layer using GORM and PostgreSQL.
 package postgres
 
 import (
 	"context"
 	"database/sql/driver"
-	"fmt"
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
@@ -38,18 +36,17 @@ func (repo *subscriptionRepository) CreateSubscription(ctx context.Context, subs
 	subscriptionM := fromSubscriptionDomain(subscription)
 
 	if err := repo.q.UserMerchantSubscriptionModel.WithContext(ctx).Create(subscriptionM); err != nil {
-		// Convert PostgreSQL errors to domain errors
 		if isUniqueConstraintViolation(err) {
-			return repository.ErrDuplicateSubscription
+			return domainerrors.ErrSubscriptionAlreadyExists
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrSubscriptionCreationFailed.WrapMessage("invalid user or merchant reference")
+			return domainerrors.ErrSubscriptionCreateFailed
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrSubscriptionCreationFailed.WrapMessage("missing required subscription information")
+			return domainerrors.ErrSubscriptionCreateFailed
 		}
-		// For other database errors, return a generic database error
-		return domainerrors.NewDatabaseExecuteError(err, "failed to create subscription")
+
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	// Update the entity with generated values
@@ -74,11 +71,11 @@ func (repo *subscriptionRepository) FindSubscriptionByID(ctx context.Context, su
 		Scan(&subscriptionMs)
 
 	if err != nil {
-		return nil, fmt.Errorf("find subscription by id: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	if len(subscriptionMs) == 0 {
-		return nil, repository.ErrSubscriptionNotFound
+		return nil, domainerrors.ErrSubscriptionNotFound
 	}
 
 	return toSubscriptionDomainWithMerchantName(&subscriptionMs[0]), nil
@@ -98,11 +95,11 @@ func (repo *subscriptionRepository) FindSubscriptionByUserAndMerchant(ctx contex
 		Scan(&subscriptionMs)
 
 	if err != nil {
-		return nil, fmt.Errorf("find subscription by user and merchant: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	if len(subscriptionMs) == 0 {
-		return nil, repository.ErrSubscriptionNotFound
+		return nil, domainerrors.ErrSubscriptionNotFound
 	}
 
 	return toSubscriptionDomainWithMerchantName(&subscriptionMs[0]), nil
@@ -123,7 +120,7 @@ func (repo *subscriptionRepository) FindSubscriptionsByUser(ctx context.Context,
 		Scan(&subscriptionModels)
 
 	if err != nil {
-		return nil, fmt.Errorf("find subscriptions by user: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	subscriptions := make([]*entity.UserMerchantSubscription, 0, len(subscriptionModels))
@@ -149,7 +146,7 @@ func (repo *subscriptionRepository) FindSubscriptionsByMerchant(ctx context.Cont
 		Scan(&subscriptionModels)
 
 	if err != nil {
-		return nil, fmt.Errorf("find subscriptions by merchant: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	subscriptions := make([]*entity.UserMerchantSubscription, 0, len(subscriptionModels))
@@ -167,11 +164,11 @@ func (repo *subscriptionRepository) UpdateSubscriptionStatus(ctx context.Context
 		Update(repo.q.UserMerchantSubscriptionModel.IsActive, isActive)
 
 	if err != nil {
-		return fmt.Errorf("update subscription status: %w", err)
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	if result.RowsAffected == 0 {
-		return repository.ErrSubscriptionNotFound
+		return domainerrors.ErrSubscriptionNotFound
 	}
 
 	return nil
@@ -184,11 +181,11 @@ func (repo *subscriptionRepository) UpdateNotificationRadius(ctx context.Context
 		Update(repo.q.UserMerchantSubscriptionModel.NotificationRadius, radius)
 
 	if err != nil {
-		return fmt.Errorf("update subscription notification radius: %w", err)
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	if result.RowsAffected == 0 {
-		return repository.ErrSubscriptionNotFound
+		return domainerrors.ErrSubscriptionNotFound
 	}
 
 	return nil
@@ -201,11 +198,11 @@ func (repo *subscriptionRepository) DeleteSubscription(ctx context.Context, subs
 		Delete()
 
 	if err != nil {
-		return fmt.Errorf("delete subscription: %w", err)
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	if result.RowsAffected == 0 {
-		return repository.ErrSubscriptionNotFound
+		return domainerrors.ErrSubscriptionNotFound
 	}
 
 	return nil
@@ -236,7 +233,7 @@ func (repo *subscriptionRepository) FindSubscribersWithinRadius(ctx context.Cont
 		Find(&subscriptionModels).Error
 
 	if err != nil {
-		return nil, fmt.Errorf("find subscribers within radius: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	subscriptions := make([]*entity.UserMerchantSubscription, 0, len(subscriptionModels))
@@ -277,7 +274,7 @@ func (repo *subscriptionRepository) FindSubscriberAddressesWithinRadius(ctx cont
 		Find(&addressModels).Error
 
 	if err != nil {
-		return nil, fmt.Errorf("find subscriber addresses within radius: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	addresses := make([]*entity.SubscriberAddress, 0, len(addressModels))
@@ -309,7 +306,7 @@ func (repo *subscriptionRepository) FindDevicesForUsers(ctx context.Context, use
 		Find()
 
 	if err != nil {
-		return nil, fmt.Errorf("find devices for users: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	devices := make([]*entity.UserDevice, 0, len(deviceModels))
@@ -353,7 +350,7 @@ func (repo *subscriptionRepository) FindSubscriberAddressesByUserIDs(ctx context
 		Find(&addressModels).Error
 
 	if err != nil {
-		return nil, fmt.Errorf("find subscriber addresses by user ids: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	addresses := make([]*entity.SubscriberAddress, 0, len(addressModels))

@@ -55,17 +55,17 @@ func (srv *sessionService) GetActiveSessions(ctx context.Context, userID uuid.UU
 		// 1. Verify user exists
 		_, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
-			if errors.Is(err, repository.ErrUserNotFound) {
-				return fmt.Errorf("user not found: %w", domainerrors.ErrNotFound)
+			if errors.Is(err, domainerrors.ErrUserNotFound) {
+				return domainerrors.ErrNotFound
 			}
 
-			return fmt.Errorf("failed to find user: %w", err)
+			return err
 		}
 
 		// 2. Get all refresh tokens for the user
 		tokens, err := refreshRepo.FindRefreshTokensByUserID(ctx, userID)
 		if err != nil {
-			return fmt.Errorf("failed to find refresh tokens: %w", err)
+			return err
 		}
 
 		// 3. Convert to session info
@@ -87,7 +87,7 @@ func (srv *sessionService) GetActiveSessions(ctx context.Context, userID uuid.UU
 	if err != nil {
 		srv.log(ctx).Error("Failed to get active sessions", slog.Any("error", err), slog.Any("user_id", userID))
 
-		return nil, fmt.Errorf("failed to get active sessions: %w", err)
+		return nil, err
 	}
 	srv.log(ctx).Debug("Successfully retrieved active sessions", slog.Any("user_id", userID), slog.Int("count", len(sessions)))
 
@@ -105,21 +105,21 @@ func (srv *sessionService) RevokeSession(ctx context.Context, userID, sessionID 
 		// 1. Verify user exists
 		_, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
-			if errors.Is(err, repository.ErrUserNotFound) {
-				return fmt.Errorf("user not found: %w", domainerrors.ErrNotFound)
+			if errors.Is(err, domainerrors.ErrUserNotFound) {
+				return domainerrors.ErrNotFound
 			}
 
-			return fmt.Errorf("failed to find user: %w", err)
+			return err
 		}
 
 		// 2. Find the session
 		token, err := refreshRepo.FindRefreshTokenByID(ctx, sessionID)
 		if err != nil {
-			if errors.Is(err, repository.ErrRefreshTokenNotFound) {
-				return fmt.Errorf("session not found: %w", domainerrors.ErrNotFound)
+			if errors.Is(err, domainerrors.ErrRefreshTokenNotFound) {
+				return domainerrors.ErrNotFound
 			}
 
-			return fmt.Errorf("failed to find session: %w", err)
+			return err
 		}
 
 		// 3. Verify ownership
@@ -129,7 +129,7 @@ func (srv *sessionService) RevokeSession(ctx context.Context, userID, sessionID 
 
 		// 4. Delete the session
 		if err := refreshRepo.DeleteRefreshToken(ctx, sessionID); err != nil {
-			return fmt.Errorf("failed to delete session: %w", err)
+			return err
 		}
 
 		return nil
@@ -138,7 +138,7 @@ func (srv *sessionService) RevokeSession(ctx context.Context, userID, sessionID 
 	if err != nil {
 		srv.log(ctx).Error("Failed to revoke session", slog.Any("error", err), slog.Any("user_id", userID), slog.Any("session_id", sessionID))
 
-		return fmt.Errorf("failed to revoke session: %w", err)
+		return err
 	}
 	srv.log(ctx).Info("Successfully revoked session", slog.Any("user_id", userID), slog.Any("session_id", sessionID))
 
@@ -156,16 +156,16 @@ func (srv *sessionService) RevokeAllSessions(ctx context.Context, userID uuid.UU
 		// 1. Verify user exists
 		_, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
-			if errors.Is(err, repository.ErrUserNotFound) {
-				return fmt.Errorf("user not found: %w", domainerrors.ErrNotFound)
+			if errors.Is(err, domainerrors.ErrUserNotFound) {
+				return domainerrors.ErrNotFound
 			}
 
-			return fmt.Errorf("failed to find user: %w", err)
+			return err
 		}
 
 		// 2. Delete all sessions
 		if err := refreshRepo.DeleteRefreshTokensByUserID(ctx, userID); err != nil {
-			return fmt.Errorf("failed to delete all sessions: %w", err)
+			return err
 		}
 
 		return nil
@@ -174,7 +174,7 @@ func (srv *sessionService) RevokeAllSessions(ctx context.Context, userID uuid.UU
 	if err != nil {
 		srv.log(ctx).Error("Failed to revoke all sessions", slog.Any("error", err), slog.Any("user_id", userID))
 
-		return fmt.Errorf("failed to revoke all sessions: %w", err)
+		return err
 	}
 	srv.log(ctx).Info("Successfully revoked all sessions", slog.Any("user_id", userID))
 
@@ -192,24 +192,24 @@ func (srv *sessionService) RevokeAllOtherSessions(ctx context.Context, userID uu
 		// 1. Verify user exists
 		_, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
-			if errors.Is(err, repository.ErrUserNotFound) {
-				return fmt.Errorf("user not found: %w", domainerrors.ErrNotFound)
+			if errors.Is(err, domainerrors.ErrUserNotFound) {
+				return domainerrors.ErrNotFound
 			}
 
-			return fmt.Errorf("failed to find user: %w", err)
+			return err
 		}
 
 		// 2. Get all sessions
 		tokens, err := refreshRepo.FindRefreshTokensByUserID(ctx, userID)
 		if err != nil {
-			return fmt.Errorf("failed to find refresh tokens: %w", err)
+			return err
 		}
 
 		// 3. Delete all sessions except the current one
 		for _, token := range tokens {
 			if token.ID != currentSessionID {
 				if err := refreshRepo.DeleteRefreshToken(ctx, token.ID); err != nil {
-					return fmt.Errorf("failed to delete session: %w", err)
+					return err
 				}
 			}
 		}
@@ -220,7 +220,7 @@ func (srv *sessionService) RevokeAllOtherSessions(ctx context.Context, userID uu
 	if err != nil {
 		srv.log(ctx).Error("Failed to revoke all other sessions", slog.Any("error", err), slog.Any("user_id", userID))
 
-		return fmt.Errorf("failed to revoke all other sessions: %w", err)
+		return err
 	}
 	srv.log(ctx).Info("Successfully revoked all other sessions", slog.Any("user_id", userID), slog.Any("current_session_id", currentSessionID))
 
@@ -240,21 +240,21 @@ func (srv *sessionService) GetSessionInfo(ctx context.Context, userID, sessionID
 		// 1. Verify user exists
 		_, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
-			if errors.Is(err, repository.ErrUserNotFound) {
-				return fmt.Errorf("user not found: %w", domainerrors.ErrNotFound)
+			if errors.Is(err, domainerrors.ErrUserNotFound) {
+				return domainerrors.ErrNotFound
 			}
 
-			return fmt.Errorf("failed to find user: %w", err)
+			return err
 		}
 
 		// 2. Find the session
 		token, err := refreshRepo.FindRefreshTokenByID(ctx, sessionID)
 		if err != nil {
-			if errors.Is(err, repository.ErrRefreshTokenNotFound) {
-				return fmt.Errorf("session not found: %w", domainerrors.ErrNotFound)
+			if errors.Is(err, domainerrors.ErrRefreshTokenNotFound) {
+				return domainerrors.ErrNotFound
 			}
 
-			return fmt.Errorf("failed to find session: %w", err)
+			return err
 		}
 
 		// 3. Verify ownership
@@ -279,7 +279,7 @@ func (srv *sessionService) GetSessionInfo(ctx context.Context, userID, sessionID
 	if err != nil {
 		srv.log(ctx).Error("Failed to get session info", slog.Any("error", err), slog.Any("user_id", userID), slog.Any("session_id", sessionID))
 
-		return nil, fmt.Errorf("failed to get session info: %w", err)
+		return nil, err
 	}
 	srv.log(ctx).Debug("Successfully retrieved session info", slog.Any("user_id", userID), slog.Any("session_id", sessionID))
 
@@ -330,17 +330,17 @@ func (srv *sessionService) DetectAnomalousActivity(ctx context.Context, userID u
 		// 1. Verify user exists
 		_, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
-			if errors.Is(err, repository.ErrUserNotFound) {
-				return fmt.Errorf("user not found: %w", domainerrors.ErrNotFound)
+			if errors.Is(err, domainerrors.ErrUserNotFound) {
+				return domainerrors.ErrNotFound
 			}
 
-			return fmt.Errorf("failed to find user: %w", err)
+			return err
 		}
 
 		// 2. Get user sessions
 		tokens, err := refreshRepo.FindRefreshTokensByUserID(ctx, userID)
 		if err != nil {
-			return fmt.Errorf("failed to find refresh tokens: %w", err)
+			return err
 		}
 
 		// 3. Analyze for anomalies
@@ -353,7 +353,7 @@ func (srv *sessionService) DetectAnomalousActivity(ctx context.Context, userID u
 	if err != nil {
 		srv.log(ctx).Error("Failed to detect anomalous activity", slog.Any("error", err), slog.Any("user_id", userID))
 
-		return nil, fmt.Errorf("failed to detect anomalous activity: %w", err)
+		return nil, err
 	}
 	srv.log(ctx).Debug("Successfully analyzed for anomalous activity", slog.Any("user_id", userID), slog.Int("anomalies_found", len(anomalies)))
 
@@ -464,17 +464,17 @@ func (srv *sessionService) GetSessionStatistics(ctx context.Context, userID uuid
 		// 1. Verify user exists
 		_, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
-			if errors.Is(err, repository.ErrUserNotFound) {
-				return fmt.Errorf("user not found: %w", domainerrors.ErrNotFound)
+			if errors.Is(err, domainerrors.ErrUserNotFound) {
+				return domainerrors.ErrNotFound
 			}
 
-			return fmt.Errorf("failed to find user: %w", err)
+			return err
 		}
 
 		// 2. Get user sessions
 		tokens, err := refreshRepo.FindRefreshTokensByUserID(ctx, userID)
 		if err != nil {
-			return fmt.Errorf("failed to find refresh tokens: %w", err)
+			return err
 		}
 
 		// 3. Calculate statistics
@@ -487,7 +487,7 @@ func (srv *sessionService) GetSessionStatistics(ctx context.Context, userID uuid
 	if err != nil {
 		srv.log(ctx).Error("Failed to get session statistics", slog.Any("error", err), slog.Any("user_id", userID))
 
-		return nil, fmt.Errorf("failed to get session statistics: %w", err)
+		return nil, err
 	}
 	srv.log(ctx).Debug("Successfully retrieved session statistics", slog.Any("user_id", userID))
 

@@ -8,7 +8,6 @@ import (
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
-	"radar/internal/domain/repository"
 	mockRepo "radar/internal/mocks/repository"
 	"radar/internal/usecase"
 
@@ -23,16 +22,16 @@ func TestProfileService_GetProfile_NotFound(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 
-	fx.onExecute(ctx, repository.ErrUserNotFound, func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, domainerrors.ErrNotFound, func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
-		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, repository.ErrUserNotFound)
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, domainerrors.ErrUserNotFound)
 	})
 
 	_, err := fx.service.GetProfile(ctx, userID)
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "user not found")
+	assert.ErrorIs(t, err, domainerrors.ErrNotFound)
 }
 
 func TestProfileService_GetProfile_FindError(t *testing.T) {
@@ -41,17 +40,18 @@ func TestProfileService_GetProfile_FindError(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 
-	fx.onExecute(ctx, fmt.Errorf("failed to find user: %w", errors.New("db error")), func(factory *mockRepo.MockRepositoryFactory) {
+	expectedErr := errors.New("db error")
+	fx.onExecute(ctx, expectedErr, func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
-		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, errors.New("db error"))
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, expectedErr)
 	})
 
 	user, err := fx.service.GetProfile(ctx, userID)
 
 	assert.Error(t, err)
 	assert.Nil(t, user)
-	assert.Contains(t, err.Error(), "failed to find user")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestProfileService_UpdateMerchantProfile_NoProfile(t *testing.T) {
@@ -88,10 +88,10 @@ func TestProfileService_UpdateMerchantProfile_NotFound(t *testing.T) {
 	userID := uuid.New()
 	input := &usecase.UpdateMerchantProfileInput{}
 
-	fx.onExecute(ctx, fmt.Errorf("user not found: %w", domainerrors.ErrNotFound), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, domainerrors.ErrNotFound, func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
-		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, repository.ErrUserNotFound)
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, domainerrors.ErrUserNotFound)
 	})
 
 	err := fx.service.UpdateMerchantProfile(ctx, userID, input)
@@ -107,16 +107,17 @@ func TestProfileService_UpdateMerchantProfile_FindError(t *testing.T) {
 	userID := uuid.New()
 	input := &usecase.UpdateMerchantProfileInput{}
 
-	fx.onExecute(ctx, fmt.Errorf("failed to find user: %w", errors.New("db error")), func(factory *mockRepo.MockRepositoryFactory) {
+	expectedErr := errors.New("db error")
+	fx.onExecute(ctx, expectedErr, func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
-		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, errors.New("db error"))
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, expectedErr)
 	})
 
 	err := fx.service.UpdateMerchantProfile(ctx, userID, input)
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to find user")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestProfileService_UpdateMerchantProfile_UpdateError(t *testing.T) {
@@ -137,17 +138,18 @@ func TestProfileService_UpdateMerchantProfile_UpdateError(t *testing.T) {
 		},
 	}
 
-	fx.onExecute(ctx, fmt.Errorf("failed to update merchant profile: %w", errors.New("db error")), func(factory *mockRepo.MockRepositoryFactory) {
+	expectedErr := errors.New("db error")
+	fx.onExecute(ctx, expectedErr, func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
 		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(existingUser, nil)
-		mockUserRepo.EXPECT().Update(ctx, mock.AnythingOfType("*entity.User")).Return(errors.New("db error"))
+		mockUserRepo.EXPECT().Update(ctx, mock.AnythingOfType("*entity.User")).Return(expectedErr)
 	})
 
 	err := fx.service.UpdateMerchantProfile(ctx, userID, input)
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to update merchant profile")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestProfileService_UpdateUserProfile_NotFound(t *testing.T) {
@@ -157,10 +159,10 @@ func TestProfileService_UpdateUserProfile_NotFound(t *testing.T) {
 	userID := uuid.New()
 	input := &usecase.UpdateUserProfileInput{}
 
-	fx.onExecute(ctx, fmt.Errorf("user not found: %w", domainerrors.ErrNotFound), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, domainerrors.ErrNotFound, func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
-		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, repository.ErrUserNotFound)
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, domainerrors.ErrUserNotFound)
 	})
 
 	err := fx.service.UpdateUserProfile(ctx, userID, input)
@@ -200,16 +202,17 @@ func TestProfileService_UpdateUserProfile_FindError(t *testing.T) {
 	userID := uuid.New()
 	input := &usecase.UpdateUserProfileInput{}
 
-	fx.onExecute(ctx, fmt.Errorf("failed to find user: %w", errors.New("db error")), func(factory *mockRepo.MockRepositoryFactory) {
+	expectedErr := errors.New("db error")
+	fx.onExecute(ctx, expectedErr, func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
-		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, errors.New("db error"))
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, expectedErr)
 	})
 
 	err := fx.service.UpdateUserProfile(ctx, userID, input)
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to find user")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestProfileService_UpdateUserProfile_UpdateError(t *testing.T) {
@@ -230,17 +233,18 @@ func TestProfileService_UpdateUserProfile_UpdateError(t *testing.T) {
 		},
 	}
 
-	fx.onExecute(ctx, fmt.Errorf("failed to update user profile: %w", errors.New("db error")), func(factory *mockRepo.MockRepositoryFactory) {
+	expectedErr := errors.New("db error")
+	fx.onExecute(ctx, expectedErr, func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
 		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(existingUser, nil)
-		mockUserRepo.EXPECT().Update(ctx, mock.AnythingOfType("*entity.User")).Return(errors.New("db error"))
+		mockUserRepo.EXPECT().Update(ctx, mock.AnythingOfType("*entity.User")).Return(expectedErr)
 	})
 
 	err := fx.service.UpdateUserProfile(ctx, userID, input)
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to update user profile")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestProfileService_SwitchToMerchant_NotFound(t *testing.T) {
@@ -253,10 +257,10 @@ func TestProfileService_SwitchToMerchant_NotFound(t *testing.T) {
 		BusinessLicense: "BL-123",
 	}
 
-	fx.onExecute(ctx, fmt.Errorf("user not found: %w", domainerrors.ErrNotFound), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, domainerrors.ErrNotFound, func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
-		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, repository.ErrUserNotFound)
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, domainerrors.ErrUserNotFound)
 	})
 
 	err := fx.service.SwitchToMerchant(ctx, userID, input)
@@ -275,16 +279,17 @@ func TestProfileService_SwitchToMerchant_FindError(t *testing.T) {
 		BusinessLicense: "BL-123",
 	}
 
-	fx.onExecute(ctx, fmt.Errorf("failed to find user: %w", errors.New("db error")), func(factory *mockRepo.MockRepositoryFactory) {
+	expectedErr := errors.New("db error")
+	fx.onExecute(ctx, expectedErr, func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
-		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, errors.New("db error"))
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, expectedErr)
 	})
 
 	err := fx.service.SwitchToMerchant(ctx, userID, input)
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to find user")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestProfileService_SwitchToMerchant_AlreadyMerchant(t *testing.T) {
@@ -332,17 +337,18 @@ func TestProfileService_SwitchToMerchant_UpdateError(t *testing.T) {
 		MerchantProfile: nil,
 	}
 
-	fx.onExecute(ctx, fmt.Errorf("failed to create merchant profile: %w", errors.New("db error")), func(factory *mockRepo.MockRepositoryFactory) {
+	expectedErr := errors.New("db error")
+	fx.onExecute(ctx, expectedErr, func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
 		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(existingUser, nil)
-		mockUserRepo.EXPECT().Update(ctx, mock.AnythingOfType("*entity.User")).Return(errors.New("db error"))
+		mockUserRepo.EXPECT().Update(ctx, mock.AnythingOfType("*entity.User")).Return(expectedErr)
 	})
 
 	err := fx.service.SwitchToMerchant(ctx, userID, input)
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to create merchant profile")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestProfileService_GetUserRole_NotFound(t *testing.T) {
@@ -351,10 +357,10 @@ func TestProfileService_GetUserRole_NotFound(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 
-	fx.onExecute(ctx, fmt.Errorf("user not found: %w", domainerrors.ErrNotFound), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, domainerrors.ErrNotFound, func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
-		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, repository.ErrUserNotFound)
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, domainerrors.ErrUserNotFound)
 	})
 
 	roles, err := fx.service.GetUserRole(ctx, userID)
@@ -370,15 +376,16 @@ func TestProfileService_GetUserRole_FindError(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 
-	fx.onExecute(ctx, fmt.Errorf("failed to find user: %w", errors.New("db error")), func(factory *mockRepo.MockRepositoryFactory) {
+	expectedErr := errors.New("db error")
+	fx.onExecute(ctx, expectedErr, func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
-		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, errors.New("db error"))
+		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(nil, expectedErr)
 	})
 
 	roles, err := fx.service.GetUserRole(ctx, userID)
 
 	assert.Error(t, err)
 	assert.Nil(t, roles)
-	assert.Contains(t, err.Error(), "failed to find user")
+	assert.ErrorIs(t, err, expectedErr)
 }

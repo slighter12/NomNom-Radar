@@ -102,7 +102,7 @@ func (h *MenuHandler) GetMerchantMenuItems(c echo.Context) error {
 
 	result, err := h.menuUC.ListMerchantMenuItems(c.Request().Context(), merchantID, input)
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, result)
@@ -123,7 +123,7 @@ func (h *MenuHandler) GetPublicMerchantMenu(c echo.Context) error {
 
 	result, err := h.menuUC.GetPublicMerchantMenu(c.Request().Context(), merchantID, input)
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, result)
@@ -157,7 +157,7 @@ func (h *MenuHandler) CreateMenuItem(c echo.Context) error {
 		ExternalURL: req.ExternalURL,
 	})
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusCreated, item)
@@ -196,7 +196,7 @@ func (h *MenuHandler) UpdateMenuItem(c echo.Context) error {
 		ExternalURL: req.ExternalURL,
 	})
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, item)
@@ -223,7 +223,7 @@ func (h *MenuHandler) UpdateMenuItemStatus(c echo.Context) error {
 
 	item, err := h.menuUC.UpdateMenuItemStatus(c.Request().Context(), merchantID, itemID, *req.IsAvailable)
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, item)
@@ -244,7 +244,7 @@ func (h *MenuHandler) ReorderMenuItems(c echo.Context) error {
 		ItemIDs: req.ItemIDs,
 	})
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, result)
@@ -262,7 +262,7 @@ func (h *MenuHandler) DeleteMenuItem(c echo.Context) error {
 	}
 
 	if err := h.menuUC.DeleteMenuItem(c.Request().Context(), merchantID, itemID); err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, map[string]string{"message": "Menu item deleted"})

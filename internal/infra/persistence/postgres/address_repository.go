@@ -1,4 +1,3 @@
-// Package postgres contains the concrete implementation of the persistence layer using GORM and PostgreSQL.
 package postgres
 
 import (
@@ -35,18 +34,17 @@ func (repo *addressRepository) CreateAddress(ctx context.Context, address *entit
 	addressM := fromAddressDomain(address)
 
 	if err := repo.q.AddressModel.WithContext(ctx).Create(addressM); err != nil {
-		// Convert PostgreSQL errors to domain errors
 		if isUniqueConstraintViolation(err) {
-			return domainerrors.ErrPrimaryAddressConflict.WrapMessage("primary address already exists for this owner")
+			return domainerrors.ErrPrimaryAddressConflict
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrAddressCreationFailed.WrapMessage("invalid owner reference")
+			return domainerrors.ErrAddressCreateFailed
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrAddressCreationFailed.WrapMessage("missing required address information")
+			return domainerrors.ErrAddressCreateFailed
 		}
-		// For other database errors, return a generic database error
-		return domainerrors.NewDatabaseExecuteError(err, "failed to create address")
+
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	// Update the entity with generated values
@@ -65,10 +63,10 @@ func (repo *addressRepository) FindAddressByID(ctx context.Context, id uuid.UUID
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, repository.ErrAddressNotFound
+			return nil, domainerrors.ErrAddressNotFound
 		}
 
-		return nil, fmt.Errorf("find address by id: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	return toAddressDomain(addressM), nil
@@ -96,7 +94,7 @@ func (repo *addressRepository) FindAddressesByOwner(ctx context.Context, ownerID
 		Find()
 
 	if err != nil {
-		return nil, fmt.Errorf("find addresses by owner: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	addresses := make([]*entity.Address, 0, len(addressModels))
@@ -126,10 +124,10 @@ func (repo *addressRepository) FindPrimaryAddressByOwner(ctx context.Context, ow
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, repository.ErrAddressNotFound
+			return nil, domainerrors.ErrAddressNotFound
 		}
 
-		return nil, fmt.Errorf("find primary address by owner: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	return toAddressDomain(addressM), nil
@@ -140,18 +138,17 @@ func (repo *addressRepository) UpdateAddress(ctx context.Context, address *entit
 	addressM := fromAddressDomain(address)
 
 	if err := repo.q.AddressModel.WithContext(ctx).Save(addressM); err != nil {
-		// Convert PostgreSQL errors to domain errors
 		if isUniqueConstraintViolation(err) {
-			return domainerrors.ErrPrimaryAddressConflict.WrapMessage("primary address already exists for this owner")
+			return domainerrors.ErrPrimaryAddressConflict
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrAddressUpdateFailed.WrapMessage("invalid owner reference")
+			return domainerrors.ErrAddressUpdateFailed
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrAddressUpdateFailed.WrapMessage("missing required address information")
+			return domainerrors.ErrAddressUpdateFailed
 		}
-		// For other database errors, return a generic database error
-		return domainerrors.NewDatabaseExecuteError(err, "failed to update address")
+
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	// Update the entity with updated timestamp
@@ -167,12 +164,12 @@ func (repo *addressRepository) DeleteAddress(ctx context.Context, id uuid.UUID) 
 		Delete()
 
 	if err != nil {
-		return fmt.Errorf("delete address: %w", err)
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	// If no rows were affected, it means the address was not found.
 	if result.RowsAffected == 0 {
-		return repository.ErrAddressNotFound
+		return domainerrors.ErrAddressNotFound
 	}
 
 	return nil
@@ -197,7 +194,7 @@ func (repo *addressRepository) CountAddressesByOwner(ctx context.Context, ownerI
 
 	count, err := query.Count()
 	if err != nil {
-		return 0, fmt.Errorf("count addresses by owner: %w", err)
+		return 0, domainerrors.ErrPersistenceFailed
 	}
 
 	return count, nil
@@ -228,7 +225,7 @@ func (repo *addressRepository) FindActiveAddressesByOwner(ctx context.Context, o
 		Find()
 
 	if err != nil {
-		return nil, fmt.Errorf("find active addresses by owner: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	addresses := make([]*entity.Address, 0, len(addressModels))

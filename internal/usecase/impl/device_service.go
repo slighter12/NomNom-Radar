@@ -2,8 +2,6 @@ package impl
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
@@ -44,7 +42,7 @@ func (s *deviceService) UpdateFCMToken(ctx context.Context, userID uuid.UUID, de
 	}
 
 	if err := s.deviceRepo.UpdateFCMToken(ctx, deviceID, fcmToken); err != nil {
-		return fmt.Errorf("failed to update FCM token: %w", err)
+		return err
 	}
 
 	return nil
@@ -54,7 +52,7 @@ func (s *deviceService) UpdateFCMToken(ctx context.Context, userID uuid.UUID, de
 func (s *deviceService) GetUserDevices(ctx context.Context, userID uuid.UUID) ([]*entity.UserDevice, error) {
 	devices, err := s.deviceRepo.FindActiveDevicesByUser(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find active devices by user: %w", err)
+		return nil, err
 	}
 
 	return devices, nil
@@ -67,7 +65,7 @@ func (s *deviceService) DeactivateDevice(ctx context.Context, userID, deviceID u
 	}
 
 	if err := s.deviceRepo.DeleteDevice(ctx, deviceID); err != nil {
-		return fmt.Errorf("failed to delete device: %w", err)
+		return err
 	}
 
 	return nil
@@ -76,11 +74,7 @@ func (s *deviceService) DeactivateDevice(ctx context.Context, userID, deviceID u
 func (s *deviceService) ensureOwnedDevice(ctx context.Context, userID, deviceID uuid.UUID) error {
 	device, err := s.deviceRepo.FindDeviceByID(ctx, deviceID)
 	if err != nil {
-		if errors.Is(err, repository.ErrDeviceNotFound) {
-			return domainerrors.ErrDeviceNotFound
-		}
-
-		return fmt.Errorf("failed to find device by ID: %w", err)
+		return err
 	}
 
 	if device.UserID != userID {
