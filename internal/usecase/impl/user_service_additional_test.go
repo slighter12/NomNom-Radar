@@ -43,10 +43,10 @@ func TestUserService_RegisterMerchant_Success(t *testing.T) {
 
 		mockAuthRepo.EXPECT().
 			FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email).
-			Return(nil, repository.ErrAuthNotFound)
+			Return(nil, domainerrors.ErrAuthNotFound)
 		mockUserRepo.EXPECT().
 			FindByEmail(ctx, input.Email).
-			Return(nil, repository.ErrUserNotFound)
+			Return(nil, domainerrors.ErrUserNotFound)
 
 		mockUserRepo.EXPECT().
 			Create(ctx, mock.AnythingOfType("*entity.User")).
@@ -115,7 +115,7 @@ func TestUserService_RegisterUser_ExistingOAuthUserReturnsConflict(t *testing.T)
 			mockFactory.EXPECT().AuthRepo().Return(mockAuthRepo)
 			mockAuthRepo.EXPECT().
 				FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email).
-				Return(nil, repository.ErrAuthNotFound)
+				Return(nil, domainerrors.ErrAuthNotFound)
 			mockUserRepo.EXPECT().
 				FindByEmail(ctx, input.Email).
 				Return(&entity.User{
@@ -165,7 +165,7 @@ func TestUserService_RegisterMerchant_ExistingOAuthUserReturnsConflict(t *testin
 			mockFactory.EXPECT().AuthRepo().Return(mockAuthRepo)
 			mockAuthRepo.EXPECT().
 				FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email).
-				Return(nil, repository.ErrAuthNotFound)
+				Return(nil, domainerrors.ErrAuthNotFound)
 			mockUserRepo.EXPECT().
 				FindByEmail(ctx, input.Email).
 				Return(&entity.User{
@@ -286,7 +286,7 @@ func TestUserService_RefreshToken_RefreshTokenNotFound(t *testing.T) {
 			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
 			mockRefreshRepo.EXPECT().
 				FindRefreshTokenByHash(ctx, "missing-refresh-token-hash").
-				Return(nil, repository.ErrRefreshTokenNotFound)
+				Return(nil, domainerrors.ErrRefreshTokenNotFound)
 
 			return fn(mockFactory)
 		}).
@@ -326,7 +326,7 @@ func TestUserService_RefreshToken_RefreshTokenExpired(t *testing.T) {
 			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
 			mockRefreshRepo.EXPECT().
 				FindRefreshTokenByHash(ctx, "expired-refresh-token-hash").
-				Return(nil, repository.ErrRefreshTokenExpired)
+				Return(nil, domainerrors.ErrRefreshTokenExpired)
 
 			return fn(mockFactory)
 		}).
@@ -371,7 +371,7 @@ func TestUserService_RefreshToken_UserNotFound_CleansOrphanToken(t *testing.T) {
 				Return(&entity.RefreshToken{ID: uuid.New(), UserID: userID}, nil)
 			mockUserRepo.EXPECT().
 				FindByID(ctx, userID).
-				Return(nil, repository.ErrUserNotFound)
+				Return(nil, domainerrors.ErrUserNotFound)
 
 			return fn(mockFactory)
 		}).
@@ -419,7 +419,7 @@ func TestUserService_RefreshToken_UserNotFound_CleanupFailureStillReturnsUnautho
 				Return(&entity.RefreshToken{ID: uuid.New(), UserID: userID}, nil)
 			mockUserRepo.EXPECT().
 				FindByID(ctx, userID).
-				Return(nil, repository.ErrUserNotFound)
+				Return(nil, domainerrors.ErrUserNotFound)
 
 			return fn(mockFactory)
 		}).
@@ -475,7 +475,7 @@ func TestUserService_Logout_RefreshTokenNotFoundIsIdempotent(t *testing.T) {
 		Once()
 	fx.refreshTokenRepo.EXPECT().
 		DeleteRefreshTokenByHash(ctx, "already-deleted-token-hash").
-		Return(repository.ErrRefreshTokenNotFound).
+		Return(domainerrors.ErrRefreshTokenNotFound).
 		Once()
 
 	require.NoError(t, fx.service.Logout(ctx, input))
@@ -585,7 +585,7 @@ func TestUserService_GoogleCallback_ExistingEmailUserLinksGoogleAuth(t *testing.
 
 			mockAuthRepo.EXPECT().
 				FindAuthentication(ctx, entity.ProviderTypeGoogle, oauthUser.ID).
-				Return(nil, repository.ErrAuthNotFound)
+				Return(nil, domainerrors.ErrAuthNotFound)
 			mockUserRepo.EXPECT().
 				FindByEmail(ctx, oauthUser.Email).
 				Return(&entity.User{
@@ -595,7 +595,7 @@ func TestUserService_GoogleCallback_ExistingEmailUserLinksGoogleAuth(t *testing.
 				}, nil)
 			mockAuthRepo.EXPECT().
 				FindAuthenticationByUserIDAndProvider(ctx, userID, entity.ProviderTypeGoogle).
-				Return(nil, repository.ErrAuthNotFound)
+				Return(nil, domainerrors.ErrAuthNotFound)
 			mockAuthRepo.EXPECT().
 				CreateAuthentication(ctx, mock.AnythingOfType("*entity.Authentication")).
 				Run(func(_ context.Context, auth *entity.Authentication) {
@@ -676,7 +676,7 @@ func TestUserService_GoogleCallback_ExistingEmailUserMerchantStateAttachesMercha
 
 			mockAuthRepo.EXPECT().
 				FindAuthentication(ctx, entity.ProviderTypeGoogle, oauthUser.ID).
-				Return(nil, repository.ErrAuthNotFound)
+				Return(nil, domainerrors.ErrAuthNotFound)
 			mockUserRepo.EXPECT().
 				FindByEmail(ctx, oauthUser.Email).
 				Return(&entity.User{
@@ -694,7 +694,7 @@ func TestUserService_GoogleCallback_ExistingEmailUserMerchantStateAttachesMercha
 				Return(nil)
 			mockAuthRepo.EXPECT().
 				FindAuthenticationByUserIDAndProvider(ctx, userID, entity.ProviderTypeGoogle).
-				Return(nil, repository.ErrAuthNotFound)
+				Return(nil, domainerrors.ErrAuthNotFound)
 			mockAuthRepo.EXPECT().
 				CreateAuthentication(ctx, mock.AnythingOfType("*entity.Authentication")).
 				Run(func(_ context.Context, auth *entity.Authentication) {
@@ -857,10 +857,10 @@ func TestUserService_GoogleCallback_NewMerchantStateCreatesMerchant(t *testing.T
 
 			mockAuthRepo.EXPECT().
 				FindAuthentication(ctx, entity.ProviderTypeGoogle, oauthUser.ID).
-				Return(nil, repository.ErrAuthNotFound)
+				Return(nil, domainerrors.ErrAuthNotFound)
 			mockUserRepo.EXPECT().
 				FindByEmail(ctx, oauthUser.Email).
-				Return(nil, repository.ErrUserNotFound)
+				Return(nil, domainerrors.ErrUserNotFound)
 			mockUserRepo.EXPECT().
 				Create(ctx, mock.AnythingOfType("*entity.User")).
 				Run(func(_ context.Context, user *entity.User) {
@@ -929,10 +929,10 @@ func TestUserService_GoogleCallback_NewMerchantWithoutDraftReturnsOnboardingRequ
 
 			mockAuthRepo.EXPECT().
 				FindAuthentication(ctx, entity.ProviderTypeGoogle, oauthUser.ID).
-				Return(nil, repository.ErrAuthNotFound)
+				Return(nil, domainerrors.ErrAuthNotFound)
 			mockUserRepo.EXPECT().
 				FindByEmail(ctx, oauthUser.Email).
-				Return(nil, repository.ErrUserNotFound)
+				Return(nil, domainerrors.ErrUserNotFound)
 			mockUserRepo.EXPECT().
 				Create(ctx, mock.AnythingOfType("*entity.User")).
 				Run(func(_ context.Context, user *entity.User) {

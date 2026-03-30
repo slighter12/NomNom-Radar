@@ -2,6 +2,7 @@ package impl
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -212,7 +213,10 @@ func TestMenuService_ReorderMenuItems_RequiresCompleteSnapshot(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "all active menu item ids")
+	assert.ErrorIs(t, err, domainerrors.ErrValidationFailed)
+	appErr, ok := errors.AsType[domainerrors.AppError](err)
+	require.True(t, ok)
+	assert.Equal(t, "reorder request must include all active menu item ids", appErr.Details())
 	assert.False(t, reorderCalled)
 }
 
@@ -311,7 +315,7 @@ func TestMenuService_GetPublicMerchantMenu_MerchantNotFound(t *testing.T) {
 	}{
 		{
 			name:        "missing user",
-			findByIDErr: repository.ErrUserNotFound,
+			findByIDErr: domainerrors.ErrUserNotFound,
 		},
 		{
 			name: "user without merchant profile",
@@ -474,7 +478,7 @@ func TestMenuService_UpdateMenuItemStatus_NotFound(t *testing.T) {
 			assert.Equal(t, itemID, id)
 			assert.False(t, isAvailable)
 
-			return repository.ErrMenuItemNotFound
+			return domainerrors.ErrMenuItemNotFound
 		},
 	}
 

@@ -57,7 +57,7 @@ func (h *UserHandler) RegisterUser(c echo.Context) error {
 
 	output, err := h.userUC.RegisterUser(c.Request().Context(), input)
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	// Do not return sensitive data in the response.
@@ -75,7 +75,7 @@ func (h *UserHandler) RegisterMerchant(c echo.Context) error {
 
 	output, err := h.userUC.RegisterMerchant(c.Request().Context(), input)
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusCreated, output)
@@ -91,7 +91,7 @@ func (h *UserHandler) Login(c echo.Context) error {
 
 	output, err := h.userUC.Login(c.Request().Context(), input)
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, output)
@@ -106,7 +106,7 @@ func (h *UserHandler) RefreshToken(c echo.Context) error {
 
 	output, err := h.userUC.RefreshToken(c.Request().Context(), input)
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, output)
@@ -120,7 +120,7 @@ func (h *UserHandler) Logout(c echo.Context) error {
 	}
 
 	if err := h.userUC.Logout(c.Request().Context(), input); err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, map[string]string{"message": "Successfully logged out"})
@@ -137,7 +137,7 @@ func (h *UserHandler) GoogleCallback(c echo.Context) error {
 	// Process the callback
 	output, err := h.userUC.GoogleCallback(c.Request().Context(), input)
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, output)
@@ -152,7 +152,7 @@ func (h *UserHandler) CompleteMerchantOnboarding(c echo.Context) error {
 
 	output, err := h.userUC.CompleteMerchantOnboarding(c.Request().Context(), input)
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, output)
@@ -197,7 +197,7 @@ func (h *UserHandler) GetProfile(c echo.Context) error {
 
 	user, err := h.profileUC.GetProfile(c.Request().Context(), userID)
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, user)

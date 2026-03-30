@@ -125,7 +125,7 @@ func (m *sessionLimitRowLockManager) lockUser(id uuid.UUID) func() {
 
 func (r *sessionLimitTestUserRepo) FindByID(_ context.Context, id uuid.UUID) (*entity.User, error) {
 	if r.user == nil || r.user.ID != id {
-		return nil, repository.ErrUserNotFound
+		return nil, domainerrors.ErrUserNotFound
 	}
 
 	copied := *r.user
@@ -135,7 +135,7 @@ func (r *sessionLimitTestUserRepo) FindByID(_ context.Context, id uuid.UUID) (*e
 
 func (r *sessionLimitTestUserRepo) AcquireSessionMutex(ctx context.Context, id uuid.UUID) error {
 	if r.user == nil || r.user.ID != id {
-		return repository.ErrUserNotFound
+		return domainerrors.ErrUserNotFound
 	}
 
 	unlockFn := r.locker.lockUser(id)
@@ -172,11 +172,11 @@ func (r *sessionLimitTestAuthRepo) CreateAuthentication(_ context.Context, _ *en
 
 func (r *sessionLimitTestAuthRepo) FindAuthentication(_ context.Context, provider entity.ProviderType, providerUserID string) (*entity.Authentication, error) {
 	if r.authRecord == nil {
-		return nil, repository.ErrAuthNotFound
+		return nil, domainerrors.ErrAuthNotFound
 	}
 
 	if provider != r.authRecord.Provider || providerUserID != r.authRecord.ProviderUserID {
-		return nil, repository.ErrAuthNotFound
+		return nil, domainerrors.ErrAuthNotFound
 	}
 
 	copied := *r.authRecord

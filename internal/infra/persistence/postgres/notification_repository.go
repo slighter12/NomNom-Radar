@@ -1,10 +1,8 @@
-// Package postgres contains the concrete implementation of the persistence layer using GORM and PostgreSQL.
 package postgres
 
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
@@ -33,15 +31,14 @@ func (repo *notificationRepository) CreateNotification(ctx context.Context, noti
 	notificationM := fromNotificationDomain(notification)
 
 	if err := repo.q.MerchantLocationNotificationModel.WithContext(ctx).Create(notificationM); err != nil {
-		// Convert PostgreSQL errors to domain errors
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrNotificationCreationFailed.WrapMessage("invalid merchant or address reference")
+			return domainerrors.ErrNotificationCreateFailed
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrNotificationCreationFailed.WrapMessage("missing required notification information")
+			return domainerrors.ErrNotificationCreateFailed
 		}
-		// For other database errors, return a generic database error
-		return domainerrors.NewDatabaseExecuteError(err, "failed to create notification")
+
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	// Update the entity with generated values
@@ -61,10 +58,10 @@ func (repo *notificationRepository) FindNotificationByID(ctx context.Context, id
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, repository.ErrNotificationNotFound
+			return nil, domainerrors.ErrNotificationNotFound
 		}
 
-		return nil, fmt.Errorf("find notification by id: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	return toNotificationDomain(notificationM), nil
@@ -85,7 +82,7 @@ func (repo *notificationRepository) FindNotificationsByMerchant(ctx context.Cont
 
 	notificationModels, err := query.Find()
 	if err != nil {
-		return nil, fmt.Errorf("find notifications by merchant: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	notifications := make([]*entity.MerchantLocationNotification, 0, len(notificationModels))
@@ -106,11 +103,11 @@ func (repo *notificationRepository) UpdateNotificationStatus(ctx context.Context
 		})
 
 	if err != nil {
-		return fmt.Errorf("update notification status: %w", err)
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	if result.RowsAffected == 0 {
-		return repository.ErrNotificationNotFound
+		return domainerrors.ErrNotificationNotFound
 	}
 
 	return nil
@@ -121,15 +118,14 @@ func (repo *notificationRepository) CreateNotificationLog(ctx context.Context, l
 	logM := fromNotificationLogDomain(log)
 
 	if err := repo.q.NotificationLogModel.WithContext(ctx).Create(logM); err != nil {
-		// Convert PostgreSQL errors to domain errors
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrNotificationLogCreationFailed.WrapMessage("invalid notification, user, or device reference")
+			return domainerrors.ErrNotificationLogCreateFailed
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrNotificationLogCreationFailed.WrapMessage("missing required notification log information")
+			return domainerrors.ErrNotificationLogCreateFailed
 		}
-		// For other database errors, return a generic database error
-		return domainerrors.NewDatabaseExecuteError(err, "failed to create notification log")
+
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	// Update the entity with generated values
@@ -153,15 +149,14 @@ func (repo *notificationRepository) BatchCreateNotificationLogs(ctx context.Cont
 	// Use GORM's CreateInBatches for efficient batch insertion
 	// Default batch size is 100, which is a good balance between performance and memory
 	if err := repo.q.NotificationLogModel.WithContext(ctx).CreateInBatches(logModels, 100); err != nil {
-		// Convert PostgreSQL errors to domain errors
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrNotificationLogCreationFailed.WrapMessage("invalid notification, user, or device reference in batch")
+			return domainerrors.ErrNotificationLogCreateFailed
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrNotificationLogCreationFailed.WrapMessage("missing required notification log information in batch")
+			return domainerrors.ErrNotificationLogCreateFailed
 		}
-		// For other database errors, return a generic database error
-		return domainerrors.NewDatabaseExecuteError(err, "failed to batch create notification logs")
+
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	// Update the entities with generated values

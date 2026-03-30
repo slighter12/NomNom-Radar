@@ -3,7 +3,6 @@ package impl
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"radar/config"
@@ -122,7 +121,7 @@ func (s *locationService) DeleteMerchantLocation(ctx context.Context, merchantID
 func (s *locationService) getLocations(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType) ([]*entity.Address, error) {
 	addresses, err := s.addressRepo.FindAddressesByOwner(ctx, ownerID, ownerType)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find addresses by owner: %w", err)
+		return nil, err
 	}
 
 	return addresses, nil
@@ -136,12 +135,12 @@ func (s *locationService) addLocation(
 	input *usecase.AddLocationInput,
 ) (*entity.Address, error) {
 	if input == nil {
-		return nil, fmt.Errorf("location input is required: %w", domainerrors.ErrValidationFailed)
+		return nil, domainerrors.ErrValidationFailed.WithDetails("location input is required")
 	}
 
 	count, err := s.addressRepo.CountAddressesByOwner(ctx, ownerID, ownerType)
 	if err != nil {
-		return nil, fmt.Errorf("failed to count addresses by owner: %w", err)
+		return nil, err
 	}
 
 	if count >= int64(maxLocations) {
@@ -150,7 +149,7 @@ func (s *locationService) addLocation(
 
 	address := s.newAddress(ownerID, ownerType, input)
 	if err := s.addressRepo.CreateAddress(ctx, address); err != nil {
-		return nil, fmt.Errorf("failed to create address: %w", err)
+		return nil, err
 	}
 
 	return address, nil
@@ -163,7 +162,7 @@ func (s *locationService) updateLocation(
 	input *usecase.UpdateLocationInput,
 ) (*entity.Address, error) {
 	if input == nil {
-		return nil, fmt.Errorf("location update input is required: %w", domainerrors.ErrValidationFailed)
+		return nil, domainerrors.ErrValidationFailed.WithDetails("location update input is required")
 	}
 
 	address, err := s.findOwnedAddress(ctx, ownerID, locationID, ownerType)
@@ -173,7 +172,7 @@ func (s *locationService) updateLocation(
 
 	s.applyAddressUpdates(address, input)
 	if err := s.addressRepo.UpdateAddress(ctx, address); err != nil {
-		return nil, fmt.Errorf("failed to update address: %w", err)
+		return nil, err
 	}
 
 	return address, nil
@@ -189,7 +188,7 @@ func (s *locationService) deleteLocation(
 	}
 
 	if err := s.addressRepo.DeleteAddress(ctx, locationID); err != nil {
-		return fmt.Errorf("failed to delete address: %w", err)
+		return err
 	}
 
 	return nil
@@ -202,11 +201,11 @@ func (s *locationService) findOwnedAddress(
 ) (*entity.Address, error) {
 	address, err := s.addressRepo.FindAddressByID(ctx, locationID)
 	if err != nil {
-		if errors.Is(err, repository.ErrAddressNotFound) {
+		if errors.Is(err, domainerrors.ErrAddressNotFound) {
 			return nil, ErrLocationNotFound
 		}
 
-		return nil, fmt.Errorf("failed to find address by ID: %w", err)
+		return nil, err
 	}
 
 	if address.OwnerID != ownerID || address.OwnerType != ownerType {

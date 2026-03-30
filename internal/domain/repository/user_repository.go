@@ -1,18 +1,12 @@
-// Package repository defines the interfaces for the persistence layer.
-// These interfaces act as a contract between the domain/application layers and the infrastructure layer.
 package repository
 
 import (
 	"context"
-	"errors"
 
 	"radar/internal/domain/entity"
 
 	"github.com/google/uuid"
 )
-
-// ErrUserNotFound is a domain-specific error returned when a user is not found.
-var ErrUserNotFound = errors.New("user not found")
 
 // UserRepository defines the standard operations for user persistence.
 // The application layer will depend on this interface, not the concrete implementation.

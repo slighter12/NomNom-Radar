@@ -1,21 +1,11 @@
-// Package repository defines the interfaces for the persistence layer.
 package repository
 
 import (
 	"context"
-	"errors"
 
 	"radar/internal/domain/entity"
 
 	"github.com/google/uuid"
-)
-
-// Domain-specific errors for notification persistence.
-var (
-	// ErrNotificationNotFound is returned when a notification is not found.
-	ErrNotificationNotFound = errors.New("notification not found")
-	// ErrNotificationLogNotFound is returned when a notification log is not found.
-	ErrNotificationLogNotFound = errors.New("notification log not found")
 )
 
 // NotificationRepository defines the interface for notification-related database operations.

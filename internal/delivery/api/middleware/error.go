@@ -35,8 +35,7 @@ func (m *ErrorMiddleware) HandleHTTPError(err error, c echo.Context) {
 
 	// Attempt to parse as AppError
 	if appErr, ok := errors.AsType[domainerrors.AppError](err); ok {
-		// Use AppError information, but do not expose internal details for 5xx errors
-		_ = response.Error(c, appErr.HTTPCode(), appErr.ErrorCode(), appErr.Message(), nil)
+		_ = response.AppError(c, appErr)
 
 		return
 	}

@@ -102,10 +102,10 @@ func TestUserService_RegisterUser_Success(t *testing.T) {
 
 		mockAuthRepo.EXPECT().
 			FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email).
-			Return(nil, repository.ErrAuthNotFound)
+			Return(nil, domainerrors.ErrAuthNotFound)
 		mockUserRepo.EXPECT().
 			FindByEmail(ctx, input.Email).
-			Return(nil, repository.ErrUserNotFound)
+			Return(nil, domainerrors.ErrUserNotFound)
 
 		mockUserRepo.EXPECT().
 			Create(ctx, mock.AnythingOfType("*entity.User")).

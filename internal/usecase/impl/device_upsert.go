@@ -3,7 +3,6 @@ package impl
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -28,18 +27,18 @@ func upsertUserDevice(
 	device, err := deviceRepo.FindDeviceByUserAndDeviceID(ctx, userID, deviceInfo.DeviceID)
 	if err == nil {
 		if err := deviceRepo.UpdateFCMToken(ctx, device.ID, deviceInfo.FCMToken); err != nil {
-			return nil, fmt.Errorf("failed to update FCM token: %w", err)
+			return nil, err
 		}
 
 		updatedDevice, err := deviceRepo.FindDeviceByID(ctx, device.ID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to find device by ID: %w", err)
+			return nil, err
 		}
 
 		return updatedDevice, nil
 	}
-	if !errors.Is(err, repository.ErrDeviceNotFound) {
-		return nil, fmt.Errorf("failed to find device by user and device ID: %w", err)
+	if !errors.Is(err, domainerrors.ErrDeviceNotFound) {
+		return nil, err
 	}
 
 	newDevice := &entity.UserDevice{
@@ -54,7 +53,7 @@ func upsertUserDevice(
 	}
 
 	if err := deviceRepo.CreateDevice(ctx, newDevice); err != nil {
-		return nil, fmt.Errorf("failed to create device: %w", err)
+		return nil, err
 	}
 
 	return newDevice, nil
@@ -62,7 +61,7 @@ func upsertUserDevice(
 
 func validateDeviceInfo(deviceInfo *usecase.DeviceInfo) error {
 	if deviceInfo == nil {
-		return fmt.Errorf("device info is required: %w", domainerrors.ErrValidationFailed)
+		return domainerrors.ErrValidationFailed.WithDetails("device info is required")
 	}
 
 	deviceInfo.FCMToken = strings.TrimSpace(deviceInfo.FCMToken)
@@ -70,13 +69,13 @@ func validateDeviceInfo(deviceInfo *usecase.DeviceInfo) error {
 	deviceInfo.Platform = strings.ToLower(strings.TrimSpace(deviceInfo.Platform))
 
 	if deviceInfo.FCMToken == "" {
-		return fmt.Errorf("fcm_token is required: %w", domainerrors.ErrValidationFailed)
+		return domainerrors.ErrValidationFailed.WithDetails("fcm_token is required")
 	}
 	if deviceInfo.DeviceID == "" {
-		return fmt.Errorf("device_id is required: %w", domainerrors.ErrValidationFailed)
+		return domainerrors.ErrValidationFailed.WithDetails("device_id is required")
 	}
 	if deviceInfo.Platform != "ios" && deviceInfo.Platform != "android" {
-		return fmt.Errorf("platform must be ios or android: %w", domainerrors.ErrValidationFailed)
+		return domainerrors.ErrValidationFailed.WithDetails("platform must be ios or android")
 	}
 
 	return nil

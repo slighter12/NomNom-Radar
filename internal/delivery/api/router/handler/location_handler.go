@@ -69,7 +69,7 @@ func (h *LocationHandler) CreateUserLocation(c echo.Context) error {
 
 	location, err := h.locationUC.AddUserLocation(c.Request().Context(), userID, newAddLocationInput(&req))
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusCreated, location)
@@ -84,7 +84,7 @@ func (h *LocationHandler) GetUserLocations(c echo.Context) error {
 
 	locations, err := h.locationUC.GetUserLocations(c.Request().Context(), userID)
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, locations)
@@ -109,7 +109,7 @@ func (h *LocationHandler) UpdateUserLocation(c echo.Context) error {
 
 	location, err := h.locationUC.UpdateUserLocation(c.Request().Context(), userID, locationID, newUpdateLocationInput(&req))
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, location)
@@ -128,7 +128,7 @@ func (h *LocationHandler) DeleteUserLocation(c echo.Context) error {
 	}
 
 	if err := h.locationUC.DeleteUserLocation(c.Request().Context(), userID, locationID); err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, map[string]string{"message": "Location deleted successfully"})
@@ -148,7 +148,7 @@ func (h *LocationHandler) CreateMerchantLocation(c echo.Context) error {
 
 	location, err := h.locationUC.AddMerchantLocation(c.Request().Context(), merchantID, newAddLocationInput(&req))
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusCreated, location)
@@ -163,7 +163,7 @@ func (h *LocationHandler) GetMerchantLocations(c echo.Context) error {
 
 	locations, err := h.locationUC.GetMerchantLocations(c.Request().Context(), merchantID)
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, locations)
@@ -188,7 +188,7 @@ func (h *LocationHandler) UpdateMerchantLocation(c echo.Context) error {
 
 	location, err := h.locationUC.UpdateMerchantLocation(c.Request().Context(), merchantID, locationID, newUpdateLocationInput(&req))
 	if err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, location)
@@ -207,7 +207,7 @@ func (h *LocationHandler) DeleteMerchantLocation(c echo.Context) error {
 	}
 
 	if err := h.locationUC.DeleteMerchantLocation(c.Request().Context(), merchantID, locationID); err != nil {
-		return response.HandleAppError(c, err)
+		return err
 	}
 
 	return response.Success(c, http.StatusOK, map[string]string{"message": "Location deleted successfully"})

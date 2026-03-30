@@ -2,14 +2,11 @@ package repository
 
 import (
 	"context"
-	"errors"
 
 	"radar/internal/domain/entity"
 
 	"github.com/google/uuid"
 )
-
-var ErrMenuItemNotFound = errors.New("menu item not found")
 
 type MenuItemListFilter struct {
 	Category    *entity.MenuCategory

@@ -1,10 +1,8 @@
-// Package postgres contains the concrete implementation of the persistence layer using GORM and PostgreSQL.
 package postgres
 
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
@@ -33,18 +31,17 @@ func (repo *deviceRepository) CreateDevice(ctx context.Context, device *entity.U
 	deviceM := fromDeviceDomain(device)
 
 	if err := repo.q.UserDeviceModel.WithContext(ctx).Create(deviceM); err != nil {
-		// Convert PostgreSQL errors to domain errors
 		if isUniqueConstraintViolation(err) {
-			return repository.ErrDuplicateDevice
+			return domainerrors.ErrDeviceAlreadyExists
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrDeviceCreationFailed.WrapMessage("invalid user reference")
+			return domainerrors.ErrDeviceCreateFailed
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrDeviceCreationFailed.WrapMessage("missing required device information")
+			return domainerrors.ErrDeviceCreateFailed
 		}
-		// For other database errors, return a generic database error
-		return domainerrors.NewDatabaseExecuteError(err, "failed to create device")
+
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	// Update the entity with generated values
@@ -63,10 +60,10 @@ func (repo *deviceRepository) FindDeviceByID(ctx context.Context, id uuid.UUID) 
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, repository.ErrDeviceNotFound
+			return nil, domainerrors.ErrDeviceNotFound
 		}
 
-		return nil, fmt.Errorf("find device by id: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	return toDeviceDomain(deviceM), nil
@@ -83,10 +80,10 @@ func (repo *deviceRepository) FindDeviceByUserAndDeviceID(ctx context.Context, u
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, repository.ErrDeviceNotFound
+			return nil, domainerrors.ErrDeviceNotFound
 		}
 
-		return nil, fmt.Errorf("find device by user and device id: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	return toDeviceDomain(deviceM), nil
@@ -100,7 +97,7 @@ func (repo *deviceRepository) FindDevicesByUser(ctx context.Context, userID uuid
 		Find()
 
 	if err != nil {
-		return nil, fmt.Errorf("find devices by user: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	devices := make([]*entity.UserDevice, 0, len(deviceModels))
@@ -122,7 +119,7 @@ func (repo *deviceRepository) FindActiveDevicesByUser(ctx context.Context, userI
 		Find()
 
 	if err != nil {
-		return nil, fmt.Errorf("find active devices by user: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	devices := make([]*entity.UserDevice, 0, len(deviceModels))
@@ -141,14 +138,14 @@ func (repo *deviceRepository) UpdateFCMToken(ctx context.Context, deviceID uuid.
 
 	if err != nil {
 		if isUniqueConstraintViolation(err) {
-			return repository.ErrDuplicateDevice
+			return domainerrors.ErrDeviceAlreadyExists
 		}
 
-		return fmt.Errorf("update device fcm token: %w", err)
+		return domainerrors.ErrDeviceUpdateFailed
 	}
 
 	if result.RowsAffected == 0 {
-		return repository.ErrDeviceNotFound
+		return domainerrors.ErrDeviceNotFound
 	}
 
 	return nil
@@ -161,11 +158,11 @@ func (repo *deviceRepository) DeleteDevice(ctx context.Context, id uuid.UUID) er
 		Delete()
 
 	if err != nil {
-		return fmt.Errorf("delete device: %w", err)
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	if result.RowsAffected == 0 {
-		return repository.ErrDeviceNotFound
+		return domainerrors.ErrDeviceNotFound
 	}
 
 	return nil

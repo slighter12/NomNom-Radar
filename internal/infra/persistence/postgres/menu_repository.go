@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 
 	"radar/internal/domain/entity"
@@ -35,12 +34,12 @@ func (repo *menuRepository) CreateMenuItem(ctx context.Context, item *entity.Men
 
 	return repo.withTransaction(ctx, func(tx *gorm.DB) error {
 		if err := repo.lockMerchantProfileForMenuWrite(tx, item.MerchantID); err != nil {
-			return err
+			return err //nolint:wrapcheck // already classified upstream when needed
 		}
 
 		nextDisplayOrder, err := repo.getNextDisplayOrder(tx, item.MerchantID)
 		if err != nil {
-			return domainerrors.NewDatabaseExecuteError(err, "failed to allocate menu item display order")
+			return domainerrors.ErrPersistenceFailed
 		}
 
 		itemM.DisplayOrder = nextDisplayOrder
@@ -65,10 +64,10 @@ func (repo *menuRepository) FindMenuItemByID(ctx context.Context, id uuid.UUID) 
 		First(&itemM).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, repository.ErrMenuItemNotFound
+			return nil, domainerrors.ErrMenuItemNotFound
 		}
 
-		return nil, fmt.Errorf("find menu item by id: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	return toMenuItemDomain(&itemM), nil
@@ -81,7 +80,7 @@ func (repo *menuRepository) ListActiveMenuItemIDsByMerchant(ctx context.Context,
 		Where("merchant_id = ?", merchantID).
 		Order("display_order ASC").
 		Pluck("id", &itemIDs).Error; err != nil {
-		return nil, fmt.Errorf("list active menu item ids by merchant: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	return itemIDs, nil
@@ -92,7 +91,7 @@ func (repo *menuRepository) ListMenuItemsByMerchant(ctx context.Context, merchan
 
 	var total int64
 	if err := countQuery.Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("count menu items by merchant: %w", err)
+		return nil, 0, domainerrors.ErrPersistenceFailed
 	}
 
 	dataQuery := repo.buildMenuItemListQuery(ctx, merchantID, filter).
@@ -107,7 +106,7 @@ func (repo *menuRepository) ListMenuItemsByMerchant(ctx context.Context, merchan
 
 	var itemModels []*model.MenuItemModel
 	if err := dataQuery.Find(&itemModels).Error; err != nil {
-		return nil, 0, fmt.Errorf("list menu items by merchant: %w", err)
+		return nil, 0, domainerrors.ErrPersistenceFailed
 	}
 
 	items := make([]*entity.MenuItem, 0, len(itemModels))
@@ -140,12 +139,12 @@ func (repo *menuRepository) UpdateMenuItem(ctx context.Context, item *entity.Men
 		return repo.toMenuItemUpdateError(result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return repository.ErrMenuItemNotFound
+		return domainerrors.ErrMenuItemNotFound
 	}
 
 	updatedItem, err := repo.FindMenuItemByID(ctx, item.ID)
 	if err != nil {
-		return fmt.Errorf("find updated menu item by id: %w", err)
+		return domainerrors.ErrPersistenceFailed
 	}
 	item.CreatedAt = updatedItem.CreatedAt
 	item.UpdatedAt = updatedItem.UpdatedAt
@@ -164,7 +163,7 @@ func (repo *menuRepository) UpdateMenuItemAvailability(ctx context.Context, id u
 		return repo.toMenuItemUpdateError(result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return repository.ErrMenuItemNotFound
+		return domainerrors.ErrMenuItemNotFound
 	}
 
 	return nil
@@ -173,7 +172,7 @@ func (repo *menuRepository) UpdateMenuItemAvailability(ctx context.Context, id u
 func (repo *menuRepository) DeleteMenuItem(ctx context.Context, merchantID, menuItemID uuid.UUID) error {
 	return repo.withTransaction(ctx, func(tx *gorm.DB) error {
 		if err := repo.lockMerchantProfileForMenuWrite(tx, merchantID); err != nil {
-			return fmt.Errorf("lock menu item for delete: %w", err)
+			return err //nolint:wrapcheck // already classified upstream when needed
 		}
 
 		var itemM model.MenuItemModel
@@ -182,17 +181,17 @@ func (repo *menuRepository) DeleteMenuItem(ctx context.Context, merchantID, menu
 			Where("id = ? AND merchant_id = ?", menuItemID, merchantID).
 			Take(&itemM).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return repository.ErrMenuItemNotFound
+				return domainerrors.ErrMenuItemNotFound
 			}
 
-			return fmt.Errorf("delete menu item: %w", err)
+			return domainerrors.ErrPersistenceFailed
 		}
 
 		if err := tx.
 			Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("id = ?", menuItemID).
 			Delete(&model.MenuItemModel{}).Error; err != nil {
-			return err
+			return domainerrors.ErrPersistenceFailed
 		}
 
 		if err := tx.Model(&model.MenuItemModel{}).
@@ -217,7 +216,7 @@ func (repo *menuRepository) getNextDisplayOrder(db *gorm.DB, merchantID uuid.UUI
 		Where("merchant_id = ?", merchantID).
 		Scan(&result).Error
 	if err != nil {
-		return 0, fmt.Errorf("calculate next menu item display order: %w", err)
+		return 0, domainerrors.ErrPersistenceFailed
 	}
 	if result.NextDisplayOrder <= 0 {
 		return 1, nil
@@ -238,10 +237,10 @@ func (repo *menuRepository) lockMerchantProfileForMenuWrite(tx *gorm.DB, merchan
 		Take(&lockedMerchant).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return domainerrors.ErrMenuItemCreationFailed.WrapMessage("invalid merchant reference")
+			return domainerrors.ErrMenuItemCreateFailed
 		}
 
-		return fmt.Errorf("lock merchant profile for menu write: %w", err)
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	return nil
@@ -252,13 +251,13 @@ func (repo *menuRepository) toMenuItemCreateError(err error) error {
 		return domainerrors.ErrMenuItemOrderConflict
 	}
 	if isForeignKeyConstraintViolation(err) {
-		return domainerrors.ErrMenuItemCreationFailed.WrapMessage("invalid merchant reference")
+		return domainerrors.ErrMenuItemCreateFailed
 	}
 	if isNotNullConstraintViolation(err) {
-		return domainerrors.ErrMenuItemCreationFailed.WrapMessage("missing required menu item information")
+		return domainerrors.ErrMenuItemCreateFailed
 	}
 
-	return domainerrors.NewDatabaseExecuteError(err, "failed to create menu item")
+	return domainerrors.ErrPersistenceFailed
 }
 
 func (repo *menuRepository) toMenuItemUpdateError(err error) error {
@@ -266,13 +265,13 @@ func (repo *menuRepository) toMenuItemUpdateError(err error) error {
 		return domainerrors.ErrMenuItemOrderConflict
 	}
 	if isForeignKeyConstraintViolation(err) {
-		return domainerrors.ErrMenuItemUpdateFailed.WrapMessage("invalid merchant reference")
+		return domainerrors.ErrMenuItemUpdateFailed
 	}
 	if isNotNullConstraintViolation(err) {
-		return domainerrors.ErrMenuItemUpdateFailed.WrapMessage("missing required menu item information")
+		return domainerrors.ErrMenuItemUpdateFailed
 	}
 
-	return domainerrors.NewDatabaseExecuteError(err, "failed to update menu item")
+	return domainerrors.ErrPersistenceFailed
 }
 
 func (repo *menuRepository) ReorderMenuItems(ctx context.Context, merchantID uuid.UUID, itemIDs []uuid.UUID) error {
@@ -281,13 +280,17 @@ func (repo *menuRepository) ReorderMenuItems(ctx context.Context, merchantID uui
 	}
 
 	return repo.withTransaction(ctx, func(tx *gorm.DB) error {
-		return repo.reorderMenuItemsTx(tx, merchantID, itemIDs)
+		return repo.reorderMenuItemsTx(tx, merchantID, itemIDs) //nolint:wrapcheck // already classified upstream when needed
 	})
 }
 
 func (repo *menuRepository) withTransaction(ctx context.Context, fn func(tx *gorm.DB) error) error {
 	if err := repo.db.WithContext(ctx).Transaction(fn); err != nil {
-		return fmt.Errorf("execute menu transaction: %w", err)
+		if _, ok := errors.AsType[domainerrors.AppError](err); ok {
+			return err //nolint:wrapcheck // preserve the original classified error
+		}
+
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	return nil
@@ -295,20 +298,20 @@ func (repo *menuRepository) withTransaction(ctx context.Context, fn func(tx *gor
 
 func (repo *menuRepository) reorderMenuItemsTx(tx *gorm.DB, merchantID uuid.UUID, itemIDs []uuid.UUID) error {
 	if err := repo.lockMerchantProfileForMenuWrite(tx, merchantID); err != nil {
-		return err
+		return err //nolint:wrapcheck // already classified upstream when needed
 	}
 
 	scopedItemIDs, err := repo.listScopedMenuItemIDs(tx, merchantID)
 	if err != nil {
-		return err
+		return err //nolint:wrapcheck // already wrapped with persistence context
 	}
 
 	if err := repo.validateReorderMenuItems(tx, merchantID, scopedItemIDs, itemIDs); err != nil {
-		return err
+		return err //nolint:wrapcheck // already classified upstream when needed
 	}
 
 	if err := repo.bumpMenuItemDisplayOrders(tx, merchantID, len(itemIDs)); err != nil {
-		return err
+		return err //nolint:wrapcheck // already classified upstream when needed
 	}
 
 	return repo.applyMenuItemDisplayOrder(tx, itemIDs)
@@ -322,7 +325,7 @@ func (repo *menuRepository) listScopedMenuItemIDs(tx *gorm.DB, merchantID uuid.U
 		Where("merchant_id = ?", merchantID).
 		Order("display_order ASC").
 		Pluck("id", &scopedItemIDs).Error; err != nil {
-		return nil, fmt.Errorf("list scoped menu item ids: %w", err)
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	return scopedItemIDs, nil
@@ -331,7 +334,7 @@ func (repo *menuRepository) listScopedMenuItemIDs(tx *gorm.DB, merchantID uuid.U
 func (repo *menuRepository) validateReorderMenuItems(tx *gorm.DB, merchantID uuid.UUID, scopedItemIDs, itemIDs []uuid.UUID) error {
 	providedItems, err := repo.listProvidedMenuItems(tx, itemIDs)
 	if err != nil {
-		return err
+		return err //nolint:wrapcheck // already wrapped with persistence context
 	}
 
 	if len(providedItems) != len(itemIDs) {
@@ -345,7 +348,7 @@ func (repo *menuRepository) validateReorderMenuItems(tx *gorm.DB, merchantID uui
 	}
 
 	if len(scopedItemIDs) != len(itemIDs) {
-		return domainerrors.ErrValidationFailed.WrapMessage(reorderMenuItemsValidationMessage)
+		return domainerrors.ErrValidationFailed.WithDetails(reorderMenuItemsValidationMessage)
 	}
 
 	scopedItemSet := make(map[uuid.UUID]struct{}, len(scopedItemIDs))
@@ -355,7 +358,7 @@ func (repo *menuRepository) validateReorderMenuItems(tx *gorm.DB, merchantID uui
 
 	for idx := range itemIDs {
 		if _, exists := scopedItemSet[itemIDs[idx]]; !exists {
-			return domainerrors.ErrValidationFailed.WrapMessage(reorderMenuItemsValidationMessage)
+			return domainerrors.ErrValidationFailed.WithDetails(reorderMenuItemsValidationMessage)
 		}
 	}
 
@@ -370,7 +373,7 @@ func (repo *menuRepository) listProvidedMenuItems(tx *gorm.DB, itemIDs []uuid.UU
 		Select("merchant_id").
 		Where("id IN ?", itemIDs).
 		Find(&providedItems).Error; err != nil {
-		return nil, err
+		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	return providedItems, nil

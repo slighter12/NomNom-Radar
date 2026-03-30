@@ -3,7 +3,6 @@ package impl
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 
 	deliverycontext "radar/internal/delivery/context"
@@ -51,11 +50,11 @@ func (srv *profileService) GetProfile(ctx context.Context, userID uuid.UUID) (*e
 
 		foundUser, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
-			if errors.Is(err, repository.ErrUserNotFound) {
-				return fmt.Errorf("user not found: %w", domainerrors.ErrNotFound)
+			if errors.Is(err, domainerrors.ErrUserNotFound) {
+				return domainerrors.ErrNotFound
 			}
 
-			return fmt.Errorf("failed to find user: %w", err)
+			return err
 		}
 		user = foundUser
 
@@ -63,7 +62,7 @@ func (srv *profileService) GetProfile(ctx context.Context, userID uuid.UUID) (*e
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user profile: %w", err)
+		return nil, err
 	}
 
 	return user, nil
@@ -79,16 +78,16 @@ func (srv *profileService) UpdateUserProfile(ctx context.Context, userID uuid.UU
 		// 1. Find the user
 		user, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
-			if errors.Is(err, repository.ErrUserNotFound) {
-				return fmt.Errorf("user not found: %w", domainerrors.ErrNotFound)
+			if errors.Is(err, domainerrors.ErrUserNotFound) {
+				return domainerrors.ErrNotFound
 			}
 
-			return fmt.Errorf("failed to find user: %w", err)
+			return err
 		}
 
 		// 2. Check if user has a user profile
 		if user.UserProfile == nil {
-			return fmt.Errorf("user does not have a user profile: %w", domainerrors.ErrValidationFailed)
+			return domainerrors.ErrValidationFailed.WithDetails("user does not have a user profile")
 		}
 
 		// 3. Update the profile fields
@@ -98,14 +97,14 @@ func (srv *profileService) UpdateUserProfile(ctx context.Context, userID uuid.UU
 
 		// 4. Save the updated user
 		if err := userRepo.Update(ctx, user); err != nil {
-			return fmt.Errorf("failed to update user profile: %w", err)
+			return err
 		}
 
 		return nil
 	})
 
 	if err != nil {
-		return fmt.Errorf("failed to update user profile: %w", err)
+		return err
 	}
 
 	return nil
@@ -121,16 +120,16 @@ func (srv *profileService) UpdateMerchantProfile(ctx context.Context, userID uui
 		// 1. Find the user
 		user, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
-			if errors.Is(err, repository.ErrUserNotFound) {
-				return fmt.Errorf("user not found: %w", domainerrors.ErrNotFound)
+			if errors.Is(err, domainerrors.ErrUserNotFound) {
+				return domainerrors.ErrNotFound
 			}
 
-			return fmt.Errorf("failed to find user: %w", err)
+			return err
 		}
 
 		// 2. Check if user has a merchant profile
 		if user.MerchantProfile == nil {
-			return fmt.Errorf("user does not have a merchant profile: %w", domainerrors.ErrValidationFailed)
+			return domainerrors.ErrValidationFailed.WithDetails("user does not have a merchant profile")
 		}
 
 		// 3. Update the profile fields
@@ -146,14 +145,14 @@ func (srv *profileService) UpdateMerchantProfile(ctx context.Context, userID uui
 
 		// 4. Save the updated user
 		if err := userRepo.Update(ctx, user); err != nil {
-			return fmt.Errorf("failed to update merchant profile: %w", err)
+			return err
 		}
 
 		return nil
 	})
 
 	if err != nil {
-		return fmt.Errorf("failed to update merchant profile: %w", err)
+		return err
 	}
 
 	return nil
@@ -169,16 +168,16 @@ func (srv *profileService) SwitchToMerchant(ctx context.Context, userID uuid.UUI
 		// 1. Find the user
 		user, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
-			if errors.Is(err, repository.ErrUserNotFound) {
-				return fmt.Errorf("user not found: %w", domainerrors.ErrNotFound)
+			if errors.Is(err, domainerrors.ErrUserNotFound) {
+				return domainerrors.ErrNotFound
 			}
 
-			return fmt.Errorf("failed to find user: %w", err)
+			return err
 		}
 
 		// 2. Check if user already has a merchant profile
 		if user.MerchantProfile != nil {
-			return fmt.Errorf("user already has a merchant profile: %w", domainerrors.ErrConflict)
+			return domainerrors.ErrConflict.WithDetails("user already has a merchant profile")
 		}
 
 		// 3. Create merchant profile
@@ -189,7 +188,7 @@ func (srv *profileService) SwitchToMerchant(ctx context.Context, userID uuid.UUI
 
 		// 4. Save the updated user
 		if err := userRepo.Update(ctx, user); err != nil {
-			return fmt.Errorf("failed to create merchant profile: %w", err)
+			return err
 		}
 
 		return nil
@@ -198,7 +197,7 @@ func (srv *profileService) SwitchToMerchant(ctx context.Context, userID uuid.UUI
 	if err != nil {
 		srv.log(ctx).Error("failed to switch user to merchant", slog.Any("error", err))
 
-		return fmt.Errorf("failed to switch user to merchant: %w", err)
+		return err
 	}
 	srv.log(ctx).Debug("user switched to merchant", slog.Any("user_id", userID))
 
@@ -216,11 +215,11 @@ func (srv *profileService) GetUserRole(ctx context.Context, userID uuid.UUID) ([
 
 		user, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
-			if errors.Is(err, repository.ErrUserNotFound) {
-				return fmt.Errorf("user not found: %w", domainerrors.ErrNotFound)
+			if errors.Is(err, domainerrors.ErrUserNotFound) {
+				return domainerrors.ErrNotFound
 			}
 
-			return fmt.Errorf("failed to find user: %w", err)
+			return err
 		}
 
 		// Extract roles based on profiles
@@ -237,7 +236,7 @@ func (srv *profileService) GetUserRole(ctx context.Context, userID uuid.UUID) ([
 	if err != nil {
 		srv.log(ctx).Error("failed to get user roles", slog.Any("error", err))
 
-		return nil, fmt.Errorf("failed to get user roles: %w", err)
+		return nil, err
 	}
 	srv.log(ctx).Debug("user roles", slog.Any("roles", roles))
 

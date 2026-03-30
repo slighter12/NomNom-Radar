@@ -133,6 +133,14 @@ linters:
         path: internal/delivery/http/router/.*\.go
       - linters:
           - wrapcheck
+        path: internal/delivery/api/router/handler/.*\.go
+      # Usecases return canonical AppError values directly. Re-wrapping just to satisfy
+      # wrapcheck adds noise without improving error semantics.
+      - linters:
+          - wrapcheck
+        path: internal/usecase/impl/.*\.go
+      - linters:
+          - wrapcheck
         path: internal/delivery/api/validator/.*\.go
       - linters:
           - lll

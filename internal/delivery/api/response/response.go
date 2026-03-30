@@ -1,7 +1,6 @@
 package response
 
 import (
-	"errors"
 	"net/http"
 
 	deliverycontext "radar/internal/delivery/context"
@@ -63,6 +62,24 @@ func Error(c echo.Context, statusCode int, errorCode string, message string, det
 	})
 }
 
+func appErrorDetails(appErr domainerrors.AppError) any {
+	statusCode := appErr.HTTPCode()
+	details := appErr.Details()
+	if statusCode >= 500 || statusCode == 401 || statusCode == 403 {
+		return nil
+	}
+	if details == "" {
+		return nil
+	}
+
+	return details
+}
+
+// AppError renders a canonical AppError directly through its HTTP metadata.
+func AppError(c echo.Context, appErr domainerrors.AppError) error {
+	return Error(c, appErr.HTTPCode(), appErr.ErrorCode(), appErr.Message(), appErrorDetails(appErr))
+}
+
 // BadRequest returns a 400 error
 func BadRequest(c echo.Context, errorCode string, message string) error {
 	return Error(c, http.StatusBadRequest, errorCode, message, nil)
@@ -101,14 +118,4 @@ func Conflict(c echo.Context, errorCode string, message string) error {
 // InternalServerError returns a 500 error
 func InternalServerError(c echo.Context, errorCode string, message string) error {
 	return Error(c, http.StatusInternalServerError, errorCode, message, nil)
-}
-
-// HandleAppError handles application errors, converting domain errors to appropriate HTTP responses
-func HandleAppError(c echo.Context, err error) error {
-	if appErr, ok := errors.AsType[domainerrors.AppError](err); ok {
-		return Error(c, appErr.HTTPCode(), appErr.ErrorCode(), appErr.Message(), nil)
-	}
-
-	// Preserve original error for centralized logging middleware.
-	return err
 }

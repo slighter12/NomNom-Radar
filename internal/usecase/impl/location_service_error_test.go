@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"radar/internal/domain/entity"
-	"radar/internal/domain/repository"
+	domainerrors "radar/internal/domain/errors"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
@@ -24,7 +24,7 @@ func TestLocationService_UpdateMerchantLocation_NotFound(t *testing.T) {
 
 	fx.addressRepo.EXPECT().
 		FindAddressByID(ctx, locationID).
-		Return(nil, repository.ErrAddressNotFound)
+		Return(nil, domainerrors.ErrAddressNotFound)
 
 	address, err := fx.service.UpdateMerchantLocation(ctx, merchantID, locationID, input)
 	assert.Error(t, err)
@@ -103,14 +103,15 @@ func TestLocationService_UpdateMerchantLocation_UpdateError(t *testing.T) {
 		FindAddressByID(ctx, locationID).
 		Return(existingAddress, nil)
 
+	expectedErr := errors.New("database error")
 	fx.addressRepo.EXPECT().
 		UpdateAddress(ctx, mock.AnythingOfType("*entity.Address")).
-		Return(errors.New("database error"))
+		Return(expectedErr)
 
 	address, err := fx.service.UpdateMerchantLocation(ctx, merchantID, locationID, input)
 	assert.Error(t, err)
 	assert.Nil(t, address)
-	assert.Contains(t, err.Error(), "failed to update address")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestLocationService_UpdateMerchantLocation_FindError(t *testing.T) {
@@ -121,14 +122,15 @@ func TestLocationService_UpdateMerchantLocation_FindError(t *testing.T) {
 	locationID := uuid.New()
 	input := &usecase.UpdateLocationInput{}
 
+	expectedErr := errors.New("database connection failed")
 	fx.addressRepo.EXPECT().
 		FindAddressByID(ctx, locationID).
-		Return(nil, errors.New("database connection failed"))
+		Return(nil, expectedErr)
 
 	address, err := fx.service.UpdateMerchantLocation(ctx, merchantID, locationID, input)
 	assert.Error(t, err)
 	assert.Nil(t, address)
-	assert.Contains(t, err.Error(), "failed to find address by ID")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestLocationService_DeleteMerchantLocation_NotFound(t *testing.T) {
@@ -140,7 +142,7 @@ func TestLocationService_DeleteMerchantLocation_NotFound(t *testing.T) {
 
 	fx.addressRepo.EXPECT().
 		FindAddressByID(ctx, locationID).
-		Return(nil, repository.ErrAddressNotFound)
+		Return(nil, domainerrors.ErrAddressNotFound)
 
 	err := fx.service.DeleteMerchantLocation(ctx, merchantID, locationID)
 	assert.Error(t, err)
@@ -209,13 +211,14 @@ func TestLocationService_DeleteMerchantLocation_DeleteError(t *testing.T) {
 		FindAddressByID(ctx, locationID).
 		Return(existingAddress, nil)
 
+	expectedErr := errors.New("database error")
 	fx.addressRepo.EXPECT().
 		DeleteAddress(ctx, locationID).
-		Return(errors.New("database error"))
+		Return(expectedErr)
 
 	err := fx.service.DeleteMerchantLocation(ctx, merchantID, locationID)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to delete address")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestLocationService_DeleteMerchantLocation_FindError(t *testing.T) {
@@ -225,13 +228,14 @@ func TestLocationService_DeleteMerchantLocation_FindError(t *testing.T) {
 	merchantID := uuid.New()
 	locationID := uuid.New()
 
+	expectedErr := errors.New("database connection failed")
 	fx.addressRepo.EXPECT().
 		FindAddressByID(ctx, locationID).
-		Return(nil, errors.New("database connection failed"))
+		Return(nil, expectedErr)
 
 	err := fx.service.DeleteMerchantLocation(ctx, merchantID, locationID)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to find address by ID")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestLocationService_GetUserLocations_Error(t *testing.T) {
@@ -240,14 +244,15 @@ func TestLocationService_GetUserLocations_Error(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 
+	expectedErr := errors.New("database error")
 	fx.addressRepo.EXPECT().
 		FindAddressesByOwner(ctx, userID, entity.OwnerTypeUserProfile).
-		Return(nil, errors.New("database error"))
+		Return(nil, expectedErr)
 
 	addresses, err := fx.service.GetUserLocations(ctx, userID)
 	assert.Error(t, err)
 	assert.Nil(t, addresses)
-	assert.Contains(t, err.Error(), "failed to find addresses by owner")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestLocationService_GetMerchantLocations_Error(t *testing.T) {
@@ -256,14 +261,15 @@ func TestLocationService_GetMerchantLocations_Error(t *testing.T) {
 	ctx := context.Background()
 	merchantID := uuid.New()
 
+	expectedErr := errors.New("database error")
 	fx.addressRepo.EXPECT().
 		FindAddressesByOwner(ctx, merchantID, entity.OwnerTypeMerchantProfile).
-		Return(nil, errors.New("database error"))
+		Return(nil, expectedErr)
 
 	addresses, err := fx.service.GetMerchantLocations(ctx, merchantID)
 	assert.Error(t, err)
 	assert.Nil(t, addresses)
-	assert.Contains(t, err.Error(), "failed to find addresses by owner")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestLocationService_AddUserLocation_CreateError(t *testing.T) {
@@ -282,14 +288,15 @@ func TestLocationService_AddUserLocation_CreateError(t *testing.T) {
 		CountAddressesByOwner(ctx, userID, entity.OwnerTypeUserProfile).
 		Return(int64(2), nil)
 
+	expectedErr := errors.New("database error")
 	fx.addressRepo.EXPECT().
 		CreateAddress(ctx, mock.AnythingOfType("*entity.Address")).
-		Return(errors.New("database error"))
+		Return(expectedErr)
 
 	address, err := fx.service.AddUserLocation(ctx, userID, input)
 	assert.Error(t, err)
 	assert.Nil(t, address)
-	assert.Contains(t, err.Error(), "failed to create address")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestLocationService_AddMerchantLocation_CountError(t *testing.T) {
@@ -304,14 +311,15 @@ func TestLocationService_AddMerchantLocation_CountError(t *testing.T) {
 		Longitude:   121.0,
 	}
 
+	expectedErr := errors.New("database error")
 	fx.addressRepo.EXPECT().
 		CountAddressesByOwner(ctx, merchantID, entity.OwnerTypeMerchantProfile).
-		Return(int64(0), errors.New("database error"))
+		Return(int64(0), expectedErr)
 
 	address, err := fx.service.AddMerchantLocation(ctx, merchantID, input)
 	assert.Error(t, err)
 	assert.Nil(t, address)
-	assert.Contains(t, err.Error(), "failed to count addresses by owner")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestLocationService_AddMerchantLocation_CreateError(t *testing.T) {
@@ -330,14 +338,15 @@ func TestLocationService_AddMerchantLocation_CreateError(t *testing.T) {
 		CountAddressesByOwner(ctx, merchantID, entity.OwnerTypeMerchantProfile).
 		Return(int64(5), nil)
 
+	expectedErr := errors.New("database error")
 	fx.addressRepo.EXPECT().
 		CreateAddress(ctx, mock.AnythingOfType("*entity.Address")).
-		Return(errors.New("database error"))
+		Return(expectedErr)
 
 	address, err := fx.service.AddMerchantLocation(ctx, merchantID, input)
 	assert.Error(t, err)
 	assert.Nil(t, address)
-	assert.Contains(t, err.Error(), "failed to create address")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestLocationService_UpdateUserLocation_UpdateError(t *testing.T) {
@@ -362,14 +371,15 @@ func TestLocationService_UpdateUserLocation_UpdateError(t *testing.T) {
 		FindAddressByID(ctx, locationID).
 		Return(existingAddress, nil)
 
+	expectedErr := errors.New("database error")
 	fx.addressRepo.EXPECT().
 		UpdateAddress(ctx, mock.AnythingOfType("*entity.Address")).
-		Return(errors.New("database error"))
+		Return(expectedErr)
 
 	address, err := fx.service.UpdateUserLocation(ctx, userID, locationID, input)
 	assert.Error(t, err)
 	assert.Nil(t, address)
-	assert.Contains(t, err.Error(), "failed to update address")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestLocationService_UpdateUserLocation_FindError(t *testing.T) {
@@ -380,14 +390,15 @@ func TestLocationService_UpdateUserLocation_FindError(t *testing.T) {
 	locationID := uuid.New()
 	input := &usecase.UpdateLocationInput{}
 
+	expectedErr := errors.New("database connection failed")
 	fx.addressRepo.EXPECT().
 		FindAddressByID(ctx, locationID).
-		Return(nil, errors.New("database connection failed"))
+		Return(nil, expectedErr)
 
 	address, err := fx.service.UpdateUserLocation(ctx, userID, locationID, input)
 	assert.Error(t, err)
 	assert.Nil(t, address)
-	assert.Contains(t, err.Error(), "failed to find address by ID")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestLocationService_UpdateUserLocation_WrongOwnerType(t *testing.T) {
@@ -423,7 +434,7 @@ func TestLocationService_DeleteUserLocation_NotFound(t *testing.T) {
 
 	fx.addressRepo.EXPECT().
 		FindAddressByID(ctx, locationID).
-		Return(nil, repository.ErrAddressNotFound)
+		Return(nil, domainerrors.ErrAddressNotFound)
 
 	err := fx.service.DeleteUserLocation(ctx, userID, locationID)
 	assert.Error(t, err)
@@ -447,13 +458,14 @@ func TestLocationService_DeleteUserLocation_DeleteError(t *testing.T) {
 		FindAddressByID(ctx, locationID).
 		Return(existingAddress, nil)
 
+	expectedErr := errors.New("database error")
 	fx.addressRepo.EXPECT().
 		DeleteAddress(ctx, locationID).
-		Return(errors.New("database error"))
+		Return(expectedErr)
 
 	err := fx.service.DeleteUserLocation(ctx, userID, locationID)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to delete address")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestLocationService_DeleteUserLocation_FindError(t *testing.T) {
@@ -463,13 +475,14 @@ func TestLocationService_DeleteUserLocation_FindError(t *testing.T) {
 	userID := uuid.New()
 	locationID := uuid.New()
 
+	expectedErr := errors.New("database connection failed")
 	fx.addressRepo.EXPECT().
 		FindAddressByID(ctx, locationID).
-		Return(nil, errors.New("database connection failed"))
+		Return(nil, expectedErr)
 
 	err := fx.service.DeleteUserLocation(ctx, userID, locationID)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to find address by ID")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestLocationService_DeleteUserLocation_WrongOwnerType(t *testing.T) {
@@ -504,7 +517,7 @@ func TestLocationService_UpdateUserLocation_NotFound(t *testing.T) {
 
 	fx.addressRepo.EXPECT().
 		FindAddressByID(ctx, locationID).
-		Return(nil, repository.ErrAddressNotFound)
+		Return(nil, domainerrors.ErrAddressNotFound)
 
 	address, err := fx.service.UpdateUserLocation(ctx, userID, locationID, input)
 	assert.Error(t, err)
@@ -616,12 +629,13 @@ func TestLocationService_AddUserLocation_CountError(t *testing.T) {
 		Longitude:   121.0,
 	}
 
+	expectedErr := errors.New("database error")
 	fx.addressRepo.EXPECT().
 		CountAddressesByOwner(ctx, userID, entity.OwnerTypeUserProfile).
-		Return(int64(0), errors.New("database error"))
+		Return(int64(0), expectedErr)
 
 	address, err := fx.service.AddUserLocation(ctx, userID, input)
 	assert.Error(t, err)
 	assert.Nil(t, address)
-	assert.Contains(t, err.Error(), "failed to count addresses by owner")
+	assert.ErrorIs(t, err, expectedErr)
 }

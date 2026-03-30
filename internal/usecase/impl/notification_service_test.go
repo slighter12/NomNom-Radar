@@ -380,15 +380,16 @@ func TestNotificationService_PublishLocationNotification_AddressNotFound(t *test
 	merchantID := uuid.New()
 	addressID := uuid.New()
 
+	expectedErr := errors.New("address not found")
 	fx.addressRepo.EXPECT().
 		FindAddressByID(ctx, addressID).
-		Return(nil, errors.New("address not found"))
+		Return(nil, expectedErr)
 
 	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, &addressID, nil, "")
 
 	assert.Error(t, err)
 	assert.Nil(t, notification)
-	assert.Contains(t, err.Error(), "failed to fetch address")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestNotificationService_PublishLocationNotification_CreateNotificationError(t *testing.T) {
@@ -398,15 +399,16 @@ func TestNotificationService_PublishLocationNotification_CreateNotificationError
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}
 
+	expectedErr := errors.New("db connection failed")
 	fx.notificationRepo.EXPECT().
 		CreateNotification(ctx, mock.Anything).
-		Return(errors.New("db connection failed"))
+		Return(expectedErr)
 
 	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
 
 	assert.Error(t, err)
 	assert.Nil(t, notification)
-	assert.Contains(t, err.Error(), "failed to create notification")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestNotificationService_PublishLocationNotification_FindDevicesError(t *testing.T) {
@@ -593,15 +595,16 @@ func TestNotificationService_GetMerchantNotificationHistory_Error(t *testing.T) 
 	ctx := context.Background()
 	merchantID := uuid.New()
 
+	expectedErr := errors.New("database error")
 	fx.notificationRepo.EXPECT().
 		FindNotificationsByMerchant(ctx, merchantID, 10, 0).
-		Return(nil, errors.New("database error"))
+		Return(nil, expectedErr)
 
 	notifications, err := fx.service.GetMerchantNotificationHistory(ctx, merchantID, 10, 0)
 
 	assert.Error(t, err)
 	assert.Nil(t, notifications)
-	assert.Contains(t, err.Error(), "failed to find notifications by merchant")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 // TestNotificationService_HaversineDistanceFiltering verifies that subscribers

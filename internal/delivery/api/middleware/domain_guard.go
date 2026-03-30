@@ -37,14 +37,14 @@ func (m *DomainGuardMiddleware) ValidateHost(next echo.HandlerFunc) echo.Handler
 		if m.allowedHost != "" {
 			requestHost := normalizeHost(c.Request().Host)
 			if requestHost != m.allowedHost {
-				return appErrorResponse(c, domainerrors.ErrForbiddenHost)
+				return response.AppError(c, domainerrors.ErrForbiddenHost)
 			}
 		}
 
 		if m.cloudflareSecret != "" {
 			clientSecret := strings.TrimSpace(c.Request().Header.Get(cloudflareSecretHeader))
 			if !secretsEqual(clientSecret, m.cloudflareSecret) {
-				return appErrorResponse(c, domainerrors.ErrForbiddenOrigin)
+				return response.AppError(c, domainerrors.ErrForbiddenOrigin)
 			}
 		}
 
@@ -54,10 +54,6 @@ func (m *DomainGuardMiddleware) ValidateHost(next echo.HandlerFunc) echo.Handler
 
 // #nosec G101 -- This is a public HTTP header name, not a credential.
 const cloudflareSecretHeader = "X-Cloudflare-Secret"
-
-func appErrorResponse(c echo.Context, appErr domainerrors.AppError) error {
-	return response.Error(c, appErr.HTTPCode(), appErr.ErrorCode(), appErr.Message(), nil)
-}
 
 func secretsEqual(a string, b string) bool {
 	if len(a) != len(b) {

@@ -1,22 +1,11 @@
-// Package repository defines the interfaces for the persistence layer.
-// These interfaces act as a contract between the domain/application layers and the infrastructure layer.
 package repository
 
 import (
 	"context"
-	"errors"
 
 	"radar/internal/domain/entity"
 
 	"github.com/google/uuid"
-)
-
-// Domain-specific errors for address persistence.
-var (
-	// ErrAddressNotFound is returned when an address is not found.
-	ErrAddressNotFound = errors.New("address not found")
-	// ErrPrimaryAddressConflict is returned when trying to set multiple primary addresses for the same owner.
-	ErrPrimaryAddressConflict = errors.New("owner already has a primary address")
 )
 
 // AddressRepository defines the interface for address-related database operations.

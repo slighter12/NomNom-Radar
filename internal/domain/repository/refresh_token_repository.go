@@ -1,22 +1,11 @@
-// Package repository defines the interfaces for the persistence layer.
-// These interfaces act as a contract between the domain/application layers and the infrastructure layer.
 package repository
 
 import (
 	"context"
-	"errors"
 
 	"radar/internal/domain/entity"
 
 	"github.com/google/uuid"
-)
-
-// Domain-specific errors for refresh token persistence.
-var (
-	// ErrRefreshTokenNotFound is returned when a refresh token is not found.
-	ErrRefreshTokenNotFound = errors.New("refresh token not found")
-	// ErrRefreshTokenExpired is returned when a refresh token has expired.
-	ErrRefreshTokenExpired = errors.New("refresh token has expired")
 )
 
 // RefreshTokenRepository defines the interface for refresh token and session management operations.

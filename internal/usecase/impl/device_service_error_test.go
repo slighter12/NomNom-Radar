@@ -7,7 +7,6 @@ import (
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
-	"radar/internal/domain/repository"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
@@ -25,11 +24,11 @@ func TestDeviceService_UpdateFCMToken_NotFound(t *testing.T) {
 
 	fx.deviceRepo.EXPECT().
 		FindDeviceByID(ctx, deviceID).
-		Return(nil, repository.ErrDeviceNotFound)
+		Return(nil, domainerrors.ErrDeviceNotFound)
 
 	err := fx.service.UpdateFCMToken(ctx, userID, deviceID, newToken)
 	assert.Error(t, err)
-	assert.Equal(t, domainerrors.ErrDeviceNotFound, err)
+	assert.ErrorIs(t, err, domainerrors.ErrDeviceNotFound)
 }
 
 func TestDeviceService_UpdateFCMToken_Unauthorized(t *testing.T) {
@@ -64,13 +63,14 @@ func TestDeviceService_UpdateFCMToken_FindError(t *testing.T) {
 	deviceID := uuid.New()
 	newToken := "new-fcm-token"
 
+	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
 		FindDeviceByID(ctx, deviceID).
-		Return(nil, errors.New("database error"))
+		Return(nil, expectedErr)
 
 	err := fx.service.UpdateFCMToken(ctx, userID, deviceID, newToken)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to find device by ID")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestDeviceService_UpdateFCMToken_UpdateError(t *testing.T) {
@@ -91,13 +91,14 @@ func TestDeviceService_UpdateFCMToken_UpdateError(t *testing.T) {
 		FindDeviceByID(ctx, deviceID).
 		Return(existingDevice, nil)
 
+	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
 		UpdateFCMToken(ctx, deviceID, newToken).
-		Return(errors.New("database error"))
+		Return(expectedErr)
 
 	err := fx.service.UpdateFCMToken(ctx, userID, deviceID, newToken)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to update FCM token")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestDeviceService_DeactivateDevice_Unauthorized(t *testing.T) {
@@ -132,11 +133,11 @@ func TestDeviceService_DeactivateDevice_NotFound(t *testing.T) {
 
 	fx.deviceRepo.EXPECT().
 		FindDeviceByID(ctx, deviceID).
-		Return(nil, repository.ErrDeviceNotFound)
+		Return(nil, domainerrors.ErrDeviceNotFound)
 
 	err := fx.service.DeactivateDevice(ctx, userID, deviceID)
 	assert.Error(t, err)
-	assert.Equal(t, domainerrors.ErrDeviceNotFound, err)
+	assert.ErrorIs(t, err, domainerrors.ErrDeviceNotFound)
 }
 
 func TestDeviceService_DeactivateDevice_FindError(t *testing.T) {
@@ -146,13 +147,14 @@ func TestDeviceService_DeactivateDevice_FindError(t *testing.T) {
 	userID := uuid.New()
 	deviceID := uuid.New()
 
+	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
 		FindDeviceByID(ctx, deviceID).
-		Return(nil, errors.New("database error"))
+		Return(nil, expectedErr)
 
 	err := fx.service.DeactivateDevice(ctx, userID, deviceID)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to find device by ID")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestDeviceService_DeactivateDevice_DeleteError(t *testing.T) {
@@ -172,13 +174,14 @@ func TestDeviceService_DeactivateDevice_DeleteError(t *testing.T) {
 		FindDeviceByID(ctx, deviceID).
 		Return(existingDevice, nil)
 
+	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
 		DeleteDevice(ctx, deviceID).
-		Return(errors.New("database error"))
+		Return(expectedErr)
 
 	err := fx.service.DeactivateDevice(ctx, userID, deviceID)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to delete device")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestDeviceService_RegisterDevice_FindError(t *testing.T) {
@@ -200,7 +203,7 @@ func TestDeviceService_RegisterDevice_FindError(t *testing.T) {
 	device, err := fx.service.RegisterDevice(ctx, userID, deviceInfo)
 	assert.Error(t, err)
 	assert.Nil(t, device)
-	assert.Contains(t, err.Error(), "failed to find device by user and device ID")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestDeviceService_GetUserDevices_Error(t *testing.T) {
@@ -209,14 +212,15 @@ func TestDeviceService_GetUserDevices_Error(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 
+	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
 		FindActiveDevicesByUser(ctx, userID).
-		Return(nil, errors.New("database error"))
+		Return(nil, expectedErr)
 
 	devices, err := fx.service.GetUserDevices(ctx, userID)
 	assert.Error(t, err)
 	assert.Nil(t, devices)
-	assert.Contains(t, err.Error(), "failed to find active devices by user")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestDeviceService_RegisterDevice_UpdateExisting_UpdateError(t *testing.T) {
@@ -244,14 +248,15 @@ func TestDeviceService_RegisterDevice_UpdateExisting_UpdateError(t *testing.T) {
 		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
 		Return(existingDevice, nil)
 
+	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
 		UpdateFCMToken(ctx, deviceID, "new-fcm-token").
-		Return(errors.New("database error"))
+		Return(expectedErr)
 
 	device, err := fx.service.RegisterDevice(ctx, userID, deviceInfo)
 	assert.Error(t, err)
 	assert.Nil(t, device)
-	assert.Contains(t, err.Error(), "failed to update FCM token")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestDeviceService_RegisterDevice_UpdateExisting_FindByIDError(t *testing.T) {
@@ -283,14 +288,15 @@ func TestDeviceService_RegisterDevice_UpdateExisting_FindByIDError(t *testing.T)
 		UpdateFCMToken(ctx, deviceID, "new-fcm-token").
 		Return(nil)
 
+	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
 		FindDeviceByID(ctx, deviceID).
-		Return(nil, errors.New("database error"))
+		Return(nil, expectedErr)
 
 	device, err := fx.service.RegisterDevice(ctx, userID, deviceInfo)
 	assert.Error(t, err)
 	assert.Nil(t, device)
-	assert.Contains(t, err.Error(), "failed to find device by ID")
+	assert.ErrorIs(t, err, expectedErr)
 }
 
 func TestDeviceService_RegisterDevice_NewDevice_CreateError(t *testing.T) {
@@ -306,14 +312,15 @@ func TestDeviceService_RegisterDevice_NewDevice_CreateError(t *testing.T) {
 
 	fx.deviceRepo.EXPECT().
 		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
-		Return(nil, repository.ErrDeviceNotFound)
+		Return(nil, domainerrors.ErrDeviceNotFound)
 
+	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
 		CreateDevice(ctx, mock.AnythingOfType("*entity.UserDevice")).
-		Return(errors.New("database error"))
+		Return(expectedErr)
 
 	device, err := fx.service.RegisterDevice(ctx, userID, deviceInfo)
 	assert.Error(t, err)
 	assert.Nil(t, device)
-	assert.Contains(t, err.Error(), "failed to create device")
+	assert.ErrorIs(t, err, expectedErr)
 }

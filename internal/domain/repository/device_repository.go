@@ -1,21 +1,11 @@
-// Package repository defines the interfaces for the persistence layer.
 package repository
 
 import (
 	"context"
-	"errors"
 
 	"radar/internal/domain/entity"
 
 	"github.com/google/uuid"
-)
-
-// Domain-specific errors for device persistence.
-var (
-	// ErrDeviceNotFound is returned when a device is not found.
-	ErrDeviceNotFound = errors.New("device not found")
-	// ErrDuplicateDevice is returned when trying to create a device that already exists.
-	ErrDuplicateDevice = errors.New("device already exists")
 )
 
 // DeviceRepository defines the interface for device-related database operations.

@@ -1,10 +1,10 @@
-// Package postgres contains the concrete implementation of the persistence layer using GORM and PostgreSQL.
 package postgres
 
 import (
 	"context"
 	"log/slog"
 
+	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 
 	"gorm.io/gorm"
@@ -84,12 +84,12 @@ func (tm *gormTransactionManager) Execute(ctx context.Context, fn func(repoFacto
 			tm.logger.Error("transaction rollback failed", slog.Any("error", rbErr))
 		}
 
-		return err // Return the original business error.
+		return err //nolint:wrapcheck // preserve the original business error without adding a redundant wrapper
 	}
 
 	// If the business logic completes without error, commit the transaction.
 	if err := tx.Commit().Error; err != nil {
-		return err
+		return domainerrors.ErrPersistenceFailed
 	}
 
 	return nil
