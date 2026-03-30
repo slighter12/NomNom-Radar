@@ -3,7 +3,6 @@ package impl
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -62,7 +61,7 @@ func upsertUserDevice(
 
 func validateDeviceInfo(deviceInfo *usecase.DeviceInfo) error {
 	if deviceInfo == nil {
-		return fmt.Errorf("device info is required: %w", domainerrors.ErrValidationFailed)
+		return domainerrors.ErrValidationFailed.WithDetails("device info is required")
 	}
 
 	deviceInfo.FCMToken = strings.TrimSpace(deviceInfo.FCMToken)
@@ -70,13 +69,13 @@ func validateDeviceInfo(deviceInfo *usecase.DeviceInfo) error {
 	deviceInfo.Platform = strings.ToLower(strings.TrimSpace(deviceInfo.Platform))
 
 	if deviceInfo.FCMToken == "" {
-		return fmt.Errorf("fcm_token is required: %w", domainerrors.ErrValidationFailed)
+		return domainerrors.ErrValidationFailed.WithDetails("fcm_token is required")
 	}
 	if deviceInfo.DeviceID == "" {
-		return fmt.Errorf("device_id is required: %w", domainerrors.ErrValidationFailed)
+		return domainerrors.ErrValidationFailed.WithDetails("device_id is required")
 	}
 	if deviceInfo.Platform != "ios" && deviceInfo.Platform != "android" {
-		return fmt.Errorf("platform must be ios or android: %w", domainerrors.ErrValidationFailed)
+		return domainerrors.ErrValidationFailed.WithDetails("platform must be ios or android")
 	}
 
 	return nil

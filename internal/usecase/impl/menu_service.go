@@ -3,7 +3,6 @@ package impl
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -38,7 +37,7 @@ func NewMenuService(params MenuServiceParams) usecase.MenuUsecase {
 
 func (s *menuService) GetPublicMerchantMenu(ctx context.Context, merchantID uuid.UUID, input *usecase.ListMerchantMenuItemsInput) (*usecase.MerchantMenuItemsResult, error) {
 	if input == nil {
-		return nil, fmt.Errorf("menu item list input is required: %w", domainerrors.ErrValidationFailed)
+		return nil, domainerrors.ErrValidationFailed.WithDetails("menu item list input is required")
 	}
 
 	if err := s.validatePublicMerchant(ctx, merchantID); err != nil {
@@ -54,7 +53,7 @@ func (s *menuService) GetPublicMerchantMenu(ctx context.Context, merchantID uuid
 
 func (s *menuService) ListMerchantMenuItems(ctx context.Context, merchantID uuid.UUID, input *usecase.ListMerchantMenuItemsInput) (*usecase.MerchantMenuItemsResult, error) {
 	if input == nil {
-		return nil, fmt.Errorf("menu item list input is required: %w", domainerrors.ErrValidationFailed)
+		return nil, domainerrors.ErrValidationFailed.WithDetails("menu item list input is required")
 	}
 
 	page := input.Page
@@ -98,7 +97,7 @@ func (s *menuService) ListMerchantMenuItems(ctx context.Context, merchantID uuid
 
 func (s *menuService) CreateMenuItem(ctx context.Context, merchantID uuid.UUID, input *usecase.CreateMenuItemInput) (*entity.MenuItem, error) {
 	if input == nil {
-		return nil, fmt.Errorf("menu item input is required: %w", domainerrors.ErrValidationFailed)
+		return nil, domainerrors.ErrValidationFailed.WithDetails("menu item input is required")
 	}
 
 	isAvailable := true
@@ -148,7 +147,7 @@ func (s *menuService) CreateMenuItem(ctx context.Context, merchantID uuid.UUID, 
 
 func (s *menuService) UpdateMenuItem(ctx context.Context, merchantID, itemID uuid.UUID, input *usecase.UpdateMenuItemInput) (*entity.MenuItem, error) {
 	if input == nil {
-		return nil, fmt.Errorf("menu item input is required: %w", domainerrors.ErrValidationFailed)
+		return nil, domainerrors.ErrValidationFailed.WithDetails("menu item input is required")
 	}
 
 	item, err := s.findOwnedMenuItem(ctx, merchantID, itemID)
@@ -282,25 +281,25 @@ func normalizeOptionalString(value *string) *string {
 
 func validateMenuItemFields(name string, description *string, category entity.MenuCategory, price int, currency string, prepMinutes int) error {
 	if name == "" {
-		return fmt.Errorf("name is required: %w", domainerrors.ErrValidationFailed)
+		return domainerrors.ErrValidationFailed.WithDetails("name is required")
 	}
 	if utf8.RuneCountInString(name) > 80 {
-		return fmt.Errorf("name must be 80 characters or fewer: %w", domainerrors.ErrValidationFailed)
+		return domainerrors.ErrValidationFailed.WithDetails("name must be 80 characters or fewer")
 	}
 	if description != nil && utf8.RuneCountInString(*description) > 500 {
-		return fmt.Errorf("description must be 500 characters or fewer: %w", domainerrors.ErrValidationFailed)
+		return domainerrors.ErrValidationFailed.WithDetails("description must be 500 characters or fewer")
 	}
 	if !category.IsValid() {
 		return domainerrors.ErrInvalidMenuCategory
 	}
 	if price < 0 {
-		return fmt.Errorf("price must be greater than or equal to zero: %w", domainerrors.ErrValidationFailed)
+		return domainerrors.ErrValidationFailed.WithDetails("price must be greater than or equal to zero")
 	}
 	if currency != entity.CurrencyTWD {
-		return fmt.Errorf("currency must be TWD: %w", domainerrors.ErrValidationFailed)
+		return domainerrors.ErrValidationFailed.WithDetails("currency must be TWD")
 	}
 	if prepMinutes <= 0 {
-		return fmt.Errorf("prep_minutes must be greater than zero: %w", domainerrors.ErrValidationFailed)
+		return domainerrors.ErrValidationFailed.WithDetails("prep_minutes must be greater than zero")
 	}
 
 	return nil
@@ -308,16 +307,16 @@ func validateMenuItemFields(name string, description *string, category entity.Me
 
 func validateReorderMenuItemsInput(input *usecase.ReorderMenuItemsInput) error {
 	if input == nil || len(input.ItemIDs) == 0 {
-		return fmt.Errorf("item_ids must not be empty: %w", domainerrors.ErrValidationFailed)
+		return domainerrors.ErrValidationFailed.WithDetails("item_ids must not be empty")
 	}
 
 	seenIDs := make(map[uuid.UUID]struct{}, len(input.ItemIDs))
 	for _, itemID := range input.ItemIDs {
 		if itemID == uuid.Nil {
-			return fmt.Errorf("item_ids must not contain nil uuid: %w", domainerrors.ErrValidationFailed)
+			return domainerrors.ErrValidationFailed.WithDetails("item_ids must not contain nil uuid")
 		}
 		if _, exists := seenIDs[itemID]; exists {
-			return fmt.Errorf("duplicate menu item id in reorder request: %w", domainerrors.ErrValidationFailed)
+			return domainerrors.ErrValidationFailed.WithDetails("duplicate menu item id in reorder request")
 		}
 		seenIDs[itemID] = struct{}{}
 	}
@@ -327,7 +326,7 @@ func validateReorderMenuItemsInput(input *usecase.ReorderMenuItemsInput) error {
 
 func validateCompleteMenuReorder(existingItemIDs, reorderedItemIDs []uuid.UUID) error {
 	if len(existingItemIDs) != len(reorderedItemIDs) {
-		return fmt.Errorf("reorder request must include all active menu item ids: %w", domainerrors.ErrValidationFailed)
+		return domainerrors.ErrValidationFailed.WithDetails("reorder request must include all active menu item ids")
 	}
 
 	existingSet := make(map[uuid.UUID]struct{}, len(existingItemIDs))
@@ -337,7 +336,7 @@ func validateCompleteMenuReorder(existingItemIDs, reorderedItemIDs []uuid.UUID) 
 
 	for _, itemID := range reorderedItemIDs {
 		if _, exists := existingSet[itemID]; !exists {
-			return fmt.Errorf("reorder request contains menu item outside merchant scope: %w", domainerrors.ErrValidationFailed)
+			return domainerrors.ErrValidationFailed.WithDetails("reorder request contains menu item outside merchant scope")
 		}
 	}
 

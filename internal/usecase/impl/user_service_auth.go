@@ -103,7 +103,7 @@ func (srv *userService) verifyIdentity(ctx context.Context, req *authRequest) (*
 	case authMethodOAuth:
 		return srv.verifyOAuthIdentity(ctx, req)
 	default:
-		return nil, fmt.Errorf("unsupported authentication method: %w", domainerrors.ErrValidationFailed)
+		return nil, domainerrors.ErrValidationFailed.WithDetails("unsupported authentication method")
 	}
 }
 
@@ -127,7 +127,7 @@ func (srv *userService) verifyEmailIdentity(ctx context.Context, req *authReques
 			slog.Any("error", err),
 		)
 
-		return nil, fmt.Errorf("password does not meet security requirements: %w", domainerrors.ErrValidationFailed)
+		return nil, domainerrors.ErrValidationFailed.WithDetails("password does not meet security requirements")
 	}
 
 	hashedPassword, err := srv.hasher.Hash(req.Password)
@@ -151,7 +151,7 @@ func (srv *userService) verifyOAuthIdentity(ctx context.Context, req *authReques
 	}
 
 	if !oauthUser.EmailVerified {
-		return nil, fmt.Errorf("oauth provider email must be verified: %w", domainerrors.ErrValidationFailed)
+		return nil, domainerrors.ErrValidationFailed.WithDetails("oauth provider email must be verified")
 	}
 
 	return &verifiedIdentity{
@@ -427,7 +427,7 @@ func (srv *userService) CompleteMerchantOnboarding(ctx context.Context, input *u
 
 		user = loadedUser
 		if userHasMerchantProfile(user) {
-			return fmt.Errorf("merchant onboarding already completed: %w", domainerrors.ErrConflict)
+			return domainerrors.ErrConflict.WithDetails("merchant onboarding already completed")
 		}
 
 		cfg := buildMerchantRegistrationConfig(user.Name, user.Email, "", seed)
@@ -507,14 +507,14 @@ func linkIdentityToExistingUser(
 	switch req.Method {
 	case authMethodOAuth:
 		if !identity.EmailVerified {
-			return fmt.Errorf("account with this email already exists: %w", domainerrors.ErrConflict)
+			return domainerrors.ErrConflict.WithDetails("account with this email already exists")
 		}
 
 		return ensureOAuthAuthLink(ctx, authRepo, userID, identity.Provider, identity.ProviderUserID)
 	case authMethodEmailPassword:
-		return fmt.Errorf("account with this email already exists: %w", domainerrors.ErrConflict)
+		return domainerrors.ErrConflict.WithDetails("account with this email already exists")
 	default:
-		return fmt.Errorf("account with this email already exists: %w", domainerrors.ErrConflict)
+		return domainerrors.ErrConflict.WithDetails("account with this email already exists")
 	}
 }
 
@@ -535,7 +535,7 @@ func ensureOAuthAuthLink(
 			return nil
 		}
 
-		return fmt.Errorf("provider is already linked to a different account for this user: %w", domainerrors.ErrConflict)
+		return domainerrors.ErrConflict.WithDetails("provider is already linked to a different account for this user")
 	}
 
 	return createOAuthAuthentication(ctx, authRepo, userID, provider, providerUserID)

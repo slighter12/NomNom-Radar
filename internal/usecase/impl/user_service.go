@@ -474,12 +474,12 @@ func normalizeRequestedRole(requestedRole, legacyState string) entity.Role {
 func buildMerchantProfile(seed merchantProfileSeed, userID uuid.UUID) (*entity.MerchantProfile, error) {
 	storeName := strings.TrimSpace(seed.StoreName)
 	if storeName == "" {
-		return nil, fmt.Errorf("store_name is required for merchant sign-in: %w", domainerrors.ErrValidationFailed)
+		return nil, domainerrors.ErrValidationFailed.WithDetails("store_name is required for merchant sign-in")
 	}
 
 	businessLicense := strings.TrimSpace(seed.BusinessLicense)
 	if businessLicense == "" {
-		return nil, fmt.Errorf("business_license is required for merchant sign-in: %w", domainerrors.ErrValidationFailed)
+		return nil, domainerrors.ErrValidationFailed.WithDetails("business_license is required for merchant sign-in")
 	}
 
 	profile := &entity.MerchantProfile{
@@ -696,10 +696,10 @@ func (srv *userService) checkGoogleAccountConflicts(ctx context.Context, authRep
 
 	if existingAuth != nil {
 		if existingAuth.UserID == userID {
-			return fmt.Errorf("google account already linked to this user: %w", domainerrors.ErrConflict)
+			return domainerrors.ErrConflict.WithDetails("google account already linked to this user")
 		}
 
-		return fmt.Errorf("google account already linked to another user: %w", domainerrors.ErrConflict)
+		return domainerrors.ErrConflict.WithDetails("google account already linked to another user")
 	}
 
 	return nil
@@ -745,7 +745,7 @@ func (srv *userService) UnlinkGoogleAccount(ctx context.Context, userID uuid.UUI
 		googleAuth, err := authRepo.FindAuthenticationByUserIDAndProvider(ctx, userID, entity.ProviderTypeGoogle)
 		if err != nil {
 			if errors.Is(err, domainerrors.ErrAuthNotFound) {
-				return fmt.Errorf("google account not linked to this user: %w", domainerrors.ErrNotFound)
+				return domainerrors.ErrNotFound.WithDetails("google account not linked to this user")
 			}
 
 			return err
@@ -758,7 +758,7 @@ func (srv *userService) UnlinkGoogleAccount(ctx context.Context, userID uuid.UUI
 		}
 
 		if len(allAuths) <= 1 {
-			return fmt.Errorf("cannot unlink last authentication method: %w", domainerrors.ErrValidationFailed)
+			return domainerrors.ErrValidationFailed.WithDetails("cannot unlink last authentication method")
 		}
 
 		// 3. Delete the Google authentication

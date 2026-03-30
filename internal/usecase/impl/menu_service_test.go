@@ -2,6 +2,7 @@ package impl
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -212,7 +213,10 @@ func TestMenuService_ReorderMenuItems_RequiresCompleteSnapshot(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "all active menu item ids")
+	assert.ErrorIs(t, err, domainerrors.ErrValidationFailed)
+	appErr, ok := errors.AsType[domainerrors.AppError](err)
+	require.True(t, ok)
+	assert.Equal(t, "reorder request must include all active menu item ids", appErr.Details())
 	assert.False(t, reorderCalled)
 }
 

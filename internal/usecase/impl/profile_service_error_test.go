@@ -3,7 +3,6 @@ package impl
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 
 	"radar/internal/domain/entity"
@@ -69,7 +68,7 @@ func TestProfileService_UpdateMerchantProfile_NoProfile(t *testing.T) {
 		// MerchantProfile intentionally nil to trigger validation
 	}
 
-	fx.onExecute(ctx, fmt.Errorf("user does not have a merchant profile: %w", domainerrors.ErrValidationFailed), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, domainerrors.ErrValidationFailed.WithDetails("user does not have a merchant profile"), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
 		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(existingUser, nil)
@@ -183,7 +182,7 @@ func TestProfileService_UpdateUserProfile_NoProfile(t *testing.T) {
 		UserProfile: nil, // No user profile
 	}
 
-	fx.onExecute(ctx, fmt.Errorf("user does not have a user profile: %w", domainerrors.ErrValidationFailed), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, domainerrors.ErrValidationFailed.WithDetails("user does not have a user profile"), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
 		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(existingUser, nil)
@@ -310,7 +309,7 @@ func TestProfileService_SwitchToMerchant_AlreadyMerchant(t *testing.T) {
 		},
 	}
 
-	fx.onExecute(ctx, fmt.Errorf("user already has a merchant profile: %w", domainerrors.ErrConflict), func(factory *mockRepo.MockRepositoryFactory) {
+	fx.onExecute(ctx, domainerrors.ErrConflict.WithDetails("user already has a merchant profile"), func(factory *mockRepo.MockRepositoryFactory) {
 		mockUserRepo := mockRepo.NewMockUserRepository(t)
 		factory.EXPECT().UserRepo().Return(mockUserRepo)
 		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(existingUser, nil)

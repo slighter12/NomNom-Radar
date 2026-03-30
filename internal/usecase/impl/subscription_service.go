@@ -47,7 +47,7 @@ func NewSubscriptionService(params SubscriptionServiceParams) usecase.Subscripti
 // SubscribeToMerchant creates or reactivates a subscription to a merchant
 func (s *subscriptionService) SubscribeToMerchant(ctx context.Context, userID, merchantID uuid.UUID, deviceInfo *usecase.DeviceInfo) (*entity.UserMerchantSubscription, error) {
 	if userID == merchantID {
-		return nil, domainerrors.ErrSelfSubscriptionNotAllowed.WrapMessage("cannot subscribe to self")
+		return nil, domainerrors.ErrSelfSubscriptionNotAllowed.WithDetails("cannot subscribe to self")
 	}
 
 	// Check if subscription already exists

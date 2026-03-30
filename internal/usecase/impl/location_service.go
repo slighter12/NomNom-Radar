@@ -3,7 +3,6 @@ package impl
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"radar/config"
@@ -136,7 +135,7 @@ func (s *locationService) addLocation(
 	input *usecase.AddLocationInput,
 ) (*entity.Address, error) {
 	if input == nil {
-		return nil, fmt.Errorf("location input is required: %w", domainerrors.ErrValidationFailed)
+		return nil, domainerrors.ErrValidationFailed.WithDetails("location input is required")
 	}
 
 	count, err := s.addressRepo.CountAddressesByOwner(ctx, ownerID, ownerType)
@@ -163,7 +162,7 @@ func (s *locationService) updateLocation(
 	input *usecase.UpdateLocationInput,
 ) (*entity.Address, error) {
 	if input == nil {
-		return nil, fmt.Errorf("location update input is required: %w", domainerrors.ErrValidationFailed)
+		return nil, domainerrors.ErrValidationFailed.WithDetails("location update input is required")
 	}
 
 	address, err := s.findOwnedAddress(ctx, ownerID, locationID, ownerType)

@@ -3,7 +3,6 @@ package impl
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 
 	deliverycontext "radar/internal/delivery/context"
@@ -88,7 +87,7 @@ func (srv *profileService) UpdateUserProfile(ctx context.Context, userID uuid.UU
 
 		// 2. Check if user has a user profile
 		if user.UserProfile == nil {
-			return fmt.Errorf("user does not have a user profile: %w", domainerrors.ErrValidationFailed)
+			return domainerrors.ErrValidationFailed.WithDetails("user does not have a user profile")
 		}
 
 		// 3. Update the profile fields
@@ -130,7 +129,7 @@ func (srv *profileService) UpdateMerchantProfile(ctx context.Context, userID uui
 
 		// 2. Check if user has a merchant profile
 		if user.MerchantProfile == nil {
-			return fmt.Errorf("user does not have a merchant profile: %w", domainerrors.ErrValidationFailed)
+			return domainerrors.ErrValidationFailed.WithDetails("user does not have a merchant profile")
 		}
 
 		// 3. Update the profile fields
@@ -178,7 +177,7 @@ func (srv *profileService) SwitchToMerchant(ctx context.Context, userID uuid.UUI
 
 		// 2. Check if user already has a merchant profile
 		if user.MerchantProfile != nil {
-			return fmt.Errorf("user already has a merchant profile: %w", domainerrors.ErrConflict)
+			return domainerrors.ErrConflict.WithDetails("user already has a merchant profile")
 		}
 
 		// 3. Create merchant profile
