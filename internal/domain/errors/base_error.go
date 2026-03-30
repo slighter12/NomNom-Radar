@@ -40,6 +40,16 @@ func (e *BaseError) WrapMessage(message string) error {
 	return fmt.Errorf("%s: %w", message, e)
 }
 
+// WithDetails returns a copy of the error with client-facing details attached.
+func (e *BaseError) WithDetails(details string) AppError {
+	return &BaseError{
+		httpCode:  e.httpCode,
+		errorCode: e.errorCode,
+		message:   e.message,
+		details:   details,
+	}
+}
+
 // HTTPCode returns the HTTP status code associated with the error.
 func (e *BaseError) HTTPCode() int {
 	return e.httpCode

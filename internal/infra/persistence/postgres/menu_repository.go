@@ -19,6 +19,8 @@ type menuRepository struct {
 	db *gorm.DB
 }
 
+const reorderMenuItemsValidationMessage = "reorder request must include all active menu item ids"
+
 type menuItemMerchantRecord struct {
 	MerchantID uuid.UUID `gorm:"column:merchant_id"`
 }
@@ -346,7 +348,7 @@ func (repo *menuRepository) validateReorderMenuItems(tx *gorm.DB, merchantID uui
 	}
 
 	if len(scopedItemIDs) != len(itemIDs) {
-		return domainerrors.ErrValidationFailed
+		return domainerrors.ErrValidationFailed.WithDetails(reorderMenuItemsValidationMessage)
 	}
 
 	scopedItemSet := make(map[uuid.UUID]struct{}, len(scopedItemIDs))
@@ -356,7 +358,7 @@ func (repo *menuRepository) validateReorderMenuItems(tx *gorm.DB, merchantID uui
 
 	for idx := range itemIDs {
 		if _, exists := scopedItemSet[itemIDs[idx]]; !exists {
-			return domainerrors.ErrValidationFailed
+			return domainerrors.ErrValidationFailed.WithDetails(reorderMenuItemsValidationMessage)
 		}
 	}
 
