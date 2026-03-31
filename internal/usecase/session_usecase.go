@@ -17,6 +17,4 @@ type SessionUsecase interface {
 	RevokeAllOtherSessions(ctx context.Context, userID uuid.UUID, currentSessionID uuid.UUID) error
 	GetSessionInfo(ctx context.Context, userID, sessionID uuid.UUID) (*entity.SessionInfo, error)
 	CleanupExpiredSessions(ctx context.Context) (int, error)
-	DetectAnomalousActivity(ctx context.Context, userID uuid.UUID) ([]*entity.AnomalousActivity, error)
-	GetSessionStatistics(ctx context.Context, userID uuid.UUID) (*entity.SessionStatistics, error)
 }

@@ -71,20 +71,3 @@ type SessionInfo struct {
 	IsActive  bool       `json:"is_active"`
 	LastUsed  *time.Time `json:"last_used,omitempty"`
 }
-
-// AnomalousActivity represents detected suspicious session activity.
-type AnomalousActivity struct {
-	Type        string     `json:"type"`
-	Description string     `json:"description"`
-	Severity    string     `json:"severity"`
-	DetectedAt  time.Time  `json:"detected_at"`
-	SessionID   *uuid.UUID `json:"session_id,omitempty"`
-}
-
-// SessionStatistics provides overview of user's session activity.
-type SessionStatistics struct {
-	TotalActiveSessions int        `json:"total_active_sessions"`
-	OldestSession       *time.Time `json:"oldest_session,omitempty"`
-	NewestSession       *time.Time `json:"newest_session,omitempty"`
-	TotalSessions       int        `json:"total_sessions"`
-}
