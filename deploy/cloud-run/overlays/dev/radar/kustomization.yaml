@@ -28,10 +28,8 @@ patches:
           metadata:
             annotations:
               autoscaling.knative.dev/maxScale: "1"
-              run.googleapis.com/execution-environment: gen1
           spec:
             containerConcurrency: 1
-            timeoutSeconds: 1
             containers:
               - name: app
                 resources:
