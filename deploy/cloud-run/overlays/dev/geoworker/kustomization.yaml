@@ -3,3 +3,28 @@ kind: Kustomization
 
 resources:
   - ../../shared/geoworker
+
+patches:
+  - target:
+      kind: Service
+      name: geoworker
+    patch: |-
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      metadata:
+        name: geoworker
+      spec:
+        template:
+          metadata:
+            annotations:
+              autoscaling.knative.dev/maxScale: "1"
+              run.googleapis.com/execution-environment: gen1
+          spec:
+            containerConcurrency: 1
+            timeoutSeconds: 1
+            containers:
+              - name: app
+                resources:
+                  limits:
+                    memory: 128Mi
+                    cpu: "0.08"

@@ -14,7 +14,6 @@ patches:
       metadata:
         name: radar
         annotations:
-          run.googleapis.com/ingress: all
           run.googleapis.com/invoker-iam-disabled: "true"
       spec:
         template:

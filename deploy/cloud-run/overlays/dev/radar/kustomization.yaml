@@ -15,3 +15,26 @@ patches:
       - op: add
         path: /metadata/annotations/run.googleapis.com~1invoker-iam-disabled
         value: "false"
+  - target:
+      kind: Service
+      name: radar
+    patch: |-
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      metadata:
+        name: radar
+      spec:
+        template:
+          metadata:
+            annotations:
+              autoscaling.knative.dev/maxScale: "1"
+              run.googleapis.com/execution-environment: gen1
+          spec:
+            containerConcurrency: 1
+            timeoutSeconds: 1
+            containers:
+              - name: app
+                resources:
+                  limits:
+                    memory: 128Mi
+                    cpu: "0.08"
