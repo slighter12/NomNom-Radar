@@ -9,20 +9,13 @@ patches:
       kind: Service
       name: radar
     patch: |-
-      - op: replace
-        path: /metadata/annotations/run.googleapis.com~1ingress
-        value: internal
-      - op: add
-        path: /metadata/annotations/run.googleapis.com~1invoker-iam-disabled
-        value: "false"
-  - target:
-      kind: Service
-      name: radar
-    patch: |-
       apiVersion: serving.knative.dev/v1
       kind: Service
       metadata:
         name: radar
+        annotations:
+          run.googleapis.com/ingress: internal
+          run.googleapis.com/invoker-iam-disabled: "false"
       spec:
         template:
           metadata:
@@ -35,4 +28,3 @@ patches:
                 resources:
                   limits:
                     memory: 128Mi
-                    cpu: "1"
