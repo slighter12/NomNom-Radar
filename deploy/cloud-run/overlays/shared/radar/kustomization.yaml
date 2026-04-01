@@ -2,7 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - ../../base
+  - ../../../base
 
 patches:
   - target:
@@ -12,12 +12,6 @@ patches:
       - op: replace
         path: /metadata/name
         value: radar
-      - op: replace
-        path: /metadata/annotations/run.googleapis.com~1ingress
-        value: all
-      - op: add
-        path: /metadata/annotations/run.googleapis.com~1invoker-iam-disabled
-        value: "true"
       - op: replace
         path: /spec/template/metadata/annotations/autoscaling.knative.dev~1maxScale
         value: "10"

@@ -1,47 +1,75 @@
-name: Deploy to Cloud Run
+name: Deploy Cloud Run Reusable
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
+      environment_name:
+        description: "GitHub environment name"
+        required: true
+        type: string
       target:
         description: "Deploy target"
         required: true
-        type: choice
-        options:
-          - radar
-          - geoworker
+        type: string
       image_ref:
-        description: "Required image tag or commit SHA to deploy."
+        description: "Image tag or commit SHA to deploy"
         required: true
-        default: ""
+        type: string
       run_migration:
         description: "Run database migration before deploy"
         required: false
-        type: boolean
         default: false
-
-env:
-  PROJECT_ID: radar-469510
-  REGION: asia-east1
-  REGISTRY: asia-east1-docker.pkg.dev/radar-469510/radar
+        type: boolean
+      enable_cloudflare_sync:
+        description: "Sync Cloudflare transform rule after deploy"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   deploy:
+    name: Deploy ${{ inputs.target }} to ${{ inputs.environment_name }}
     runs-on: ubuntu-latest
-
+    environment: ${{ inputs.environment_name }}
     permissions:
-      contents: "read"
-
+      contents: read
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      REGISTRY: ${{ vars.GCP_REGISTRY }}
+      ALLOWED_HOST: ${{ vars.HTTP_ALLOWEDHOST }}
+      GCP_SA_EMAIL: ${{ vars.GCP_SA_EMAIL }}
     steps:
+      - name: Validate deployment configuration
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          set -euo pipefail
+
+          for required in PROJECT_ID REGION REGISTRY ALLOWED_HOST GCP_SA_EMAIL GCP_SA_KEY; do
+            if [ -z "${!required:-}" ]; then
+              echo "::error::Missing required deployment configuration: ${required}"
+              exit 1
+            fi
+          done
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: refs/heads/main
           fetch-depth: 0
 
+      - name: Set up Go version
+        if: ${{ inputs.run_migration }}
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.mod
+
       - name: Google Auth
         id: auth
-        uses: "google-github-actions/auth@v2"
+        uses: google-github-actions/auth@v2
         with:
           credentials_json: "${{ secrets.GCP_SA_KEY }}"
 
@@ -53,12 +81,11 @@ jobs:
       - name: Run Database Migration
         if: ${{ inputs.run_migration }}
         run: |
-          # Install goose
-          go install github.com/pressly/goose/v3/cmd/goose@latest
+          set -euo pipefail
 
-          # Fetch database DSN from Secret Manager and run migration
-          PG_URI=$(gcloud secrets versions access latest --secret="postgres-master-dsn" --project="${{ env.PROJECT_ID }}")
-          $(go env GOPATH)/bin/goose postgres "${PG_URI}" -dir ./database/migration/postgres up
+          go install github.com/pressly/goose/v3/cmd/goose@latest
+          PG_URI=$(gcloud secrets versions access latest --secret="postgres-master-dsn" --project="${PROJECT_ID}")
+          "$(go env GOPATH)/bin/goose" postgres "${PG_URI}" -dir ./database/migration/postgres up
 
       - name: Resolve image reference
         id: image
@@ -66,11 +93,11 @@ jobs:
           set -euo pipefail
 
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          IMAGE_REF="$(echo "${{ inputs.image_ref }}" | xargs)"
+          IMAGE_REF="$(printf '%s' "${{ inputs.image_ref }}" | xargs)"
           IMAGE_TAG=""
           IMAGE_DIGEST=""
           TAG_SOURCE="manual image ref"
-          TARGET_IMAGE_BASE="${{ env.REGISTRY }}/${OWNER}/${{ inputs.target }}"
+          TARGET_IMAGE_BASE="${REGISTRY}/${OWNER}/${{ inputs.target }}"
 
           if [ -z "${IMAGE_REF}" ]; then
             echo "::error::image_ref is required. Provide a deployable image tag or commit SHA."
@@ -86,16 +113,16 @@ jobs:
 
           IMAGE_NAME="${TARGET_IMAGE_BASE}:${IMAGE_TAG}"
           IMAGE_DIGEST=$(gcloud artifacts docker images describe "${IMAGE_NAME}" \
-            --project="${{ env.PROJECT_ID }}" \
+            --project="${PROJECT_ID}" \
             --format='value(image_summary.fully_qualified_digest)')
 
-          echo "tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
-          echo "name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
-          echo "digest=${IMAGE_DIGEST}" >> $GITHUB_OUTPUT
-          echo "source=${TAG_SOURCE}" >> $GITHUB_OUTPUT
+          echo "tag=${IMAGE_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "name=${IMAGE_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "digest=${IMAGE_DIGEST}" >> "${GITHUB_OUTPUT}"
+          echo "source=${TAG_SOURCE}" >> "${GITHUB_OUTPUT}"
 
+          echo "Deploy environment: ${{ inputs.environment_name }}"
           echo "Deploy target: ${{ inputs.target }}"
-          echo "Workflow ref (ignored for deploy config): ${GITHUB_REF_NAME}"
           echo "Requested image ref: ${IMAGE_REF}"
           echo "Resolved image tag: ${IMAGE_TAG} (${TAG_SOURCE})"
           echo "Resolved image: ${IMAGE_NAME}"
@@ -103,46 +130,59 @@ jobs:
 
       - name: Verify image exists in Artifact Registry
         run: |
+          set -euo pipefail
+
           gcloud artifacts docker images describe "${{ steps.image.outputs.name }}" \
-            --project="${{ env.PROJECT_ID }}" \
+            --project="${PROJECT_ID}" \
             --format='value(image_summary.fully_qualified_digest)'
 
       - name: Prepare service YAML
+        env:
+          CLOUDFLARE_ORIGIN_SECRET: ${{ secrets.CLOUDFLARE_ORIGIN_SECRET }}
         run: |
           set -euo pipefail
 
-          if [ "${{ inputs.target }}" = "radar" ] && [ -z "${{ secrets.CLOUDFLARE_ORIGIN_SECRET }}" ]; then
-            echo "::error::Missing required GitHub secret: CLOUDFLARE_ORIGIN_SECRET"
-            exit 1
+          kubectl kustomize "deploy/cloud-run/overlays/${{ inputs.environment_name }}/${{ inputs.target }}" > /tmp/service.yaml
+
+          IMAGE_NAME_ESCAPED=$(printf '%s' "${{ steps.image.outputs.name }}" | sed -e 's/[\\/&]/\\&/g')
+          SERVICE_ACCOUNT_ESCAPED=$(printf '%s' "${GCP_SA_EMAIL}" | sed -e 's/[\\/&]/\\&/g')
+          PROJECT_ID_ESCAPED=$(printf '%s' "${PROJECT_ID}" | sed -e 's/[\\/&]/\\&/g')
+          ALLOWED_HOST_ESCAPED=$(printf '%s' "${ALLOWED_HOST}" | sed -e 's/[\\/&]/\\&/g')
+
+          sed -i "s|IMAGE_PLACEHOLDER|${IMAGE_NAME_ESCAPED}|g" /tmp/service.yaml
+          sed -i "s|SERVICE_ACCOUNT_PLACEHOLDER|${SERVICE_ACCOUNT_ESCAPED}|g" /tmp/service.yaml
+          sed -i "s|PROJECT_ID_PLACEHOLDER|${PROJECT_ID_ESCAPED}|g" /tmp/service.yaml
+          sed -i "s|HTTP_ALLOWEDHOST_PLACEHOLDER|${ALLOWED_HOST_ESCAPED}|g" /tmp/service.yaml
+
+          if grep -q "HTTP_CLOUDFLARESECRET_PLACEHOLDER" /tmp/service.yaml; then
+            if [ -z "${CLOUDFLARE_ORIGIN_SECRET:-}" ]; then
+              echo "::error::Missing required environment secret: CLOUDFLARE_ORIGIN_SECRET"
+              exit 1
+            fi
+
+            CLOUDFLARE_SECRET_ESCAPED=$(printf '%s' "${CLOUDFLARE_ORIGIN_SECRET}" | sed -e 's/[\\/&]/\\&/g')
+            sed -i "s|HTTP_CLOUDFLARESECRET_PLACEHOLDER|${CLOUDFLARE_SECRET_ESCAPED}|g" /tmp/service.yaml
           fi
 
-          # Build final YAML using kubectl's built-in kustomize
-          kubectl kustomize deploy/cloud-run/overlays/${{ inputs.target }} > /tmp/service.yaml
-          # Replace image placeholder
-          sed -i "s|IMAGE_PLACEHOLDER|${{ steps.image.outputs.name }}|g" /tmp/service.yaml
-          # Replace service account placeholder
-          sed -i "s|SERVICE_ACCOUNT_PLACEHOLDER|${{ secrets.GCP_SA_EMAIL }}|g" /tmp/service.yaml
-          # Replace Cloudflare origin secret placeholder from GitHub Secret
-          CLOUDFLARE_SECRET_ESCAPED=$(printf '%s' "${{ secrets.CLOUDFLARE_ORIGIN_SECRET }}" | sed -e 's/[\\/&]/\\&/g')
-          sed -i "s|HTTP_CLOUDFLARESECRET_PLACEHOLDER|${CLOUDFLARE_SECRET_ESCAPED}|g" /tmp/service.yaml
       - name: Deploy to Cloud Run
         id: deploy
         run: |
-          gcloud run services replace /tmp/service.yaml \
-            --project=${{ env.PROJECT_ID }} \
-            --region=${{ env.REGION }}
+          set -euo pipefail
 
-          # radar should allow unauthenticated access
-          if [ "${{ inputs.target }}" = "radar" ]; then
-            gcloud run services add-iam-policy-binding ${{ inputs.target }} \
-              --project=${{ env.PROJECT_ID }} \
-              --region=${{ env.REGION }} \
+          gcloud run services replace /tmp/service.yaml \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}"
+
+          if [ "${{ inputs.environment_name }}" = "prod" ] && [ "${{ inputs.target }}" = "radar" ]; then
+            gcloud run services add-iam-policy-binding "${{ inputs.target }}" \
+              --project="${PROJECT_ID}" \
+              --region="${REGION}" \
               --member="allUsers" \
               --role="roles/run.invoker"
           fi
 
       - name: Sync Cloudflare Transform Rule Header
-        if: ${{ inputs.target == 'radar' }}
+        if: ${{ inputs.enable_cloudflare_sync && inputs.target == 'radar' }}
         env:
           CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CF_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
@@ -153,8 +193,8 @@ jobs:
           set -euo pipefail
 
           for required in CF_API_TOKEN CF_ZONE_ID CF_RULE_ID CF_ORIGIN_SECRET; do
-            if [ -z "${!required}" ]; then
-              echo "::error::Missing required GitHub secret: ${required}"
+            if [ -z "${!required:-}" ]; then
+              echo "::error::Missing required environment secret: ${required}"
               exit 1
             fi
           done
@@ -203,7 +243,9 @@ jobs:
 
       - name: Show Output
         run: |
-          gcloud run services describe ${{ inputs.target }} \
-            --project=${{ env.PROJECT_ID }} \
-            --region=${{ env.REGION }} \
+          set -euo pipefail
+
+          gcloud run services describe "${{ inputs.target }}" \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
             --format='value(status.url)'

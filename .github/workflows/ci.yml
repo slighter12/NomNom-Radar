@@ -11,7 +11,6 @@ on:
 
 env:
   GOLANGCI_LINT_VERSION: latest
-  REGISTRY: asia-east1-docker.pkg.dev/radar-469510/radar
 
 jobs:
   checks:
@@ -37,11 +36,17 @@ jobs:
       - name: Run Tests
         run: go test -race ./...
 
-  build-and-push:
-    name: Build and Push Docker Image
+  build-images:
+    name: Build Docker Images Once
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: checks
+    outputs:
+      any: ${{ steps.build-flags.outputs.any }}
+      radar: ${{ steps.build-flags.outputs.radar }}
+      geoworker: ${{ steps.build-flags.outputs.geoworker }}
+      tag: ${{ steps.set-vars.outputs.TAG }}
+      image_name: ${{ steps.set-vars.outputs.IMAGE_NAME }}
     steps:
       - name: Checkout the repository
         uses: actions/checkout@v4
@@ -93,21 +98,7 @@ jobs:
         if: steps.build-flags.outputs.any == 'true'
         uses: docker/setup-buildx-action@v3
 
-      - name: Google Auth
-        if: steps.build-flags.outputs.any == 'true'
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: "${{ secrets.GCP_SA_KEY }}"
-
-      - name: Set up Cloud SDK
-        if: steps.build-flags.outputs.any == 'true'
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Configure Docker auth for Artifact Registry
-        if: steps.build-flags.outputs.any == 'true'
-        run: gcloud auth configure-docker asia-east1-docker.pkg.dev --quiet
-
-      - name: Build and push Radar image
+      - name: Build Radar image
         if: steps.build-flags.outputs.radar == 'true'
         uses: docker/build-push-action@v5
         with:
@@ -115,13 +106,14 @@ jobs:
           file: ./Dockerfile
           target: radar
           platforms: linux/amd64
-          push: true
+          push: false
+          load: true
           pull: true
           provenance: false
           sbom: false
           tags: |
-            ${{ env.REGISTRY }}/${{ steps.set-vars.outputs.IMAGE_NAME }}/radar:${{ steps.set-vars.outputs.TAG }}
-            ${{ env.REGISTRY }}/${{ steps.set-vars.outputs.IMAGE_NAME }}/radar:latest
+            radar:${{ steps.set-vars.outputs.TAG }}
+            radar:latest
           build-args: |
             VERSION=${{ steps.set-vars.outputs.TAG }}
             BUILT=${{ github.event.head_commit.timestamp }}
@@ -130,7 +122,19 @@ jobs:
           cache-from: type=gha,scope=radar-latest
           cache-to: type=gha,mode=max,scope=radar-latest
 
-      - name: Build and push Geoworker image
+      - name: Save Radar image artifact
+        if: steps.build-flags.outputs.radar == 'true'
+        run: docker save "radar:${{ steps.set-vars.outputs.TAG }}" --output /tmp/radar-image.tar
+
+      - name: Upload Radar image artifact
+        if: steps.build-flags.outputs.radar == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: radar-image
+          path: /tmp/radar-image.tar
+          retention-days: 1
+
+      - name: Build Geoworker image
         if: steps.build-flags.outputs.geoworker == 'true'
         uses: docker/build-push-action@v5
         with:
@@ -138,13 +142,14 @@ jobs:
           file: ./Dockerfile
           target: geoworker
           platforms: linux/amd64
-          push: true
+          push: false
+          load: true
           pull: true
           provenance: false
           sbom: false
           tags: |
-            ${{ env.REGISTRY }}/${{ steps.set-vars.outputs.IMAGE_NAME }}/geoworker:${{ steps.set-vars.outputs.TAG }}
-            ${{ env.REGISTRY }}/${{ steps.set-vars.outputs.IMAGE_NAME }}/geoworker:latest
+            geoworker:${{ steps.set-vars.outputs.TAG }}
+            geoworker:latest
           build-args: |
             VERSION=${{ steps.set-vars.outputs.TAG }}
             BUILT=${{ github.event.head_commit.timestamp }}
@@ -152,3 +157,165 @@ jobs:
             IMAGE_NAME=${{ steps.set-vars.outputs.IMAGE_NAME }}
           cache-from: type=gha,scope=geoworker-latest
           cache-to: type=gha,mode=max,scope=geoworker-latest
+
+      - name: Save Geoworker image artifact
+        if: steps.build-flags.outputs.geoworker == 'true'
+        run: docker save "geoworker:${{ steps.set-vars.outputs.TAG }}" --output /tmp/geoworker-image.tar
+
+      - name: Upload Geoworker image artifact
+        if: steps.build-flags.outputs.geoworker == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: geoworker-image
+          path: /tmp/geoworker-image.tar
+          retention-days: 1
+
+  publish-dev:
+    name: Publish Docker Images (dev)
+    runs-on: ubuntu-latest
+    if: needs.build-images.outputs.any == 'true'
+    needs: build-images
+    env:
+      PROJECT_ID: ${{ vars.GCP_DEV_PROJECT_ID }}
+      REGISTRY: ${{ vars.GCP_DEV_REGISTRY }}
+      TAG: ${{ needs.build-images.outputs.tag }}
+      IMAGE_NAME: ${{ needs.build-images.outputs.image_name }}
+    steps:
+      - name: Validate dev registry configuration
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_DEV_SA_KEY }}
+        run: |
+          set -euo pipefail
+
+          for required in PROJECT_ID REGISTRY GCP_SA_KEY; do
+            if [ -z "${!required:-}" ]; then
+              echo "::error::Missing required CI configuration: ${required} for dev"
+              exit 1
+            fi
+          done
+
+      - name: Download Radar image artifact
+        if: needs.build-images.outputs.radar == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: radar-image
+          path: /tmp
+
+      - name: Download Geoworker image artifact
+        if: needs.build-images.outputs.geoworker == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: geoworker-image
+          path: /tmp
+
+      - name: Google Auth (dev)
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: "${{ secrets.GCP_DEV_SA_KEY }}"
+
+      - name: Set up Cloud SDK (dev)
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Docker auth for Artifact Registry (dev)
+        run: gcloud auth configure-docker "$(echo "${REGISTRY}" | cut -d/ -f1)" --quiet
+
+      - name: Push Radar image (dev)
+        if: needs.build-images.outputs.radar == 'true'
+        run: |
+          set -euo pipefail
+
+          docker load --input /tmp/radar-image.tar
+          TARGET_BASE="${REGISTRY}/${IMAGE_NAME}/radar"
+          docker tag "radar:${TAG}" "${TARGET_BASE}:${TAG}"
+          docker tag "radar:${TAG}" "${TARGET_BASE}:latest"
+          docker push "${TARGET_BASE}:${TAG}"
+          docker push "${TARGET_BASE}:latest"
+
+      - name: Push Geoworker image (dev)
+        if: needs.build-images.outputs.geoworker == 'true'
+        run: |
+          set -euo pipefail
+
+          docker load --input /tmp/geoworker-image.tar
+          TARGET_BASE="${REGISTRY}/${IMAGE_NAME}/geoworker"
+          docker tag "geoworker:${TAG}" "${TARGET_BASE}:${TAG}"
+          docker tag "geoworker:${TAG}" "${TARGET_BASE}:latest"
+          docker push "${TARGET_BASE}:${TAG}"
+          docker push "${TARGET_BASE}:latest"
+
+  publish-prod:
+    name: Publish Docker Images (prod)
+    runs-on: ubuntu-latest
+    if: needs.build-images.outputs.any == 'true'
+    needs: build-images
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROD_PROJECT_ID }}
+      REGISTRY: ${{ vars.GCP_PROD_REGISTRY }}
+      TAG: ${{ needs.build-images.outputs.tag }}
+      IMAGE_NAME: ${{ needs.build-images.outputs.image_name }}
+    steps:
+      - name: Validate prod registry configuration
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_PROD_SA_KEY }}
+        run: |
+          set -euo pipefail
+
+          for required in PROJECT_ID REGISTRY GCP_SA_KEY; do
+            if [ -z "${!required:-}" ]; then
+              echo "::error::Missing required CI configuration: ${required} for prod"
+              exit 1
+            fi
+          done
+
+      - name: Download Radar image artifact
+        if: needs.build-images.outputs.radar == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: radar-image
+          path: /tmp
+
+      - name: Download Geoworker image artifact
+        if: needs.build-images.outputs.geoworker == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: geoworker-image
+          path: /tmp
+
+      - name: Google Auth (prod)
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: "${{ secrets.GCP_PROD_SA_KEY }}"
+
+      - name: Set up Cloud SDK (prod)
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Docker auth for Artifact Registry (prod)
+        run: gcloud auth configure-docker "$(echo "${REGISTRY}" | cut -d/ -f1)" --quiet
+
+      - name: Push Radar image (prod)
+        if: needs.build-images.outputs.radar == 'true'
+        run: |
+          set -euo pipefail
+
+          docker load --input /tmp/radar-image.tar
+          TARGET_BASE="${REGISTRY}/${IMAGE_NAME}/radar"
+          docker tag "radar:${TAG}" "${TARGET_BASE}:${TAG}"
+          docker tag "radar:${TAG}" "${TARGET_BASE}:latest"
+          docker push "${TARGET_BASE}:${TAG}"
+          docker push "${TARGET_BASE}:latest"
+
+      - name: Push Geoworker image (prod)
+        if: needs.build-images.outputs.geoworker == 'true'
+        run: |
+          set -euo pipefail
+
+          docker load --input /tmp/geoworker-image.tar
+          TARGET_BASE="${REGISTRY}/${IMAGE_NAME}/geoworker"
+          docker tag "geoworker:${TAG}" "${TARGET_BASE}:${TAG}"
+          docker tag "geoworker:${TAG}" "${TARGET_BASE}:latest"
+          docker push "${TARGET_BASE}:${TAG}"
+          docker push "${TARGET_BASE}:latest"

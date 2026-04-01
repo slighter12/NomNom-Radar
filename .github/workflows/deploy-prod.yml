@@ -1,0 +1,32 @@
+name: Deploy Prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Deploy target"
+        required: true
+        type: choice
+        options:
+          - radar
+          - geoworker
+      image_ref:
+        description: "Required image tag or commit SHA to deploy."
+        required: true
+        default: ""
+      run_migration:
+        description: "Run database migration before deploy"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy-cloud-run-reusable.yml
+    with:
+      environment_name: prod
+      target: ${{ inputs.target }}
+      image_ref: ${{ inputs.image_ref }}
+      run_migration: ${{ inputs.run_migration }}
+      enable_cloudflare_sync: true
+    secrets: inherit
