@@ -27,4 +27,4 @@ patches:
                 resources:
                   limits:
                     memory: 128Mi
-                    cpu: "0.08"
+                    cpu: "1"
