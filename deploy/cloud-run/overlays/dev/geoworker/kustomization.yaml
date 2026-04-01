@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../shared/geoworker
+
+patches:
+  - target:
+      kind: Service
+      name: geoworker
+    patch: |-
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      metadata:
+        name: geoworker
+      spec:
+        template:
+          metadata:
+            annotations:
+              autoscaling.knative.dev/maxScale: "1"
+          spec:
+            containerConcurrency: 1
+            containers:
+              - name: app
+                resources:
+                  limits:
+                    memory: 128Mi

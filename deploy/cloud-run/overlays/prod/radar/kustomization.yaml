@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../shared/radar
+
+patches:
+  - target:
+      kind: Service
+      name: radar
+    patch: |-
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      metadata:
+        name: radar
+        annotations:
+          run.googleapis.com/invoker-iam-disabled: "true"
+      spec:
+        template:
+          spec:
+            containers:
+              - name: app
+                env:
+                  - name: HTTP_CLOUDFLARESECRET
+                    value: "HTTP_CLOUDFLARESECRET_PLACEHOLDER"
