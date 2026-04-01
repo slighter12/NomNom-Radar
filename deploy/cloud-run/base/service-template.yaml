@@ -12,12 +12,12 @@ spec:
         autoscaling.knative.dev/maxScale: "10"
         run.googleapis.com/execution-environment: gen2
     spec:
-      serviceAccountName: SERVICE_ACCOUNT_PLACEHOLDER
+      serviceAccountName: "SERVICE_ACCOUNT_PLACEHOLDER"
       containerConcurrency: 80
       timeoutSeconds: 60
       containers:
         - name: app
-          image: IMAGE_PLACEHOLDER
+          image: "IMAGE_PLACEHOLDER"
           startupProbe:
             httpGet:
               path: /health
@@ -84,7 +84,7 @@ spec:
 
             # ========== Firebase Configuration ==========
             - name: FIREBASE_PROJECTID
-              value: PROJECT_ID_PLACEHOLDER
+              value: "PROJECT_ID_PLACEHOLDER"
             - name: FIREBASE_CREDENTIALSPATH
               value: /secrets/firebase/service-account.json
 
@@ -92,7 +92,7 @@ spec:
             - name: PUBSUB_PROVIDER
               value: "google"
             - name: PUBSUB_PROJECTID
-              value: PROJECT_ID_PLACEHOLDER
+              value: "PROJECT_ID_PLACEHOLDER"
             - name: PUBSUB_TOPICID
               valueFrom:
                 secretKeyRef:
