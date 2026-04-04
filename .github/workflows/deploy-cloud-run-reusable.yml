@@ -39,6 +39,7 @@ jobs:
       REGISTRY: ${{ vars.GCP_REGISTRY }}
       ALLOWED_HOST: ${{ vars.HTTP_ALLOWEDHOST }}
       GCP_SA_EMAIL: ${{ vars.GCP_SA_EMAIL }}
+      GOOGLE_OAUTH_CLIENT_ID: ${{ vars.GOOGLEOAUTH_CLIENTID }}
     steps:
       - name: Validate deployment configuration
         env:
@@ -46,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          for required in PROJECT_ID REGION REGISTRY ALLOWED_HOST GCP_SA_EMAIL GCP_SA_KEY; do
+          for required in PROJECT_ID REGION REGISTRY ALLOWED_HOST GCP_SA_EMAIL GOOGLE_OAUTH_CLIENT_ID GCP_SA_KEY; do
             if [ -z "${!required:-}" ]; then
               echo "::error::Missing required deployment configuration: ${required}"
               exit 1
@@ -148,11 +149,13 @@ jobs:
           SERVICE_ACCOUNT_ESCAPED=$(printf '%s' "${GCP_SA_EMAIL}" | sed -e 's/[\\/&]/\\&/g')
           PROJECT_ID_ESCAPED=$(printf '%s' "${PROJECT_ID}" | sed -e 's/[\\/&]/\\&/g')
           ALLOWED_HOST_ESCAPED=$(printf '%s' "${ALLOWED_HOST}" | sed -e 's/[\\/&]/\\&/g')
+          GOOGLE_OAUTH_CLIENT_ID_ESCAPED=$(printf '%s' "${GOOGLE_OAUTH_CLIENT_ID}" | sed -e 's/[\\/&]/\\&/g')
 
           sed -i "s|IMAGE_PLACEHOLDER|${IMAGE_NAME_ESCAPED}|g" /tmp/service.yaml
           sed -i "s|SERVICE_ACCOUNT_PLACEHOLDER|${SERVICE_ACCOUNT_ESCAPED}|g" /tmp/service.yaml
           sed -i "s|PROJECT_ID_PLACEHOLDER|${PROJECT_ID_ESCAPED}|g" /tmp/service.yaml
           sed -i "s|HTTP_ALLOWEDHOST_PLACEHOLDER|${ALLOWED_HOST_ESCAPED}|g" /tmp/service.yaml
+          sed -i "s|GOOGLEOAUTH_CLIENTID_PLACEHOLDER|${GOOGLE_OAUTH_CLIENT_ID_ESCAPED}|g" /tmp/service.yaml
 
           if grep -q "HTTP_CLOUDFLARESECRET_PLACEHOLDER" /tmp/service.yaml; then
             if [ -z "${CLOUDFLARE_ORIGIN_SECRET:-}" ]; then

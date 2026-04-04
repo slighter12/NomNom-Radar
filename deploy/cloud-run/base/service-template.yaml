@@ -70,7 +70,7 @@ spec:
             - name: AUTH_MAXACTIVESESSIONS
               value: "10"
             - name: GOOGLEOAUTH_CLIENTID
-              value: "193475500949-ku42e1jl194fpjj3f20ruu410c5v37ck.apps.googleusercontent.com"
+              value: "GOOGLEOAUTH_CLIENTID_PLACEHOLDER"
             - name: SECRETKEY_ACCESS
               valueFrom:
                 secretKeyRef:
