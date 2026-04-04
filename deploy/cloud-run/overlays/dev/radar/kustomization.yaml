@@ -9,22 +9,18 @@ patches:
       kind: Service
       name: radar
     patch: |-
-      apiVersion: serving.knative.dev/v1
-      kind: Service
-      metadata:
-        name: radar
-        annotations:
-          run.googleapis.com/ingress: internal
-          run.googleapis.com/invoker-iam-disabled: "false"
-      spec:
-        template:
-          metadata:
-            annotations:
-              autoscaling.knative.dev/maxScale: "1"
-          spec:
-            containerConcurrency: 1
-            containers:
-              - name: app
-                resources:
-                  limits:
-                    memory: 128Mi
+      - op: replace
+        path: /metadata/annotations/run.googleapis.com~1ingress
+        value: internal
+      - op: add
+        path: /metadata/annotations/run.googleapis.com~1invoker-iam-disabled
+        value: "false"
+      - op: replace
+        path: /spec/template/metadata/annotations/autoscaling.knative.dev~1maxScale
+        value: "1"
+      - op: replace
+        path: /spec/template/spec/containerConcurrency
+        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 128Mi

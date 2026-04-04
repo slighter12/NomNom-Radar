@@ -9,19 +9,12 @@ patches:
       kind: Service
       name: geoworker
     patch: |-
-      apiVersion: serving.knative.dev/v1
-      kind: Service
-      metadata:
-        name: geoworker
-      spec:
-        template:
-          metadata:
-            annotations:
-              autoscaling.knative.dev/maxScale: "1"
-          spec:
-            containerConcurrency: 1
-            containers:
-              - name: app
-                resources:
-                  limits:
-                    memory: 128Mi
+      - op: replace
+        path: /spec/template/metadata/annotations/autoscaling.knative.dev~1maxScale
+        value: "1"
+      - op: replace
+        path: /spec/template/spec/containerConcurrency
+        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 128Mi

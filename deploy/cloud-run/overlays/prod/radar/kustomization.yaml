@@ -9,17 +9,11 @@ patches:
       kind: Service
       name: radar
     patch: |-
-      apiVersion: serving.knative.dev/v1
-      kind: Service
-      metadata:
-        name: radar
-        annotations:
-          run.googleapis.com/invoker-iam-disabled: "true"
-      spec:
-        template:
-          spec:
-            containers:
-              - name: app
-                env:
-                  - name: HTTP_CLOUDFLARESECRET
-                    value: "HTTP_CLOUDFLARESECRET_PLACEHOLDER"
+      - op: add
+        path: /metadata/annotations/run.googleapis.com~1invoker-iam-disabled
+        value: "true"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: HTTP_CLOUDFLARESECRET
+          value: HTTP_CLOUDFLARESECRET_PLACEHOLDER
