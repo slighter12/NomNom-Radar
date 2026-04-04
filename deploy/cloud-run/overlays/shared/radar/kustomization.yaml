@@ -12,6 +12,12 @@ patches:
       - op: replace
         path: /metadata/name
         value: radar
+      - op: add
+        path: /metadata/annotations/run.googleapis.com~1minScale
+        value: "0"
+      - op: add
+        path: /metadata/annotations/run.googleapis.com~1maxScale
+        value: "10"
       - op: replace
         path: /spec/template/spec/containerConcurrency
         value: 500
