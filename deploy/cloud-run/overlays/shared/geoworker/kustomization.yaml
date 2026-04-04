@@ -12,6 +12,12 @@ patches:
       - op: replace
         path: /metadata/name
         value: geoworker
+      - op: add
+        path: /metadata/annotations/run.googleapis.com~1minScale
+        value: "0"
+      - op: add
+        path: /metadata/annotations/run.googleapis.com~1maxScale
+        value: "5"
       - op: replace
         path: /metadata/annotations/run.googleapis.com~1ingress
         value: internal

@@ -11,10 +11,16 @@ patches:
     patch: |-
       - op: replace
         path: /metadata/annotations/run.googleapis.com~1ingress
-        value: internal
+        value: all
       - op: add
         path: /metadata/annotations/run.googleapis.com~1invoker-iam-disabled
-        value: "false"
+        value: "true"
+      - op: replace
+        path: /metadata/annotations/run.googleapis.com~1minScale
+        value: "0"
+      - op: replace
+        path: /metadata/annotations/run.googleapis.com~1maxScale
+        value: "1"
       - op: replace
         path: /spec/template/metadata/annotations/autoscaling.knative.dev~1maxScale
         value: "1"
