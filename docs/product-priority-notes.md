@@ -61,7 +61,7 @@ Scheduled Notification current state:
 
 | # | Item | Rationale |
 |---|------|-----------|
-| 12 | Subscription Pause / Resume vs Unsubscribe | Worth doing to prevent subscriber loss from users who just want to mute temporarily. Semantics need to be defined first. Notification radius remains intentionally fixed to the default value for now. |
+| 12 | Subscription Pause / Resume vs Unsubscribe | Worth doing to prevent subscriber loss from users who just want to mute temporarily. Semantics need to be defined first. The backend supports custom notification radius values, but the current product flow intentionally keeps the radius fixed to the default value for now. |
 | 13 | Merchant Onboarding Setup Checklist | Most valuable after Tier 2 features are in place, otherwise the checklist has little content. |
 | 14 | Google Account Linking / Unlinking | Edge case. Most users choose their login method at registration time. |
 
