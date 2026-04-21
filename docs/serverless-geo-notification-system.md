@@ -30,7 +30,7 @@ Refactor the existing synchronous notification system to an asynchronous Pub/Sub
 
 ## Implementation Steps
 
-### Phase 1: EventPublisher Infrastructure
+### Phase 1: EventPublisher Infrastructure ✅ COMPLETED
 
 #### 1.1 EventPublisher Interface
 
@@ -85,7 +85,7 @@ type PubSubConfig struct {
 
 ---
 
-### Phase 2: PMTiles Routing Service
+### Phase 2: PMTiles Routing Service ✅ COMPLETED
 
 #### 2.1 PMTiles Routing Implementation
 
@@ -146,7 +146,7 @@ type PMTilesConfig struct {
 
 ---
 
-### Phase 3: Geo Worker Service
+### Phase 3: Geo Worker Service ✅ COMPLETED
 
 #### 3.1 Worker Entry Point
 
@@ -174,7 +174,7 @@ func (w *Worker) HandlePush(c echo.Context) error {
 
 ---
 
-### Phase 4: Modify Existing Notification Flow
+### Phase 4: Modify Existing Notification Flow ✅ COMPLETED
 
 #### 4.1 Modify NotificationService
 
@@ -206,7 +206,7 @@ func (s *notificationService) PublishLocationNotification(...) (*entity.Merchant
 
 ---
 
-### Phase 5: Local Development Setup
+### Phase 5: Local Development Setup ✅ COMPLETED
 
 #### 5.1 Docker Compose Service Addition
 
