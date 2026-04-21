@@ -13,7 +13,7 @@ NomNom-Radar is a real-time notification backend service. It utilizes PostgreSQL
 * **Real-time Vendor Tracking**: Allows food truck owners to update their location instantly via a simple API endpoint.
 * **Dynamic Geofencing**: Users can define a custom notification radius (e.g., 500 meters, 1 km).
 * **High-Performance Geospatial Queries**: Leverages the power of PostGIS (`ST_DWithin`) for efficient, low-latency proximity checks.
-* **Road Network Routing**: Uses Contraction Hierarchies (CH) algorithm for accurate road network distance and ETA calculations, detecting unreachable locations (e.g., Taiwan ↔ Penghu islands).
+* **Route-Aware Distance Filtering**: Uses a PMTiles-based routing engine for route-aware distance checks, with straight-line fallback when route data is unavailable.
 * **Push Notification System**: Integrates with services like Firebase Cloud Messaging (FCM) to deliver instant alerts to users' devices.
 * **Open & Share-Alike**: Licensed under AGPL-3.0 to encourage community contribution while protecting the project from being used in proprietary, closed-source commercial services.
 
@@ -22,7 +22,7 @@ NomNom-Radar is a real-time notification backend service. It utilizes PostgreSQL
 * **Backend**: **Go** with **Echo** framework
 * **Database**: PostgreSQL + PostGIS extension for geospatial data
 * **Database Driver/ORM**: **GORM**
-* **Routing Engine**: Custom CH implementation with [LdDl/ch](https://github.com/LdDl/ch) + Grid-based spatial index
+* **Routing Engine**: PMTiles-based routing with MVT parsing, local pathfinding, and Haversine fallback
 * **Push Notifications**: Firebase Cloud Messaging (FCM)
 * **Containerization**: Docker & Docker Compose
 
@@ -130,11 +130,11 @@ mockery
 
 ## 🤔 How It Works
 
-1. **Vendor Pings Location**: A food truck owner sends a `POST` request with their `vendorId` and current coordinates (`latitude`, `longitude`) to the `/api/vendors/location` endpoint.
-2. **Location is Stored**: The Go service updates the vendor's location in the PostGIS database. The location is stored as a `GEOGRAPHY` or `GEOMETRY` type using a Go database driver.
-3. **Proximity Check Job**: A background Goroutine or scheduled job runs periodically (e.g., every minute).
-4. **Geospatial Query**: The worker queries the database, asking: "For each user, are there any vendors within their specified notification radius?" This is efficiently handled by the PostGIS `ST_DWithin` function.
-5. **Notification Sent**: If a match is found, the service triggers a push notification via FCM to the relevant user's device, letting them know a favorite food truck is nearby.
+1. **Merchant Publishes Location**: A food truck owner sends a `POST` request with their current coordinates and location details to the notification endpoint.
+2. **Subscriber Pre-filtering**: The API server queries PostGIS (`ST_DWithin`) to find subscribed users within range, keeping the routing workload bounded.
+3. **Event Published**: The filtered subscriber list is published as an event to Google Cloud Pub/Sub (or a local HTTP endpoint in development).
+4. **Geo Worker Processes Event**: A separate Geo Worker service receives the event, calculates route-aware distances using the PMTiles-based routing engine, and falls back to straight-line distance when route data is unavailable.
+5. **Notification Sent**: The Geo Worker sends push notifications via FCM to eligible users, letting them know a favorite food truck is nearby.
 
 ## 🗺️ Routing Engine
 
@@ -143,7 +143,7 @@ NomNom-Radar includes a high-performance road network routing engine for accurat
 ### Features
 
 * **Road Network Distance**: Calculate real driving distances instead of straight-line (Haversine) approximations
-* **Island Detection**: Correctly identifies unreachable locations (e.g., Taiwan ↔ Penghu, Kinmen islands)
+* **Route-Aware Filtering**: Uses PMTiles-based routing when available and falls back to straight-line distance when route data is unavailable
 * **One-to-Many Queries**: Efficiently calculate distances from one merchant to thousands of users
 * **GPS Snap Validation**: Detects GPS drift by validating snap distance to road network
 * **Haversine Fallback**: Gracefully degrades to straight-line distance when routing data is unavailable
