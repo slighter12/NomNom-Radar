@@ -13,6 +13,7 @@ func main() {
 		model.MerchantProfileModel{},
 		model.AuthenticationModel{},
 		model.RefreshTokenModel{},
+		model.LoginAttemptModel{},
 		model.AddressModel{},
 		model.MenuItemModel{},
 		model.UserMerchantSubscriptionModel{},

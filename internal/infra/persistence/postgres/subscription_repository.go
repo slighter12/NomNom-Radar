@@ -3,9 +3,11 @@ package postgres
 import (
 	"context"
 	"database/sql/driver"
+	"time"
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
+	"radar/internal/domain/policy"
 	"radar/internal/domain/repository"
 	"radar/internal/infra/persistence/model"
 	"radar/internal/infra/persistence/postgres/query"
@@ -285,11 +287,16 @@ func (repo *subscriptionRepository) FindSubscriberAddressesWithinRadius(ctx cont
 	return addresses, nil
 }
 
-// FindDevicesForUsers retrieves all active devices for a list of user IDs.
-func (repo *subscriptionRepository) FindDevicesForUsers(ctx context.Context, userIDs []uuid.UUID) ([]*entity.UserDevice, error) {
+// FindDevicesForUsers retrieves healthy devices for a list of user IDs.
+func (repo *subscriptionRepository) FindDevicesForUsers(ctx context.Context, userIDs []uuid.UUID, healthyWindowDays int) ([]*entity.UserDevice, error) {
 	if len(userIDs) == 0 {
 		return []*entity.UserDevice{}, nil
 	}
+
+	if healthyWindowDays <= 0 {
+		healthyWindowDays = policy.DefaultDevicePolicy().HealthyWindowDays
+	}
+	cutoff := time.Now().AddDate(0, 0, -healthyWindowDays)
 
 	// uuid.UUID implements driver.Valuer, so we convert slice for type safety with gen.Field.In
 	ids := make([]driver.Valuer, len(userIDs))
@@ -301,6 +308,8 @@ func (repo *subscriptionRepository) FindDevicesForUsers(ctx context.Context, use
 		Where(
 			repo.q.UserDeviceModel.UserID.In(ids...),
 			repo.q.UserDeviceModel.IsActive.Is(true),
+			repo.q.UserDeviceModel.DeletedAt.IsNull(),
+			repo.q.UserDeviceModel.TokenRefreshedAt.Gt(cutoff),
 		).
 		Order(repo.q.UserDeviceModel.CreatedAt.Desc()).
 		Find()
@@ -346,8 +355,7 @@ func (repo *subscriptionRepository) FindSubscriberAddressesByUserIDs(ctx context
 			subscriptionQuery.IsActive.Is(true),
 			subscriptionQuery.DeletedAt.IsNull(),
 		).
-		UnderlyingDB().
-		Find(&addressModels).Error
+		Scan(&addressModels)
 
 	if err != nil {
 		return nil, domainerrors.ErrPersistenceFailed

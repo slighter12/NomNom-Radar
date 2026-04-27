@@ -36,6 +36,11 @@ type SubscriptionServiceParams struct {
 
 // NewSubscriptionService creates a new subscription service instance
 func NewSubscriptionService(params SubscriptionServiceParams) usecase.SubscriptionUsecase {
+	if params.Config == nil {
+		params.Config = &config.Config{}
+	}
+	config.ApplyDefaults(params.Config)
+
 	return &subscriptionService{
 		subscriptionRepo: params.SubscriptionRepo,
 		deviceRepo:       params.DeviceRepo,

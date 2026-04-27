@@ -73,7 +73,7 @@ CREATE UNIQUE INDEX idx_user_devices_user_device_unique
     ON user_devices(user_id, device_id)
     WHERE deleted_at IS NULL;
 
--- Composite index for FindDevicesByUser and FindActiveDevicesByUser queries
+-- Composite index for FindDevicesByUser queries (general + healthy filter)
 CREATE INDEX idx_user_devices_user_active
     ON user_devices(user_id, is_active)
     WHERE deleted_at IS NULL;

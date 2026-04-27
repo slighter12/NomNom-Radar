@@ -7,7 +7,8 @@ import (
 // NotificationService defines the interface for push notification services
 type NotificationService interface {
 	// SendBatchNotification sends push notifications to multiple device tokens
-	// Returns success count, failure count, list of invalid tokens, and error
+	// Returns success count, failure count, tokens that are safe to soft-delete, and error.
+	// Only permanent token invalidation errors should be returned in the token list.
 	SendBatchNotification(ctx context.Context, tokens []string, title, body string, data map[string]string) (successCount, failureCount int, invalidTokens []string, err error)
 
 	// SendSingleNotification sends a push notification to a single device token

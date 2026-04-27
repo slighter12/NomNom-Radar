@@ -14,8 +14,15 @@ func newDiscardLogger() *slog.Logger {
 func newTestConfig(maxActiveSessions int) *config.Config {
 	return &config.Config{
 		Auth: &config.AuthConfig{
-			BcryptCost:        12,
-			MaxActiveSessions: maxActiveSessions,
+			Argon2Memory:        65536,
+			Argon2Iterations:    3,
+			Argon2Parallelism:   2,
+			Argon2MaxConcurrent: 4,
+			MaxActiveSessions:   maxActiveSessions,
+		},
+		LoginThrottle: &config.LoginThrottleConfig{
+			MaxAttempts:      5,
+			LockoutDecayDays: 7,
 		},
 	}
 }

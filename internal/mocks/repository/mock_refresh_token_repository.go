@@ -163,16 +163,16 @@ func (_c *MockRefreshTokenRepository_CreateRefreshToken_Call) RunAndReturn(run f
 }
 
 // DeleteExpiredRefreshTokens provides a mock function for the type MockRefreshTokenRepository
-func (_mock *MockRefreshTokenRepository) DeleteExpiredRefreshTokens(ctx context.Context) error {
-	ret := _mock.Called(ctx)
+func (_mock *MockRefreshTokenRepository) DeleteExpiredRefreshTokens(ctx context.Context, revokedRetentionDays int) error {
+	ret := _mock.Called(ctx, revokedRetentionDays)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteExpiredRefreshTokens")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context) error); ok {
-		r0 = returnFunc(ctx)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int) error); ok {
+		r0 = returnFunc(ctx, revokedRetentionDays)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -186,18 +186,24 @@ type MockRefreshTokenRepository_DeleteExpiredRefreshTokens_Call struct {
 
 // DeleteExpiredRefreshTokens is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *MockRefreshTokenRepository_Expecter) DeleteExpiredRefreshTokens(ctx interface{}) *MockRefreshTokenRepository_DeleteExpiredRefreshTokens_Call {
-	return &MockRefreshTokenRepository_DeleteExpiredRefreshTokens_Call{Call: _e.mock.On("DeleteExpiredRefreshTokens", ctx)}
+//   - revokedRetentionDays int
+func (_e *MockRefreshTokenRepository_Expecter) DeleteExpiredRefreshTokens(ctx interface{}, revokedRetentionDays interface{}) *MockRefreshTokenRepository_DeleteExpiredRefreshTokens_Call {
+	return &MockRefreshTokenRepository_DeleteExpiredRefreshTokens_Call{Call: _e.mock.On("DeleteExpiredRefreshTokens", ctx, revokedRetentionDays)}
 }
 
-func (_c *MockRefreshTokenRepository_DeleteExpiredRefreshTokens_Call) Run(run func(ctx context.Context)) *MockRefreshTokenRepository_DeleteExpiredRefreshTokens_Call {
+func (_c *MockRefreshTokenRepository_DeleteExpiredRefreshTokens_Call) Run(run func(ctx context.Context, revokedRetentionDays int)) *MockRefreshTokenRepository_DeleteExpiredRefreshTokens_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
+		var arg1 int
+		if args[1] != nil {
+			arg1 = args[1].(int)
+		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -208,7 +214,7 @@ func (_c *MockRefreshTokenRepository_DeleteExpiredRefreshTokens_Call) Return(err
 	return _c
 }
 
-func (_c *MockRefreshTokenRepository_DeleteExpiredRefreshTokens_Call) RunAndReturn(run func(ctx context.Context) error) *MockRefreshTokenRepository_DeleteExpiredRefreshTokens_Call {
+func (_c *MockRefreshTokenRepository_DeleteExpiredRefreshTokens_Call) RunAndReturn(run func(ctx context.Context, revokedRetentionDays int) error) *MockRefreshTokenRepository_DeleteExpiredRefreshTokens_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -452,6 +458,74 @@ func (_c *MockRefreshTokenRepository_FindRefreshTokenByHash_Call) RunAndReturn(r
 	return _c
 }
 
+// FindRefreshTokenByHashIncludingRevoked provides a mock function for the type MockRefreshTokenRepository
+func (_mock *MockRefreshTokenRepository) FindRefreshTokenByHashIncludingRevoked(ctx context.Context, tokenHash string) (*entity.RefreshToken, error) {
+	ret := _mock.Called(ctx, tokenHash)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FindRefreshTokenByHashIncludingRevoked")
+	}
+
+	var r0 *entity.RefreshToken
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*entity.RefreshToken, error)); ok {
+		return returnFunc(ctx, tokenHash)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *entity.RefreshToken); ok {
+		r0 = returnFunc(ctx, tokenHash)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*entity.RefreshToken)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, tokenHash)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockRefreshTokenRepository_FindRefreshTokenByHashIncludingRevoked_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FindRefreshTokenByHashIncludingRevoked'
+type MockRefreshTokenRepository_FindRefreshTokenByHashIncludingRevoked_Call struct {
+	*mock.Call
+}
+
+// FindRefreshTokenByHashIncludingRevoked is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tokenHash string
+func (_e *MockRefreshTokenRepository_Expecter) FindRefreshTokenByHashIncludingRevoked(ctx interface{}, tokenHash interface{}) *MockRefreshTokenRepository_FindRefreshTokenByHashIncludingRevoked_Call {
+	return &MockRefreshTokenRepository_FindRefreshTokenByHashIncludingRevoked_Call{Call: _e.mock.On("FindRefreshTokenByHashIncludingRevoked", ctx, tokenHash)}
+}
+
+func (_c *MockRefreshTokenRepository_FindRefreshTokenByHashIncludingRevoked_Call) Run(run func(ctx context.Context, tokenHash string)) *MockRefreshTokenRepository_FindRefreshTokenByHashIncludingRevoked_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockRefreshTokenRepository_FindRefreshTokenByHashIncludingRevoked_Call) Return(refreshToken *entity.RefreshToken, err error) *MockRefreshTokenRepository_FindRefreshTokenByHashIncludingRevoked_Call {
+	_c.Call.Return(refreshToken, err)
+	return _c
+}
+
+func (_c *MockRefreshTokenRepository_FindRefreshTokenByHashIncludingRevoked_Call) RunAndReturn(run func(ctx context.Context, tokenHash string) (*entity.RefreshToken, error)) *MockRefreshTokenRepository_FindRefreshTokenByHashIncludingRevoked_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // FindRefreshTokenByID provides a mock function for the type MockRefreshTokenRepository
 func (_mock *MockRefreshTokenRepository) FindRefreshTokenByID(ctx context.Context, id uuid.UUID) (*entity.RefreshToken, error) {
 	ret := _mock.Called(ctx, id)
@@ -584,6 +658,120 @@ func (_c *MockRefreshTokenRepository_FindRefreshTokensByUserID_Call) Return(refr
 }
 
 func (_c *MockRefreshTokenRepository_FindRefreshTokensByUserID_Call) RunAndReturn(run func(ctx context.Context, userID uuid.UUID) ([]*entity.RefreshToken, error)) *MockRefreshTokenRepository_FindRefreshTokensByUserID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RevokeTokenFamily provides a mock function for the type MockRefreshTokenRepository
+func (_mock *MockRefreshTokenRepository) RevokeTokenFamily(ctx context.Context, familyID uuid.UUID) error {
+	ret := _mock.Called(ctx, familyID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RevokeTokenFamily")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) error); ok {
+		r0 = returnFunc(ctx, familyID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockRefreshTokenRepository_RevokeTokenFamily_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RevokeTokenFamily'
+type MockRefreshTokenRepository_RevokeTokenFamily_Call struct {
+	*mock.Call
+}
+
+// RevokeTokenFamily is a helper method to define mock.On call
+//   - ctx context.Context
+//   - familyID uuid.UUID
+func (_e *MockRefreshTokenRepository_Expecter) RevokeTokenFamily(ctx interface{}, familyID interface{}) *MockRefreshTokenRepository_RevokeTokenFamily_Call {
+	return &MockRefreshTokenRepository_RevokeTokenFamily_Call{Call: _e.mock.On("RevokeTokenFamily", ctx, familyID)}
+}
+
+func (_c *MockRefreshTokenRepository_RevokeTokenFamily_Call) Run(run func(ctx context.Context, familyID uuid.UUID)) *MockRefreshTokenRepository_RevokeTokenFamily_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockRefreshTokenRepository_RevokeTokenFamily_Call) Return(err error) *MockRefreshTokenRepository_RevokeTokenFamily_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockRefreshTokenRepository_RevokeTokenFamily_Call) RunAndReturn(run func(ctx context.Context, familyID uuid.UUID) error) *MockRefreshTokenRepository_RevokeTokenFamily_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RevokeTokenFamiliesByUserID provides a mock function for the type MockRefreshTokenRepository
+func (_mock *MockRefreshTokenRepository) RevokeTokenFamiliesByUserID(ctx context.Context, userID uuid.UUID) error {
+	ret := _mock.Called(ctx, userID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RevokeTokenFamiliesByUserID")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) error); ok {
+		r0 = returnFunc(ctx, userID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockRefreshTokenRepository_RevokeTokenFamiliesByUserID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RevokeTokenFamiliesByUserID'
+type MockRefreshTokenRepository_RevokeTokenFamiliesByUserID_Call struct {
+	*mock.Call
+}
+
+// RevokeTokenFamiliesByUserID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID uuid.UUID
+func (_e *MockRefreshTokenRepository_Expecter) RevokeTokenFamiliesByUserID(ctx interface{}, userID interface{}) *MockRefreshTokenRepository_RevokeTokenFamiliesByUserID_Call {
+	return &MockRefreshTokenRepository_RevokeTokenFamiliesByUserID_Call{Call: _e.mock.On("RevokeTokenFamiliesByUserID", ctx, userID)}
+}
+
+func (_c *MockRefreshTokenRepository_RevokeTokenFamiliesByUserID_Call) Run(run func(ctx context.Context, userID uuid.UUID)) *MockRefreshTokenRepository_RevokeTokenFamiliesByUserID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockRefreshTokenRepository_RevokeTokenFamiliesByUserID_Call) Return(err error) *MockRefreshTokenRepository_RevokeTokenFamiliesByUserID_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockRefreshTokenRepository_RevokeTokenFamiliesByUserID_Call) RunAndReturn(run func(ctx context.Context, userID uuid.UUID) error) *MockRefreshTokenRepository_RevokeTokenFamiliesByUserID_Call {
 	_c.Call.Return(run)
 	return _c
 }

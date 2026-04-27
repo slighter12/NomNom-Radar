@@ -7,14 +7,16 @@ package query
 import (
 	"context"
 
-	"radar/internal/infra/persistence/model"
-
-	"gorm.io/gen"
-	"gorm.io/gen/field"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/schema"
+
+	"gorm.io/gen"
+	"gorm.io/gen/field"
+
 	"gorm.io/plugin/dbresolver"
+
+	"radar/internal/infra/persistence/model"
 )
 
 func newUserDeviceModel(db *gorm.DB, opts ...gen.DOOption) userDeviceModel {
@@ -31,6 +33,7 @@ func newUserDeviceModel(db *gorm.DB, opts ...gen.DOOption) userDeviceModel {
 	_userDeviceModel.DeviceID = field.NewString(tableName, "device_id")
 	_userDeviceModel.Platform = field.NewString(tableName, "platform")
 	_userDeviceModel.IsActive = field.NewBool(tableName, "is_active")
+	_userDeviceModel.TokenRefreshedAt = field.NewTime(tableName, "token_refreshed_at")
 	_userDeviceModel.CreatedAt = field.NewTime(tableName, "created_at")
 	_userDeviceModel.UpdatedAt = field.NewTime(tableName, "updated_at")
 	_userDeviceModel.DeletedAt = field.NewField(tableName, "deleted_at")
@@ -43,16 +46,17 @@ func newUserDeviceModel(db *gorm.DB, opts ...gen.DOOption) userDeviceModel {
 type userDeviceModel struct {
 	userDeviceModelDo userDeviceModelDo
 
-	ALL       field.Asterisk
-	ID        field.Field
-	UserID    field.Field
-	FCMToken  field.String
-	DeviceID  field.String
-	Platform  field.String
-	IsActive  field.Bool
-	CreatedAt field.Time
-	UpdatedAt field.Time
-	DeletedAt field.Field
+	ALL              field.Asterisk
+	ID               field.Field
+	UserID           field.Field
+	FCMToken         field.String
+	DeviceID         field.String
+	Platform         field.String
+	IsActive         field.Bool
+	TokenRefreshedAt field.Time
+	CreatedAt        field.Time
+	UpdatedAt        field.Time
+	DeletedAt        field.Field
 
 	fieldMap map[string]field.Expr
 }
@@ -75,6 +79,7 @@ func (u *userDeviceModel) updateTableName(table string) *userDeviceModel {
 	u.DeviceID = field.NewString(table, "device_id")
 	u.Platform = field.NewString(table, "platform")
 	u.IsActive = field.NewBool(table, "is_active")
+	u.TokenRefreshedAt = field.NewTime(table, "token_refreshed_at")
 	u.CreatedAt = field.NewTime(table, "created_at")
 	u.UpdatedAt = field.NewTime(table, "updated_at")
 	u.DeletedAt = field.NewField(table, "deleted_at")
@@ -106,13 +111,14 @@ func (u *userDeviceModel) GetFieldByName(fieldName string) (field.OrderExpr, boo
 }
 
 func (u *userDeviceModel) fillFieldMap() {
-	u.fieldMap = make(map[string]field.Expr, 9)
+	u.fieldMap = make(map[string]field.Expr, 10)
 	u.fieldMap["id"] = u.ID
 	u.fieldMap["user_id"] = u.UserID
 	u.fieldMap["fcm_token"] = u.FCMToken
 	u.fieldMap["device_id"] = u.DeviceID
 	u.fieldMap["platform"] = u.Platform
 	u.fieldMap["is_active"] = u.IsActive
+	u.fieldMap["token_refreshed_at"] = u.TokenRefreshedAt
 	u.fieldMap["created_at"] = u.CreatedAt
 	u.fieldMap["updated_at"] = u.UpdatedAt
 	u.fieldMap["deleted_at"] = u.DeletedAt

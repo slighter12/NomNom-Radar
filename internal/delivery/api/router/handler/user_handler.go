@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"radar/internal/delivery/api/middleware"
 	"radar/internal/delivery/api/response"
@@ -91,6 +93,8 @@ func (h *UserHandler) Login(c echo.Context) error {
 
 	output, err := h.userUC.Login(c.Request().Context(), input)
 	if err != nil {
+		setRetryAfterHeaderOnLockout(c, err)
+
 		return err
 	}
 
@@ -158,6 +162,22 @@ func (h *UserHandler) CompleteMerchantOnboarding(c echo.Context) error {
 	return response.Success(c, http.StatusOK, output)
 }
 
+func (h *UserHandler) LinkProvider(c echo.Context) error {
+	input, err := bindRequiredPayload[usecase.LinkProviderInput](c, "Invalid link provider input")
+	if err != nil {
+		return err
+	}
+
+	output, err := h.userUC.LinkProvider(c.Request().Context(), *input)
+	if err != nil {
+		setRetryAfterHeaderOnLockout(c, err)
+
+		return err
+	}
+
+	return response.Success(c, http.StatusOK, output)
+}
+
 // extractGoogleCallbackInput extracts and validates input from the request.
 // Query params (code, state) are read from the URL; the rest comes from the JSON body.
 func (h *UserHandler) extractGoogleCallbackInput(c echo.Context) (*usecase.GoogleCallbackInput, error) {
@@ -201,6 +221,12 @@ func (h *UserHandler) GetProfile(c echo.Context) error {
 	}
 
 	return response.Success(c, http.StatusOK, user)
+}
+
+func setRetryAfterHeaderOnLockout(c echo.Context, err error) {
+	if lockoutErr, ok := errors.AsType[*usecase.LockoutError](err); ok {
+		c.Response().Header().Set("Retry-After", strconv.Itoa(lockoutErr.RetryAfterSeconds))
+	}
 }
 
 // HealthCheck is a simple handler to check if the service is up.

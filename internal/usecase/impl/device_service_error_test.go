@@ -7,6 +7,8 @@ import (
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
+	"radar/internal/domain/policy"
+	"radar/internal/domain/repository"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
@@ -176,7 +178,7 @@ func TestDeviceService_DeactivateDevice_DeleteError(t *testing.T) {
 
 	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
-		DeleteDevice(ctx, deviceID).
+		SetDeviceActive(ctx, deviceID, false).
 		Return(expectedErr)
 
 	err := fx.service.DeactivateDevice(ctx, userID, deviceID)
@@ -214,7 +216,10 @@ func TestDeviceService_GetUserDevices_Error(t *testing.T) {
 
 	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
-		FindActiveDevicesByUser(ctx, userID).
+		FindDevicesByUser(ctx, userID, repository.DeviceListFilter{
+			OnlyHealthy:       true,
+			HealthyWindowDays: policy.DefaultDevicePolicy().HealthyWindowDays,
+		}).
 		Return(nil, expectedErr)
 
 	devices, err := fx.service.GetUserDevices(ctx, userID)
@@ -312,6 +317,10 @@ func TestDeviceService_RegisterDevice_NewDevice_CreateError(t *testing.T) {
 
 	fx.deviceRepo.EXPECT().
 		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
+		Return(nil, domainerrors.ErrDeviceNotFound)
+
+	fx.deviceRepo.EXPECT().
+		FindDeviceByUserAndDeviceIDIncludingDeleted(ctx, userID, "device-123").
 		Return(nil, domainerrors.ErrDeviceNotFound)
 
 	expectedErr := errors.New("database error")

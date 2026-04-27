@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"radar/internal/domain/entity"
+	"radar/internal/domain/policy"
 	"radar/internal/domain/repository"
 	mockRepo "radar/internal/mocks/repository"
 
@@ -117,7 +118,7 @@ func TestSessionService_RevokeAllSessions_Success(t *testing.T) {
 		factory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
 
 		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
-		mockRefreshRepo.EXPECT().DeleteRefreshTokensByUserID(ctx, userID).Return(nil)
+		mockRefreshRepo.EXPECT().RevokeTokenFamiliesByUserID(ctx, userID).Return(nil)
 	})
 
 	err := fx.service.RevokeAllSessions(ctx, userID)
@@ -199,7 +200,7 @@ func TestSessionService_CleanupExpiredSessions_Success(t *testing.T) {
 	fx.onExecute(ctx, nil, func(factory *mockRepo.MockRepositoryFactory) {
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 		factory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
-		mockRefreshRepo.EXPECT().DeleteExpiredRefreshTokens(ctx).Return(nil)
+		mockRefreshRepo.EXPECT().DeleteExpiredRefreshTokens(ctx, policy.DefaultRefreshTokenPolicy().RevokedRetentionDays).Return(nil)
 	})
 
 	count, err := fx.service.CleanupExpiredSessions(ctx)

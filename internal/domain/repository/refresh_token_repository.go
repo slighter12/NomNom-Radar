@@ -17,6 +17,9 @@ type RefreshTokenRepository interface {
 	// FindRefreshTokenByHash retrieves a refresh token record by its securely stored hash.
 	FindRefreshTokenByHash(ctx context.Context, tokenHash string) (*entity.RefreshToken, error)
 
+	// FindRefreshTokenByHashIncludingRevoked retrieves a refresh token record by hash, including revoked tokens.
+	FindRefreshTokenByHashIncludingRevoked(ctx context.Context, tokenHash string) (*entity.RefreshToken, error)
+
 	// FindRefreshTokenByID retrieves a refresh token record by its unique ID.
 	FindRefreshTokenByID(ctx context.Context, id uuid.UUID) (*entity.RefreshToken, error)
 
@@ -40,7 +43,13 @@ type RefreshTokenRepository interface {
 
 	// DeleteExpiredRefreshTokens removes all expired refresh tokens from the database.
 	// This should be called periodically for cleanup.
-	DeleteExpiredRefreshTokens(ctx context.Context) error
+	DeleteExpiredRefreshTokens(ctx context.Context, revokedRetentionDays int) error
+
+	// RevokeTokenFamily marks all tokens in the same family as revoked.
+	RevokeTokenFamily(ctx context.Context, familyID uuid.UUID) error
+
+	// RevokeTokenFamiliesByUserID marks all refresh token families for a user as revoked.
+	RevokeTokenFamiliesByUserID(ctx context.Context, userID uuid.UUID) error
 
 	// CountActiveSessionsByUserID returns the number of active (non-expired) sessions for a user.
 	// This can be used to implement session limits or monitoring.

@@ -6,6 +6,8 @@ import (
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
+	"radar/internal/domain/policy"
+	"radar/internal/domain/repository"
 	mockRepo "radar/internal/mocks/repository"
 	"radar/internal/usecase"
 
@@ -46,6 +48,10 @@ func TestDeviceService_RegisterDevice_NewDevice(t *testing.T) {
 
 	fx.deviceRepo.EXPECT().
 		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
+		Return(nil, domainerrors.ErrDeviceNotFound)
+
+	fx.deviceRepo.EXPECT().
+		FindDeviceByUserAndDeviceIDIncludingDeleted(ctx, userID, "device-123").
 		Return(nil, domainerrors.ErrDeviceNotFound)
 
 	fx.deviceRepo.EXPECT().
@@ -123,6 +129,10 @@ func TestDeviceService_RegisterDevice_NormalizesDeviceInfo(t *testing.T) {
 
 	fx.deviceRepo.EXPECT().
 		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
+		Return(nil, domainerrors.ErrDeviceNotFound)
+
+	fx.deviceRepo.EXPECT().
+		FindDeviceByUserAndDeviceIDIncludingDeleted(ctx, userID, "device-123").
 		Return(nil, domainerrors.ErrDeviceNotFound)
 
 	fx.deviceRepo.EXPECT().
@@ -227,7 +237,10 @@ func TestDeviceService_GetUserDevices(t *testing.T) {
 	}
 
 	fx.deviceRepo.EXPECT().
-		FindActiveDevicesByUser(ctx, userID).
+		FindDevicesByUser(ctx, userID, repository.DeviceListFilter{
+			OnlyHealthy:       true,
+			HealthyWindowDays: policy.DefaultDevicePolicy().HealthyWindowDays,
+		}).
 		Return(expectedDevices, nil)
 
 	devices, err := fx.service.GetUserDevices(ctx, userID)
@@ -253,7 +266,7 @@ func TestDeviceService_DeactivateDevice_Success(t *testing.T) {
 		Return(existingDevice, nil)
 
 	fx.deviceRepo.EXPECT().
-		DeleteDevice(ctx, deviceID).
+		SetDeviceActive(ctx, deviceID, false).
 		Return(nil)
 
 	err := fx.service.DeactivateDevice(ctx, userID, deviceID)

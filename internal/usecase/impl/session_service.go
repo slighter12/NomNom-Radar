@@ -10,6 +10,7 @@ import (
 	deliverycontext "radar/internal/delivery/context"
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
+	"radar/internal/domain/policy"
 	"radar/internal/domain/repository"
 	"radar/internal/usecase"
 
@@ -21,8 +22,9 @@ import (
 type sessionService struct {
 	fx.In
 
-	txManager repository.TransactionManager
-	logger    *slog.Logger
+	txManager          repository.TransactionManager
+	logger             *slog.Logger
+	refreshTokenPolicy policy.RefreshTokenPolicy
 }
 
 // NewSessionService is the constructor for sessionService.
@@ -31,8 +33,9 @@ func NewSessionService(
 	logger *slog.Logger,
 ) usecase.SessionUsecase {
 	return &sessionService{
-		txManager: txManager,
-		logger:    logger,
+		txManager:          txManager,
+		logger:             logger,
+		refreshTokenPolicy: policy.DefaultRefreshTokenPolicy(),
 	}
 }
 
@@ -144,7 +147,7 @@ func (srv *sessionService) RevokeSession(ctx context.Context, userID, sessionID 
 	return nil
 }
 
-// RevokeAllSessions revokes all sessions for a user.
+// RevokeAllSessions revokes all refresh token families for a user.
 func (srv *sessionService) RevokeAllSessions(ctx context.Context, userID uuid.UUID) error {
 	srv.log(ctx).Info("Revoking all sessions", slog.Any("user_id", userID))
 
@@ -162,8 +165,8 @@ func (srv *sessionService) RevokeAllSessions(ctx context.Context, userID uuid.UU
 			return err
 		}
 
-		// 2. Delete all sessions
-		if err := refreshRepo.DeleteRefreshTokensByUserID(ctx, userID); err != nil {
+		// 2. Revoke all sessions while retaining reuse-detection records until cleanup
+		if err := refreshRepo.RevokeTokenFamiliesByUserID(ctx, userID); err != nil {
 			return err
 		}
 
@@ -295,7 +298,7 @@ func (srv *sessionService) CleanupExpiredSessions(ctx context.Context) (int, err
 		refreshRepo := repoFactory.RefreshTokenRepo()
 
 		// Delete expired sessions
-		if err := refreshRepo.DeleteExpiredRefreshTokens(ctx); err != nil {
+		if err := refreshRepo.DeleteExpiredRefreshTokens(ctx, srv.refreshTokenPolicy.RevokedRetentionDays); err != nil {
 			return fmt.Errorf("failed to delete expired sessions: %w", err)
 		}
 

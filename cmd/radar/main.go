@@ -71,6 +71,7 @@ func injectRepo() fx.Option {
 			postgres.NewAddressRepository,
 			postgres.NewMenuRepository,
 			postgres.NewRefreshTokenRepository,
+			postgres.NewLoginAttemptRepository,
 			postgres.NewTransactionManager,
 			postgres.NewDeviceRepository,
 			postgres.NewSubscriptionRepository,
@@ -82,7 +83,7 @@ func injectRepo() fx.Option {
 func injectService() fx.Option {
 	return fx.Options(
 		fx.Provide(
-			auth.NewBcryptHasher,
+			auth.NewArgon2idHasher,
 			auth.NewJWTService,
 			google.NewOAuthService,
 			notification.NewFirebaseService,

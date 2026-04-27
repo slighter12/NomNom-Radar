@@ -4,6 +4,10 @@
 
 This document describes the Google OAuth API contract for NomNom-Radar. The backend follows the **ID Token Verification** pattern and returns a unified `AuthResult` envelope shared with email registration and login.
 
+Provider identity must be keyed by `(provider, provider_user_id)`. Email matching is only used to detect a possible existing local account that requires re-authentication before linking.
+
+Future Sign in with Apple support needs an explicit account-linking fallback: users can choose Hide My Email, causing Apple to return an `@privaterelay.appleid.com` relay address instead of the user's real email. In that case, email matching may not find the user's existing email/password account, so the client must offer an "I already have an account" path that signs into the existing account before linking the Apple provider.
+
 ## Architecture Design
 
 The architecture is designed with clear separation of responsibilities:
@@ -181,6 +185,8 @@ or:
 ```
 
 Registration is not an account-linking flow. If an email is already present on an existing account, `/auth/register/user` and `/auth/register/merchant` must return `409 conflict` instead of attaching a new login method.
+
+Role order in JWT claims is not a primary-role contract. Clients must treat roles as a set; if the product needs a primary role later, add an explicit field instead of inferring it from array position.
 
 ## API Endpoints
 

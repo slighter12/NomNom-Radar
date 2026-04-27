@@ -56,10 +56,13 @@ type verifiedIdentity struct {
 }
 
 type authResolution struct {
-	User               *entity.User
-	OnboardingRequired bool
+	User                  *entity.User
+	OnboardingRequired    bool
+	LinkingRequired       bool
+	LinkingProvider       string
+	LinkingProviderUserID string
 	// StoredPasswordHash is set when an existing email auth record is found,
-	// so that bcrypt check can happen outside the transaction.
+	// so that password hash check can happen outside the transaction.
 	StoredPasswordHash string
 }
 
@@ -81,12 +84,16 @@ func (srv *userService) authenticate(ctx context.Context, req *authRequest) (*us
 		return nil, fmt.Errorf("failed to execute authentication transaction: %w", err)
 	}
 
-	// Bcrypt check is CPU-bound; run it outside the transaction to avoid holding
+	// Password hash check is CPU-bound; run it outside the transaction to avoid holding
 	// the DB connection while hashing.
 	if resolution.StoredPasswordHash != "" {
 		if !srv.hasher.Check(req.Password, resolution.StoredPasswordHash) {
 			return nil, fmt.Errorf("invalid credentials: %w", domainerrors.ErrInvalidCredentials)
 		}
+	}
+
+	if resolution.LinkingRequired {
+		return srv.buildLinkingRequiredResult(resolution.User, req, resolution.LinkingProvider, resolution.LinkingProviderUserID)
 	}
 
 	if resolution.OnboardingRequired {
@@ -185,7 +192,7 @@ func (srv *userService) resolveAuthRequest(
 		return nil, fmt.Errorf("login failed: %w", domainerrors.ErrInvalidCredentials)
 	}
 
-	return srv.resolveUnlinkedIdentity(ctx, userRepo, authRepo, req, identity)
+	return srv.resolveUnlinkedIdentity(ctx, repoFactory, userRepo, authRepo, req, identity)
 }
 
 func (srv *userService) resolveExistingLinkedUser(
@@ -210,7 +217,7 @@ func (srv *userService) resolveExistingLinkedUser(
 		OnboardingRequired: onboardingRequired,
 	}
 
-	// Defer password verification to outside the transaction (bcrypt is CPU-bound).
+	// Defer password verification to outside the transaction (password hashing is CPU-bound).
 	if req.Method == authMethodEmailPassword {
 		resolution.StoredPasswordHash = authRecord.PasswordHash
 	}
@@ -220,6 +227,7 @@ func (srv *userService) resolveExistingLinkedUser(
 
 func (srv *userService) resolveUnlinkedIdentity(
 	ctx context.Context,
+	repoFactory repository.RepositoryFactory,
 	userRepo repository.UserRepository,
 	authRepo repository.AuthRepository,
 	req *authRequest,
@@ -230,7 +238,9 @@ func (srv *userService) resolveUnlinkedIdentity(
 	case err == nil:
 		return srv.resolveExistingEmailAccount(ctx, userRepo, authRepo, req, identity, existingUser)
 	case errors.Is(err, domainerrors.ErrUserNotFound):
-		return srv.createNewUserForIdentity(ctx, userRepo, authRepo, req, identity)
+		loginAttemptRepo := repoFactory.LoginAttemptRepo()
+
+		return srv.createNewUserForIdentity(ctx, userRepo, authRepo, loginAttemptRepo, req, identity)
 	default:
 		return nil, err
 	}
@@ -244,6 +254,15 @@ func (srv *userService) resolveExistingEmailAccount(
 	identity *verifiedIdentity,
 	existingUser *entity.User,
 ) (*authResolution, error) {
+	if req.Method == authMethodOAuth {
+		return &authResolution{
+			User:                  existingUser,
+			LinkingRequired:       true,
+			LinkingProvider:       identity.Provider.String(),
+			LinkingProviderUserID: identity.ProviderUserID,
+		}, nil
+	}
+
 	if err := linkIdentityToExistingUser(ctx, authRepo, req, identity, existingUser.ID); err != nil {
 		return nil, err
 	}
@@ -263,6 +282,7 @@ func (srv *userService) createNewUserForIdentity(
 	ctx context.Context,
 	userRepo repository.UserRepository,
 	authRepo repository.AuthRepository,
+	loginAttemptRepo repository.LoginAttemptRepository,
 	req *authRequest,
 	identity *verifiedIdentity,
 ) (*authResolution, error) {
@@ -279,6 +299,10 @@ func (srv *userService) createNewUserForIdentity(
 		if err := createEmailAuthentication(ctx, authRepo, user.ID, identity.Email, identity.PasswordHash); err != nil {
 			return nil, err
 		}
+	}
+
+	if err := loginAttemptRepo.ResetForAccountCreation(ctx, entity.NormalizeEmail(identity.Email), user.ID); err != nil {
+		return nil, err
 	}
 
 	return &authResolution{
@@ -394,6 +418,33 @@ func (srv *userService) buildOnboardingRequiredResult(user *entity.User, request
 		OnboardingToken: onboardingToken,
 		RequestedRole:   requestedRole.String(),
 		RequiredFields:  merchantOnboardingRequiredFields(),
+	}, nil
+}
+
+func (srv *userService) buildLinkingRequiredResult(user *entity.User, req *authRequest, provider, providerUserID string) (*usecase.AuthResult, error) {
+	// Keep the original OAuth role/profile intent in the linking token. Account linking is an
+	// interstitial re-auth step, not a separate product flow.
+	var storeName, businessLicense string
+	if req.MerchantSeed != nil {
+		storeName = req.MerchantSeed.StoreName
+		businessLicense = req.MerchantSeed.BusinessLicense
+	}
+
+	linkingToken, err := srv.tokenService.GenerateLinkingToken(
+		user.ID,
+		provider,
+		providerUserID,
+		req.RequestedRole.String(),
+		storeName,
+		businessLicense,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate linking token: %w", err)
+	}
+
+	return &usecase.AuthResult{
+		Status:       usecase.AuthStatusLinkingRequired,
+		LinkingToken: linkingToken,
 	}, nil
 }
 

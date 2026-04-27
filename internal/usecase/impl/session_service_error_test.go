@@ -8,6 +8,7 @@ import (
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
+	"radar/internal/domain/policy"
 	mockRepo "radar/internal/mocks/repository"
 
 	"github.com/google/uuid"
@@ -23,7 +24,7 @@ func TestSessionService_CleanupExpiredSessions_Error(t *testing.T) {
 	fx.onExecute(ctx, fmt.Errorf("failed to delete expired sessions: %w", dbError), func(factory *mockRepo.MockRepositoryFactory) {
 		mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 		factory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
-		mockRefreshRepo.EXPECT().DeleteExpiredRefreshTokens(ctx).Return(dbError)
+		mockRefreshRepo.EXPECT().DeleteExpiredRefreshTokens(ctx, policy.DefaultRefreshTokenPolicy().RevokedRetentionDays).Return(dbError)
 	})
 
 	_, err := fx.service.CleanupExpiredSessions(ctx)
@@ -244,7 +245,7 @@ func TestSessionService_RevokeAllSessions_UserNotFound(t *testing.T) {
 	assert.True(t, errors.Is(err, domainerrors.ErrNotFound))
 }
 
-func TestSessionService_RevokeAllSessions_DeleteError(t *testing.T) {
+func TestSessionService_RevokeAllSessions_RevokeError(t *testing.T) {
 	fx := createTestSessionService(t)
 
 	ctx := context.Background()
@@ -260,7 +261,7 @@ func TestSessionService_RevokeAllSessions_DeleteError(t *testing.T) {
 		factory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
 
 		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
-		mockRefreshRepo.EXPECT().DeleteRefreshTokensByUserID(ctx, userID).Return(expectedErr)
+		mockRefreshRepo.EXPECT().RevokeTokenFamiliesByUserID(ctx, userID).Return(expectedErr)
 	})
 
 	err := fx.service.RevokeAllSessions(ctx, userID)

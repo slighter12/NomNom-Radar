@@ -41,6 +41,19 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -o geoworker ./cmd/geoworker
 
 # =============================================================================
+# Device Cleanup Builder
+# =============================================================================
+FROM base-builder AS device-cleanup-builder
+
+# Copy only device cleanup source code
+COPY ./cmd/device-cleanup ./cmd/device-cleanup
+
+# Build device cleanup job
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-w -s" \
+    -o device-cleanup ./cmd/device-cleanup
+
+# =============================================================================
 # Runtime stage for radar (main API server)
 # =============================================================================
 FROM gcr.io/distroless/static-debian13:nonroot AS radar
@@ -69,3 +82,17 @@ WORKDIR /app
 EXPOSE 8080
 
 ENTRYPOINT ["/app/geoworker"]
+
+# =============================================================================
+# Runtime stage for device cleanup Cloud Run Job
+# =============================================================================
+FROM gcr.io/distroless/static-debian13:nonroot AS device-cleanup
+
+COPY --from=device-cleanup-builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=device-cleanup-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=device-cleanup-builder /app/device-cleanup /app/device-cleanup
+COPY --from=device-cleanup-builder /app/config/config_demo.yaml /app/config/config.yaml
+
+WORKDIR /app
+
+ENTRYPOINT ["/app/device-cleanup"]

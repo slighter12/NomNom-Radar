@@ -8,6 +8,7 @@ import (
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
+	"radar/internal/domain/policy"
 	"radar/internal/domain/repository"
 	mockRepo "radar/internal/mocks/repository"
 	mockSvc "radar/internal/mocks/service"
@@ -27,9 +28,12 @@ type userServiceFixtures struct {
 	userRepo          *mockRepo.MockUserRepository
 	authRepo          *mockRepo.MockAuthRepository
 	refreshTokenRepo  *mockRepo.MockRefreshTokenRepository
+	loginAttemptRepo  *mockRepo.MockLoginAttemptRepository
+	deviceRepo        *mockRepo.MockDeviceRepository
 	hasher            *mockSvc.MockPasswordHasher
 	tokenService      *mockSvc.MockTokenService
 	googleAuthService *mockSvc.MockOAuthAuthService
+	notificationSvc   *mockSvc.MockNotificationService
 }
 
 func createTestUserService(t *testing.T) *userServiceFixtures {
@@ -37,9 +41,12 @@ func createTestUserService(t *testing.T) *userServiceFixtures {
 	userRepo := mockRepo.NewMockUserRepository(t)
 	authRepo := mockRepo.NewMockAuthRepository(t)
 	refreshTokenRepo := mockRepo.NewMockRefreshTokenRepository(t)
+	loginAttemptRepo := mockRepo.NewMockLoginAttemptRepository(t)
+	deviceRepo := mockRepo.NewMockDeviceRepository(t)
 	hasher := mockSvc.NewMockPasswordHasher(t)
 	tokenService := mockSvc.NewMockTokenService(t)
 	googleAuthService := mockSvc.NewMockOAuthAuthService(t)
+	notificationSvc := mockSvc.NewMockNotificationService(t)
 	googleAuthService.EXPECT().GetProvider().Return(entity.ProviderTypeGoogle).Maybe()
 	logger := newDiscardLogger()
 
@@ -48,9 +55,12 @@ func createTestUserService(t *testing.T) *userServiceFixtures {
 		UserRepo:          userRepo,
 		AuthRepo:          authRepo,
 		RefreshTokenRepo:  refreshTokenRepo,
+		LoginAttemptRepo:  loginAttemptRepo,
+		DeviceRepo:        deviceRepo,
 		Hasher:            hasher,
 		TokenService:      tokenService,
 		GoogleAuthService: googleAuthService,
+		NotificationSvc:   notificationSvc,
 		Config:            newTestConfig(0),
 		Logger:            logger,
 	})
@@ -62,9 +72,12 @@ func createTestUserService(t *testing.T) *userServiceFixtures {
 		userRepo:          userRepo,
 		authRepo:          authRepo,
 		refreshTokenRepo:  refreshTokenRepo,
+		loginAttemptRepo:  loginAttemptRepo,
+		deviceRepo:        deviceRepo,
 		hasher:            hasher,
 		tokenService:      tokenService,
 		googleAuthService: googleAuthService,
+		notificationSvc:   notificationSvc,
 	}
 }
 
@@ -74,6 +87,11 @@ func (fx *userServiceFixtures) onExecute(ctx context.Context, returnErr error, s
 		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
 		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
 			mockFactory := mockRepo.NewMockRepositoryFactory(fx.t)
+			mockFactory.EXPECT().LoginAttemptRepo().Return(fx.loginAttemptRepo).Maybe()
+			fx.loginAttemptRepo.EXPECT().
+				ResetForAccountCreation(ctx, mock.AnythingOfType("string"), mock.AnythingOfType("uuid.UUID")).
+				Return(nil).
+				Maybe()
 			setupMocks(mockFactory)
 			_ = fn(mockFactory)
 		}).
@@ -208,6 +226,20 @@ func TestUserService_Login_InvalidCredentials_DoesNotLoadUser(t *testing.T) {
 		ProviderUserID: input.Email,
 		PasswordHash:   "hashed-password",
 	}
+	attemptKey := entity.NormalizeEmail(input.Email)
+
+	fx.loginAttemptRepo.EXPECT().
+		DecayLockoutCounts(ctx, 7).
+		Return(nil).
+		Once()
+	fx.authRepo.EXPECT().
+		FindAuthentication(ctx, entity.ProviderTypeEmail, attemptKey).
+		Return(authRecord, nil).
+		Once()
+	fx.loginAttemptRepo.EXPECT().
+		FindOrCreateByAttemptKey(ctx, attemptKey, &userID).
+		Return(&entity.LoginAttempt{AttemptKey: attemptKey, UserID: &userID}, nil).
+		Once()
 
 	fx.txManager.EXPECT().
 		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
@@ -233,10 +265,14 @@ func TestUserService_Login_InvalidCredentials_DoesNotLoadUser(t *testing.T) {
 		}).
 		Once()
 
-	// Password check happens outside the transaction (bcrypt is CPU-bound).
+	// Password check happens outside the transaction (password hashing is CPU-bound).
 	fx.hasher.EXPECT().
 		Check(input.Password, authRecord.PasswordHash).
 		Return(false).
+		Once()
+	fx.loginAttemptRepo.EXPECT().
+		IncrementFailedCount(ctx, attemptKey, 5, policy.DefaultLoginThrottlePolicy()).
+		Return(&entity.LoginAttempt{AttemptKey: attemptKey, UserID: &userID, FailedCount: 1}, nil).
 		Once()
 
 	output, err := fx.service.Login(ctx, input)
@@ -247,6 +283,66 @@ func TestUserService_Login_InvalidCredentials_DoesNotLoadUser(t *testing.T) {
 	fx.txManager.AssertNumberOfCalls(t, "Execute", 1)
 	fx.tokenService.AssertNotCalled(t, "GenerateTokens", mock.Anything, mock.Anything)
 	fx.refreshTokenRepo.AssertNotCalled(t, "CreateRefreshToken", mock.Anything, mock.Anything)
+}
+
+func TestUserService_Login_LockoutTriggerReturnsLockoutError(t *testing.T) {
+	fx := createTestUserService(t)
+
+	ctx := context.Background()
+	input := &usecase.LoginInput{
+		Email:    "missing@example.com",
+		Password: "wrong-password",
+	}
+	attemptKey := entity.NormalizeEmail(input.Email)
+	lockedUntil := time.Now().Add(15 * time.Minute)
+
+	fx.loginAttemptRepo.EXPECT().
+		DecayLockoutCounts(ctx, 7).
+		Return(nil).
+		Once()
+	fx.authRepo.EXPECT().
+		FindAuthentication(ctx, entity.ProviderTypeEmail, attemptKey).
+		Return(nil, domainerrors.ErrAuthNotFound).
+		Once()
+	fx.loginAttemptRepo.EXPECT().
+		FindOrCreateByAttemptKey(ctx, attemptKey, (*uuid.UUID)(nil)).
+		Return(&entity.LoginAttempt{AttemptKey: attemptKey}, nil).
+		Once()
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockAuthRepo := mockRepo.NewMockAuthRepository(t)
+
+			mockFactory.EXPECT().AuthRepo().Return(mockAuthRepo)
+			mockFactory.EXPECT().UserRepo().Return(mockRepo.NewMockUserRepository(t))
+			mockAuthRepo.EXPECT().
+				FindAuthentication(ctx, entity.ProviderTypeEmail, input.Email).
+				Return(nil, domainerrors.ErrAuthNotFound)
+
+			return fn(mockFactory)
+		}).
+		Once()
+
+	fx.loginAttemptRepo.EXPECT().
+		IncrementFailedCount(ctx, attemptKey, 5, policy.DefaultLoginThrottlePolicy()).
+		Return(&entity.LoginAttempt{
+			AttemptKey:  attemptKey,
+			LockedUntil: &lockedUntil,
+			FailedCount: 0,
+		}, nil).
+		Once()
+
+	output, err := fx.service.Login(ctx, input)
+
+	require.Error(t, err)
+	assert.Nil(t, output)
+	assert.True(t, errors.Is(err, domainerrors.ErrInvalidCredentials))
+
+	var lockoutErr *usecase.LockoutError
+	require.ErrorAs(t, err, &lockoutErr)
+	assert.Positive(t, lockoutErr.RetryAfterSeconds)
 }
 
 func TestUserService_Login_Success_LoadsUserAfterPasswordCheck(t *testing.T) {
@@ -271,6 +367,20 @@ func TestUserService_Login_Success_LoadsUserAfterPasswordCheck(t *testing.T) {
 		Name:        "Test User",
 		UserProfile: &entity.UserProfile{UserID: userID},
 	}
+	attemptKey := entity.NormalizeEmail(input.Email)
+
+	fx.loginAttemptRepo.EXPECT().
+		DecayLockoutCounts(ctx, 7).
+		Return(nil).
+		Once()
+	fx.authRepo.EXPECT().
+		FindAuthentication(ctx, entity.ProviderTypeEmail, attemptKey).
+		Return(authRecord, nil).
+		Once()
+	fx.loginAttemptRepo.EXPECT().
+		FindOrCreateByAttemptKey(ctx, attemptKey, &userID).
+		Return(&entity.LoginAttempt{AttemptKey: attemptKey, UserID: &userID}, nil).
+		Once()
 
 	fx.txManager.EXPECT().
 		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
@@ -319,6 +429,10 @@ func TestUserService_Login_Success_LoadsUserAfterPasswordCheck(t *testing.T) {
 		}).
 		Return(nil).
 		Once()
+	fx.loginAttemptRepo.EXPECT().
+		ResetOnSuccess(ctx, attemptKey).
+		Return(nil).
+		Once()
 
 	output, err := fx.service.Login(ctx, input)
 
@@ -329,4 +443,50 @@ func TestUserService_Login_Success_LoadsUserAfterPasswordCheck(t *testing.T) {
 	assert.Equal(t, "refresh-token", output.RefreshToken)
 	assert.Equal(t, userID, output.User.ID)
 	fx.txManager.AssertNumberOfCalls(t, "Execute", 1)
+}
+
+func TestUserService_Login_LockedOutReturnsLockoutErrorWithoutAuthTransaction(t *testing.T) {
+	fx := createTestUserService(t)
+
+	ctx := context.Background()
+	input := &usecase.LoginInput{
+		Email:    "test@example.com",
+		Password: "wrong-password",
+	}
+	userID := uuid.New()
+	attemptKey := entity.NormalizeEmail(input.Email)
+	lockedUntil := time.Now().Add(2 * time.Minute)
+	authRecord := &entity.Authentication{
+		UserID:         userID,
+		Provider:       entity.ProviderTypeEmail,
+		ProviderUserID: attemptKey,
+	}
+
+	fx.loginAttemptRepo.EXPECT().
+		DecayLockoutCounts(ctx, 7).
+		Return(nil).
+		Once()
+	fx.authRepo.EXPECT().
+		FindAuthentication(ctx, entity.ProviderTypeEmail, attemptKey).
+		Return(authRecord, nil).
+		Once()
+	fx.loginAttemptRepo.EXPECT().
+		FindOrCreateByAttemptKey(ctx, attemptKey, &userID).
+		Return(&entity.LoginAttempt{
+			AttemptKey:  attemptKey,
+			UserID:      &userID,
+			LockedUntil: &lockedUntil,
+		}, nil).
+		Once()
+
+	output, err := fx.service.Login(ctx, input)
+
+	require.Error(t, err)
+	assert.Nil(t, output)
+	assert.True(t, errors.Is(err, domainerrors.ErrInvalidCredentials))
+
+	var lockoutErr *usecase.LockoutError
+	require.ErrorAs(t, err, &lockoutErr)
+	assert.Positive(t, lockoutErr.RetryAfterSeconds)
+	fx.txManager.AssertNotCalled(t, "Execute", mock.Anything, mock.Anything)
 }

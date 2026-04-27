@@ -43,6 +43,11 @@ func (f *gormRepositoryFactory) RefreshTokenRepo() repository.RefreshTokenReposi
 	return NewRefreshTokenRepository(f.tx)
 }
 
+// LoginAttemptRepo creates a new login attempt repository instance bound to the transaction.
+func (f *gormRepositoryFactory) LoginAttemptRepo() repository.LoginAttemptRepository {
+	return NewLoginAttemptRepository(f.tx)
+}
+
 // NewTransactionManager is the constructor for gormTransactionManager.
 // This function will be used as an Fx provider.
 func NewTransactionManager(db *gorm.DB, logger *slog.Logger) repository.TransactionManager {

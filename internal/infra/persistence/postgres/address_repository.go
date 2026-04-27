@@ -12,13 +12,10 @@ import (
 	"radar/internal/infra/persistence/postgres/query"
 
 	"github.com/google/uuid"
-	"go.uber.org/fx"
 	"gorm.io/gorm"
 )
 
 type addressRepository struct {
-	fx.In
-
 	q *query.Query
 }
 

@@ -154,8 +154,8 @@ func (_c *MockSubscriptionRepository_DeleteSubscription_Call) RunAndReturn(run f
 }
 
 // FindDevicesForUsers provides a mock function for the type MockSubscriptionRepository
-func (_mock *MockSubscriptionRepository) FindDevicesForUsers(ctx context.Context, userIDs []uuid.UUID) ([]*entity.UserDevice, error) {
-	ret := _mock.Called(ctx, userIDs)
+func (_mock *MockSubscriptionRepository) FindDevicesForUsers(ctx context.Context, userIDs []uuid.UUID, healthyWindowDays int) ([]*entity.UserDevice, error) {
+	ret := _mock.Called(ctx, userIDs, healthyWindowDays)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FindDevicesForUsers")
@@ -163,18 +163,18 @@ func (_mock *MockSubscriptionRepository) FindDevicesForUsers(ctx context.Context
 
 	var r0 []*entity.UserDevice
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []uuid.UUID) ([]*entity.UserDevice, error)); ok {
-		return returnFunc(ctx, userIDs)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []uuid.UUID, int) ([]*entity.UserDevice, error)); ok {
+		return returnFunc(ctx, userIDs, healthyWindowDays)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []uuid.UUID) []*entity.UserDevice); ok {
-		r0 = returnFunc(ctx, userIDs)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []uuid.UUID, int) []*entity.UserDevice); ok {
+		r0 = returnFunc(ctx, userIDs, healthyWindowDays)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*entity.UserDevice)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, []uuid.UUID) error); ok {
-		r1 = returnFunc(ctx, userIDs)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []uuid.UUID, int) error); ok {
+		r1 = returnFunc(ctx, userIDs, healthyWindowDays)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -189,11 +189,12 @@ type MockSubscriptionRepository_FindDevicesForUsers_Call struct {
 // FindDevicesForUsers is a helper method to define mock.On call
 //   - ctx context.Context
 //   - userIDs []uuid.UUID
-func (_e *MockSubscriptionRepository_Expecter) FindDevicesForUsers(ctx interface{}, userIDs interface{}) *MockSubscriptionRepository_FindDevicesForUsers_Call {
-	return &MockSubscriptionRepository_FindDevicesForUsers_Call{Call: _e.mock.On("FindDevicesForUsers", ctx, userIDs)}
+//   - healthyWindowDays int
+func (_e *MockSubscriptionRepository_Expecter) FindDevicesForUsers(ctx interface{}, userIDs interface{}, healthyWindowDays interface{}) *MockSubscriptionRepository_FindDevicesForUsers_Call {
+	return &MockSubscriptionRepository_FindDevicesForUsers_Call{Call: _e.mock.On("FindDevicesForUsers", ctx, userIDs, healthyWindowDays)}
 }
 
-func (_c *MockSubscriptionRepository_FindDevicesForUsers_Call) Run(run func(ctx context.Context, userIDs []uuid.UUID)) *MockSubscriptionRepository_FindDevicesForUsers_Call {
+func (_c *MockSubscriptionRepository_FindDevicesForUsers_Call) Run(run func(ctx context.Context, userIDs []uuid.UUID, healthyWindowDays int)) *MockSubscriptionRepository_FindDevicesForUsers_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -203,9 +204,14 @@ func (_c *MockSubscriptionRepository_FindDevicesForUsers_Call) Run(run func(ctx 
 		if args[1] != nil {
 			arg1 = args[1].([]uuid.UUID)
 		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -216,7 +222,7 @@ func (_c *MockSubscriptionRepository_FindDevicesForUsers_Call) Return(userDevice
 	return _c
 }
 
-func (_c *MockSubscriptionRepository_FindDevicesForUsers_Call) RunAndReturn(run func(ctx context.Context, userIDs []uuid.UUID) ([]*entity.UserDevice, error)) *MockSubscriptionRepository_FindDevicesForUsers_Call {
+func (_c *MockSubscriptionRepository_FindDevicesForUsers_Call) RunAndReturn(run func(ctx context.Context, userIDs []uuid.UUID, healthyWindowDays int) ([]*entity.UserDevice, error)) *MockSubscriptionRepository_FindDevicesForUsers_Call {
 	_c.Call.Return(run)
 	return _c
 }

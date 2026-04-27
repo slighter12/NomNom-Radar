@@ -70,6 +70,7 @@ func (r *router) registerPublicRoutes(e *echo.Echo) {
 		authGroup.POST("/register/merchant", r.userHandler.RegisterMerchant)
 		authGroup.POST("/login", r.userHandler.Login)
 		authGroup.POST("/onboarding/merchant", r.userHandler.CompleteMerchantOnboarding)
+		authGroup.POST("/link-provider", r.userHandler.LinkProvider)
 		authGroup.POST("/refresh", r.userHandler.RefreshToken)
 		authGroup.POST("/logout", r.userHandler.Logout)
 	}
@@ -118,6 +119,7 @@ func (r *router) registerAPIV1UserRoutes(apiV1 *echo.Group) {
 	{
 		devicesGroup.POST("", r.deviceHandler.RegisterDevice)
 		devicesGroup.GET("", r.deviceHandler.GetUserDevices)
+		devicesGroup.GET("/health", r.deviceHandler.GetDeviceHealth)
 		devicesGroup.PUT("/:deviceId/token", r.deviceHandler.UpdateFCMToken)
 		devicesGroup.DELETE("/:deviceId", r.deviceHandler.DeactivateDevice)
 	}

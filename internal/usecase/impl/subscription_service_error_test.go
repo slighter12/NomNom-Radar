@@ -278,6 +278,10 @@ func TestSubscriptionService_SubscribeToMerchant_WithDevice_CreateDeviceError(t 
 		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
 		Return(nil, domainerrors.ErrDeviceNotFound)
 
+	fx.deviceRepo.EXPECT().
+		FindDeviceByUserAndDeviceIDIncludingDeleted(ctx, userID, "device-123").
+		Return(nil, domainerrors.ErrDeviceNotFound)
+
 	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
 		CreateDevice(ctx, mock.AnythingOfType("*entity.UserDevice")).

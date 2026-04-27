@@ -12,14 +12,11 @@ import (
 	"radar/internal/infra/persistence/postgres/query"
 
 	"github.com/google/uuid"
-	"go.uber.org/fx"
 	"gorm.io/gorm"
 )
 
 // refreshTokenRepository implements the domain.RefreshTokenRepository interface.
 type refreshTokenRepository struct {
-	fx.In
-
 	q *query.Query
 }
 
@@ -58,7 +55,10 @@ func (repo *refreshTokenRepository) CreateRefreshToken(ctx context.Context, toke
 // FindRefreshTokenByHash retrieves a refresh token record by its securely stored hash.
 func (repo *refreshTokenRepository) FindRefreshTokenByHash(ctx context.Context, tokenHash string) (*entity.RefreshToken, error) {
 	tokenM, err := repo.q.RefreshTokenModel.WithContext(ctx).
-		Where(repo.q.RefreshTokenModel.TokenHash.Eq(tokenHash)).
+		Where(
+			repo.q.RefreshTokenModel.TokenHash.Eq(tokenHash),
+			repo.q.RefreshTokenModel.IsRevoked.Is(false),
+		).
 		First()
 
 	if err != nil {
@@ -77,6 +77,26 @@ func (repo *refreshTokenRepository) FindRefreshTokenByHash(ctx context.Context, 
 	}
 
 	return token, nil
+}
+
+// FindRefreshTokenByHashIncludingRevoked retrieves a refresh token record by hash, including revoked tokens.
+func (repo *refreshTokenRepository) FindRefreshTokenByHashIncludingRevoked(
+	ctx context.Context,
+	tokenHash string,
+) (*entity.RefreshToken, error) {
+	tokenM, err := repo.q.RefreshTokenModel.WithContext(ctx).
+		Where(repo.q.RefreshTokenModel.TokenHash.Eq(tokenHash)).
+		First()
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domainerrors.ErrRefreshTokenNotFound
+		}
+
+		return nil, domainerrors.ErrPersistenceFailed
+	}
+
+	return toRefreshTokenDomain(tokenM), nil
 }
 
 // FindRefreshTokenByID retrieves a refresh token record by its unique ID.
@@ -110,6 +130,7 @@ func (repo *refreshTokenRepository) FindRefreshTokensByUserID(ctx context.Contex
 	tokenModels, err := repo.q.RefreshTokenModel.WithContext(ctx).
 		Where(
 			repo.q.RefreshTokenModel.UserID.Eq(userID),
+			repo.q.RefreshTokenModel.IsRevoked.Is(false),
 			repo.q.RefreshTokenModel.ExpiresAt.Gt(now),
 		).
 		Order(repo.q.RefreshTokenModel.CreatedAt.Desc()).
@@ -196,12 +217,45 @@ func (repo *refreshTokenRepository) DeleteRefreshTokensByUserID(ctx context.Cont
 }
 
 // DeleteExpiredRefreshTokens removes all expired refresh tokens from the database.
-func (repo *refreshTokenRepository) DeleteExpiredRefreshTokens(ctx context.Context) error {
+func (repo *refreshTokenRepository) DeleteExpiredRefreshTokens(ctx context.Context, revokedRetentionDays int) error {
 	now := time.Now()
+	revokedCutoff := now.AddDate(0, 0, -revokedRetentionDays)
 
+	if err := deleteExpiredRefreshTokensQuery(repo.q.RefreshTokenModel.WithContext(ctx).UnderlyingDB(), now, revokedCutoff).Error; err != nil {
+		return domainerrors.ErrPersistenceFailed
+	}
+
+	return nil
+}
+
+func deleteExpiredRefreshTokensQuery(db *gorm.DB, now, revokedCutoff time.Time) *gorm.DB {
+	return db.
+		Where("expires_at < ? OR (is_revoked = ? AND created_at < ?)", now, true, revokedCutoff).
+		Delete(&model.RefreshTokenModel{})
+}
+
+// RevokeTokenFamily marks all tokens in a family as revoked.
+func (repo *refreshTokenRepository) RevokeTokenFamily(ctx context.Context, familyID uuid.UUID) error {
 	if _, err := repo.q.RefreshTokenModel.WithContext(ctx).
-		Where(repo.q.RefreshTokenModel.ExpiresAt.Lt(now)).
-		Delete(); err != nil {
+		Where(
+			repo.q.RefreshTokenModel.FamilyID.Eq(familyID),
+			repo.q.RefreshTokenModel.IsRevoked.Is(false),
+		).
+		Update(repo.q.RefreshTokenModel.IsRevoked, true); err != nil {
+		return domainerrors.ErrPersistenceFailed
+	}
+
+	return nil
+}
+
+// RevokeTokenFamiliesByUserID marks all refresh tokens for a user as revoked.
+func (repo *refreshTokenRepository) RevokeTokenFamiliesByUserID(ctx context.Context, userID uuid.UUID) error {
+	if _, err := repo.q.RefreshTokenModel.WithContext(ctx).
+		Where(
+			repo.q.RefreshTokenModel.UserID.Eq(userID),
+			repo.q.RefreshTokenModel.IsRevoked.Is(false),
+		).
+		Update(repo.q.RefreshTokenModel.IsRevoked, true); err != nil {
 		return domainerrors.ErrPersistenceFailed
 	}
 
@@ -215,6 +269,7 @@ func (repo *refreshTokenRepository) CountActiveSessionsByUserID(ctx context.Cont
 	count, err := repo.q.RefreshTokenModel.WithContext(ctx).
 		Where(
 			repo.q.RefreshTokenModel.UserID.Eq(userID),
+			repo.q.RefreshTokenModel.IsRevoked.Is(false),
 			repo.q.RefreshTokenModel.ExpiresAt.Gt(now),
 		).
 		Count()
@@ -235,11 +290,14 @@ func toRefreshTokenDomain(data *model.RefreshTokenModel) *entity.RefreshToken {
 	}
 
 	return &entity.RefreshToken{
-		ID:        data.ID,
-		UserID:    data.UserID,
-		TokenHash: data.TokenHash,
-		ExpiresAt: data.ExpiresAt,
-		CreatedAt: data.CreatedAt,
+		ID:         data.ID,
+		UserID:     data.UserID,
+		TokenHash:  data.TokenHash,
+		FamilyID:   data.FamilyID,
+		IsRevoked:  data.IsRevoked,
+		ReplacedBy: data.ReplacedBy,
+		ExpiresAt:  data.ExpiresAt,
+		CreatedAt:  data.CreatedAt,
 	}
 }
 
@@ -250,10 +308,13 @@ func fromRefreshTokenDomain(data *entity.RefreshToken) *model.RefreshTokenModel 
 	}
 
 	return &model.RefreshTokenModel{
-		ID:        data.ID,
-		UserID:    data.UserID,
-		TokenHash: data.TokenHash,
-		ExpiresAt: data.ExpiresAt,
-		CreatedAt: data.CreatedAt,
+		ID:         data.ID,
+		UserID:     data.UserID,
+		TokenHash:  data.TokenHash,
+		FamilyID:   data.FamilyID,
+		IsRevoked:  data.IsRevoked,
+		ReplacedBy: data.ReplacedBy,
+		ExpiresAt:  data.ExpiresAt,
+		CreatedAt:  data.CreatedAt,
 	}
 }

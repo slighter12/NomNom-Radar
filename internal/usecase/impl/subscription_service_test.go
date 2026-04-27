@@ -147,6 +147,10 @@ func TestSubscriptionService_SubscribeToMerchant_WithDevice(t *testing.T) {
 		Return(nil, domainerrors.ErrDeviceNotFound)
 
 	fx.deviceRepo.EXPECT().
+		FindDeviceByUserAndDeviceIDIncludingDeleted(ctx, userID, "device-123").
+		Return(nil, domainerrors.ErrDeviceNotFound)
+
+	fx.deviceRepo.EXPECT().
 		CreateDevice(ctx, mock.AnythingOfType("*entity.UserDevice")).
 		Return(nil)
 
@@ -305,6 +309,10 @@ func TestSubscriptionService_SubscribeToMerchant_ExistingDeviceUpdate(t *testing
 		Return(nil)
 
 	fx.deviceRepo.EXPECT().
+		SetDeviceActive(ctx, deviceID, true).
+		Return(nil)
+
+	fx.deviceRepo.EXPECT().
 		FindDeviceByID(ctx, deviceID).
 		Return(existingDevice, nil)
 
@@ -345,6 +353,10 @@ func TestSubscriptionService_ProcessQRSubscription_WithDevice(t *testing.T) {
 
 	fx.deviceRepo.EXPECT().
 		FindDeviceByUserAndDeviceID(ctx, userID, "device-123").
+		Return(nil, domainerrors.ErrDeviceNotFound)
+
+	fx.deviceRepo.EXPECT().
+		FindDeviceByUserAndDeviceIDIncludingDeleted(ctx, userID, "device-123").
 		Return(nil, domainerrors.ErrDeviceNotFound)
 
 	fx.deviceRepo.EXPECT().

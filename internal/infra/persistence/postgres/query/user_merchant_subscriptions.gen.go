@@ -7,14 +7,16 @@ package query
 import (
 	"context"
 
-	"radar/internal/infra/persistence/model"
-
-	"gorm.io/gen"
-	"gorm.io/gen/field"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/schema"
+
+	"gorm.io/gen"
+	"gorm.io/gen/field"
+
 	"gorm.io/plugin/dbresolver"
+
+	"radar/internal/infra/persistence/model"
 )
 
 func newUserMerchantSubscriptionModel(db *gorm.DB, opts ...gen.DOOption) userMerchantSubscriptionModel {

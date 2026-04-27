@@ -11,6 +11,7 @@ import (
 	deliverycontext "radar/internal/delivery/context"
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
+	"radar/internal/domain/policy"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
 	"radar/internal/usecase"
@@ -326,7 +327,7 @@ func (s *notificationService) createNotificationLogs(
 		// Check if token is invalid
 		if slices.Contains(invalidTokens, token) {
 			status = "failed"
-			errorMsg = "invalid or unregistered token"
+			errorMsg = "unregistered token"
 		}
 
 		log := &entity.NotificationLog{
@@ -345,13 +346,13 @@ func (s *notificationService) createNotificationLogs(
 	return logs
 }
 
-// handleInvalidTokens soft deletes devices with invalid tokens
+// handleInvalidTokens soft deletes devices with tokens confirmed unregistered by FCM.
 func (s *notificationService) handleInvalidTokens(ctx context.Context, invalidTokens []string, deviceMap map[string]*entity.UserDevice) {
 	for _, token := range invalidTokens {
 		if device, ok := deviceMap[token]; ok {
 			if err := s.deviceRepo.DeleteDevice(ctx, device.ID); err != nil {
 				// Log error but continue
-				s.log(ctx).Warn("failed to delete invalid device", slog.String("device_id", device.ID.String()), slog.Any("error", err))
+				s.log(ctx).Warn("failed to delete unregistered device", slog.String("device_id", device.ID.String()), slog.Any("error", err))
 			}
 		}
 	}
@@ -387,7 +388,7 @@ func (s *notificationService) getSubscriberDevices(
 
 	userIDs := collectAddressUserIDs(validAddresses)
 
-	devices, err := s.subscriptionRepo.FindDevicesForUsers(ctx, userIDs)
+	devices, err := s.subscriptionRepo.FindDevicesForUsers(ctx, userIDs, policy.DefaultDevicePolicy().HealthyWindowDays)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch devices: %w", err)
 	}
@@ -487,7 +488,7 @@ func (s *notificationService) sendAndProcessNotifications(
 		}
 	}
 
-	// Handle invalid tokens - soft delete devices
+	// Handle tokens confirmed unregistered by FCM.
 	if len(invalidTokens) > 0 {
 		s.handleInvalidTokens(ctx, invalidTokens, deviceMap)
 	}

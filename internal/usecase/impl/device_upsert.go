@@ -24,32 +24,25 @@ func upsertUserDevice(
 		return nil, err
 	}
 
-	device, err := deviceRepo.FindDeviceByUserAndDeviceID(ctx, userID, deviceInfo.DeviceID)
-	if err == nil {
-		if err := deviceRepo.UpdateFCMToken(ctx, device.ID, deviceInfo.FCMToken); err != nil {
-			return nil, err
-		}
-
-		updatedDevice, err := deviceRepo.FindDeviceByID(ctx, device.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		return updatedDevice, nil
-	}
-	if !errors.Is(err, domainerrors.ErrDeviceNotFound) {
-		return nil, err
+	if device, err := upsertExistingDevice(ctx, deviceRepo, userID, deviceInfo); err != nil || device != nil {
+		return device, err
 	}
 
+	if device, err := restoreDeletedDevice(ctx, deviceRepo, userID, deviceInfo); err != nil || device != nil {
+		return device, err
+	}
+
+	now := time.Now()
 	newDevice := &entity.UserDevice{
-		ID:        uuid.New(),
-		UserID:    userID,
-		FCMToken:  deviceInfo.FCMToken,
-		DeviceID:  deviceInfo.DeviceID,
-		Platform:  deviceInfo.Platform,
-		IsActive:  true,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:               uuid.New(),
+		UserID:           userID,
+		FCMToken:         deviceInfo.FCMToken,
+		DeviceID:         deviceInfo.DeviceID,
+		Platform:         deviceInfo.Platform,
+		IsActive:         true,
+		TokenRefreshedAt: now,
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
 
 	if err := deviceRepo.CreateDevice(ctx, newDevice); err != nil {
@@ -57,6 +50,53 @@ func upsertUserDevice(
 	}
 
 	return newDevice, nil
+}
+
+func upsertExistingDevice(
+	ctx context.Context,
+	deviceRepo repository.DeviceRepository,
+	userID uuid.UUID,
+	deviceInfo *usecase.DeviceInfo,
+) (*entity.UserDevice, error) {
+	device, err := deviceRepo.FindDeviceByUserAndDeviceID(ctx, userID, deviceInfo.DeviceID)
+	if errors.Is(err, domainerrors.ErrDeviceNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if err := deviceRepo.UpdateFCMToken(ctx, device.ID, deviceInfo.FCMToken); err != nil {
+		return nil, err
+	}
+	if !device.IsActive {
+		if err := deviceRepo.SetDeviceActive(ctx, device.ID, true); err != nil {
+			return nil, err
+		}
+	}
+
+	return deviceRepo.FindDeviceByID(ctx, device.ID)
+}
+
+func restoreDeletedDevice(
+	ctx context.Context,
+	deviceRepo repository.DeviceRepository,
+	userID uuid.UUID,
+	deviceInfo *usecase.DeviceInfo,
+) (*entity.UserDevice, error) {
+	deletedDevice, err := deviceRepo.FindDeviceByUserAndDeviceIDIncludingDeleted(ctx, userID, deviceInfo.DeviceID)
+	if errors.Is(err, domainerrors.ErrDeviceNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if err := deviceRepo.RestoreAndUpdateDevice(ctx, userID, deletedDevice.ID, deviceInfo.FCMToken); err != nil {
+		return nil, err
+	}
+
+	return deviceRepo.FindDeviceByUserAndDeviceID(ctx, userID, deviceInfo.DeviceID)
 }
 
 func validateDeviceInfo(deviceInfo *usecase.DeviceInfo) error {

@@ -8,8 +8,10 @@ import (
 	"context"
 	"database/sql"
 
-	"gorm.io/gen"
 	"gorm.io/gorm"
+
+	"gorm.io/gen"
+
 	"gorm.io/plugin/dbresolver"
 )
 
@@ -18,6 +20,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		db:                                db,
 		AddressModel:                      newAddressModel(db, opts...),
 		AuthenticationModel:               newAuthenticationModel(db, opts...),
+		LoginAttemptModel:                 newLoginAttemptModel(db, opts...),
 		MenuItemModel:                     newMenuItemModel(db, opts...),
 		MerchantLocationNotificationModel: newMerchantLocationNotificationModel(db, opts...),
 		MerchantProfileModel:              newMerchantProfileModel(db, opts...),
@@ -35,6 +38,7 @@ type Query struct {
 
 	AddressModel                      addressModel
 	AuthenticationModel               authenticationModel
+	LoginAttemptModel                 loginAttemptModel
 	MenuItemModel                     menuItemModel
 	MerchantLocationNotificationModel merchantLocationNotificationModel
 	MerchantProfileModel              merchantProfileModel
@@ -53,6 +57,7 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		db:                                db,
 		AddressModel:                      q.AddressModel.clone(db),
 		AuthenticationModel:               q.AuthenticationModel.clone(db),
+		LoginAttemptModel:                 q.LoginAttemptModel.clone(db),
 		MenuItemModel:                     q.MenuItemModel.clone(db),
 		MerchantLocationNotificationModel: q.MerchantLocationNotificationModel.clone(db),
 		MerchantProfileModel:              q.MerchantProfileModel.clone(db),
@@ -78,6 +83,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		db:                                db,
 		AddressModel:                      q.AddressModel.replaceDB(db),
 		AuthenticationModel:               q.AuthenticationModel.replaceDB(db),
+		LoginAttemptModel:                 q.LoginAttemptModel.replaceDB(db),
 		MenuItemModel:                     q.MenuItemModel.replaceDB(db),
 		MerchantLocationNotificationModel: q.MerchantLocationNotificationModel.replaceDB(db),
 		MerchantProfileModel:              q.MerchantProfileModel.replaceDB(db),
@@ -93,6 +99,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 type queryCtx struct {
 	AddressModel                      *addressModelDo
 	AuthenticationModel               *authenticationModelDo
+	LoginAttemptModel                 *loginAttemptModelDo
 	MenuItemModel                     *menuItemModelDo
 	MerchantLocationNotificationModel *merchantLocationNotificationModelDo
 	MerchantProfileModel              *merchantProfileModelDo
@@ -108,6 +115,7 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
 		AddressModel:                      q.AddressModel.WithContext(ctx),
 		AuthenticationModel:               q.AuthenticationModel.WithContext(ctx),
+		LoginAttemptModel:                 q.LoginAttemptModel.WithContext(ctx),
 		MenuItemModel:                     q.MenuItemModel.WithContext(ctx),
 		MerchantLocationNotificationModel: q.MerchantLocationNotificationModel.WithContext(ctx),
 		MerchantProfileModel:              q.MerchantProfileModel.WithContext(ctx),
