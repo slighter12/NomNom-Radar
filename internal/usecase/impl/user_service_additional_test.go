@@ -283,6 +283,57 @@ func TestUserService_RefreshToken_Success(t *testing.T) {
 	assert.Equal(t, "new-refresh-token", output.RefreshToken)
 }
 
+func TestUserService_RefreshToken_UserIDMismatchReturnsInvalidToken(t *testing.T) {
+	fx := createTestUserService(t)
+
+	ctx := context.Background()
+	claimsUserID := uuid.New()
+	storedTokenUserID := uuid.New()
+	input := &usecase.RefreshTokenInput{RefreshToken: "refresh-token"}
+
+	fx.tokenService.EXPECT().
+		ValidateToken(input.RefreshToken).
+		Return(&service.Claims{UserID: claimsUserID, Type: service.TokenTypeRefresh}, nil).
+		Once()
+	fx.tokenService.EXPECT().
+		HashToken(input.RefreshToken).
+		Return("refresh-token-hash").
+		Once()
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
+			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
+
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+
+			mockUserRepo.EXPECT().
+				AcquireSessionMutex(ctx, claimsUserID).
+				Return(nil)
+			mockRefreshRepo.EXPECT().
+				FindRefreshTokenByHashIncludingRevoked(ctx, "refresh-token-hash").
+				Return(&entity.RefreshToken{
+					ID:        uuid.New(),
+					UserID:    storedTokenUserID,
+					FamilyID:  uuid.New(),
+					ExpiresAt: time.Now().Add(time.Hour),
+				}, nil)
+
+			require.ErrorIs(t, fn(mockFactory), domainerrors.ErrRefreshTokenInvalid)
+		}).
+		Return(domainerrors.ErrRefreshTokenInvalid).
+		Once()
+
+	output, err := fx.service.RefreshToken(ctx, input)
+
+	require.Error(t, err)
+	assert.Nil(t, output)
+	assert.True(t, errors.Is(err, domainerrors.ErrRefreshTokenInvalid))
+}
+
 func TestUserService_RefreshToken_InvalidTokenType(t *testing.T) {
 	fx := createTestUserService(t)
 

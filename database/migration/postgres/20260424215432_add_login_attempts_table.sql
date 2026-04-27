@@ -14,6 +14,9 @@ CREATE TABLE login_attempts (
 );
 
 CREATE UNIQUE INDEX idx_login_attempts_attempt_key ON login_attempts(attempt_key);
+CREATE INDEX idx_login_attempts_last_lockout_at
+    ON login_attempts(last_lockout_at)
+    WHERE last_lockout_at IS NOT NULL;
 
 CREATE TRIGGER update_login_attempts_updated_at
     BEFORE UPDATE ON login_attempts

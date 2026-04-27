@@ -54,7 +54,7 @@ func TestArgon2idHasher_WrongPasswordAndTamperedHash(t *testing.T) {
 		{
 			name:         "tampered hash",
 			password:     password,
-			encodedHash:  hash[:len(hash)-1] + "A",
+			encodedHash:  tamperArgon2idHashPayload(t, hash),
 			expectedOkay: false,
 		},
 		{
@@ -72,6 +72,24 @@ func TestArgon2idHasher_WrongPasswordAndTamperedHash(t *testing.T) {
 			assert.Equal(t, tc.expectedOkay, ok)
 		})
 	}
+}
+
+func tamperArgon2idHashPayload(t *testing.T, encodedHash string) string {
+	t.Helper()
+
+	parts := strings.Split(encodedHash, "$")
+	require.Len(t, parts, 6)
+	require.NotEmpty(t, parts[5])
+
+	payload := []byte(parts[5])
+	if payload[0] == 'A' {
+		payload[0] = 'B'
+	} else {
+		payload[0] = 'A'
+	}
+	parts[5] = string(payload)
+
+	return strings.Join(parts, "$")
 }
 
 func TestArgon2idHasher_ContextCancellation(t *testing.T) {

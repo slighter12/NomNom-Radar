@@ -427,6 +427,9 @@ func (srv *userService) executeRefreshTokenRotationTx(
 	if err != nil {
 		return err
 	}
+	if storedToken.UserID != claims.UserID {
+		return domainerrors.ErrRefreshTokenInvalid
+	}
 
 	if storedToken.IsRevoked {
 		return handleRevokedRefreshToken(ctx, refreshRepo, storedToken, result)
