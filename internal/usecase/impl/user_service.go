@@ -423,7 +423,7 @@ func (srv *userService) executeRefreshTokenRotationTx(
 		return err
 	}
 
-	storedToken, err := loadAndValidateStoredRefreshToken(ctx, refreshRepo, tokenHash)
+	storedToken, err := loadStoredRefreshToken(ctx, refreshRepo, tokenHash)
 	if err != nil {
 		return err
 	}
@@ -434,24 +434,11 @@ func (srv *userService) executeRefreshTokenRotationTx(
 	if storedToken.IsRevoked {
 		return handleRevokedRefreshToken(ctx, refreshRepo, storedToken, result)
 	}
+	if storedToken.ExpiresAt.Before(time.Now()) {
+		return domainerrors.ErrRefreshTokenExpired
+	}
 
 	return srv.rotateActiveRefreshToken(ctx, refreshRepo, userRepo, storedToken, result)
-}
-
-func loadAndValidateStoredRefreshToken(
-	ctx context.Context,
-	refreshRepo repository.RefreshTokenRepository,
-	tokenHash string,
-) (*entity.RefreshToken, error) {
-	storedToken, err := loadStoredRefreshToken(ctx, refreshRepo, tokenHash)
-	if err != nil {
-		return nil, err
-	}
-	if storedToken.ExpiresAt.Before(time.Now()) {
-		return nil, domainerrors.ErrRefreshTokenExpired
-	}
-
-	return storedToken, nil
 }
 
 func handleRevokedRefreshToken(
@@ -481,10 +468,6 @@ func (srv *userService) rotateActiveRefreshToken(
 		return err
 	}
 
-	if err := revokeAndReplaceRefreshToken(ctx, refreshRepo, storedToken); err != nil {
-		return err
-	}
-
 	accessToken, refreshToken, err := srv.issueAndStoreRotatedTokenPair(ctx, refreshRepo, user, storedToken)
 	if err != nil {
 		return err
@@ -494,16 +477,6 @@ func (srv *userService) rotateActiveRefreshToken(
 	result.RefreshToken = refreshToken
 
 	return nil
-}
-
-func revokeAndReplaceRefreshToken(
-	ctx context.Context,
-	refreshRepo repository.RefreshTokenRepository,
-	storedToken *entity.RefreshToken,
-) error {
-	storedToken.IsRevoked = true
-
-	return refreshRepo.UpdateRefreshToken(ctx, storedToken)
 }
 
 func (srv *userService) issueAndStoreRotatedTokenPair(
@@ -530,6 +503,7 @@ func (srv *userService) issueAndStoreRotatedTokenPair(
 		return "", "", err
 	}
 
+	storedToken.IsRevoked = true
 	storedToken.ReplacedBy = &newRefreshToken.ID
 	if err := refreshRepo.UpdateRefreshToken(ctx, storedToken); err != nil {
 		return "", "", err

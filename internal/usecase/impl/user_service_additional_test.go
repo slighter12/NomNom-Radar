@@ -244,12 +244,6 @@ func TestUserService_RefreshToken_Success(t *testing.T) {
 					MerchantProfile: &entity.MerchantProfile{UserID: userID},
 				}, nil)
 			mockRefreshRepo.EXPECT().
-				UpdateRefreshToken(ctx, mock.MatchedBy(func(token *entity.RefreshToken) bool {
-					return token.ID == oldTokenID && token.IsRevoked && token.ReplacedBy == nil
-				})).
-				Return(nil).
-				Once()
-			mockRefreshRepo.EXPECT().
 				CreateRefreshToken(ctx, mock.MatchedBy(func(token *entity.RefreshToken) bool {
 					return token.UserID == userID &&
 						token.FamilyID == familyID &&
@@ -281,6 +275,75 @@ func TestUserService_RefreshToken_Success(t *testing.T) {
 	require.NotNil(t, output)
 	assert.Equal(t, "new-access-token", output.AccessToken)
 	assert.Equal(t, "new-refresh-token", output.RefreshToken)
+}
+
+func TestUserService_RefreshToken_ExpiredRevokedTokenTriggersReuseDetection(t *testing.T) {
+	fx := createTestUserService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	familyID := uuid.New()
+	notificationLoaded := make(chan struct{})
+	input := &usecase.RefreshTokenInput{RefreshToken: "expired-revoked-refresh-token"}
+
+	fx.tokenService.EXPECT().
+		ValidateToken(input.RefreshToken).
+		Return(&service.Claims{UserID: userID, Type: service.TokenTypeRefresh}, nil).
+		Once()
+	fx.tokenService.EXPECT().
+		HashToken(input.RefreshToken).
+		Return("expired-revoked-refresh-token-hash").
+		Once()
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
+			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
+
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+
+			mockUserRepo.EXPECT().
+				AcquireSessionMutex(ctx, userID).
+				Return(nil)
+			mockRefreshRepo.EXPECT().
+				FindRefreshTokenByHashIncludingRevoked(ctx, "expired-revoked-refresh-token-hash").
+				Return(&entity.RefreshToken{
+					ID:        uuid.New(),
+					UserID:    userID,
+					FamilyID:  familyID,
+					IsRevoked: true,
+					ExpiresAt: time.Now().Add(-time.Minute),
+				}, nil)
+			mockRefreshRepo.EXPECT().
+				RevokeTokenFamily(ctx, familyID).
+				Return(nil)
+
+			require.NoError(t, fn(mockFactory))
+		}).
+		Return(nil).
+		Once()
+	fx.deviceRepo.EXPECT().
+		FindDevicesByUser(mock.Anything, userID, mock.Anything).
+		Run(func(_ context.Context, _ uuid.UUID, _ repository.DeviceListFilter) {
+			close(notificationLoaded)
+		}).
+		Return(nil, nil).
+		Once()
+
+	output, err := fx.service.RefreshToken(ctx, input)
+
+	require.Error(t, err)
+	assert.Nil(t, output)
+	assert.True(t, errors.Is(err, domainerrors.ErrRefreshTokenInvalid))
+	fx.tokenService.AssertNotCalled(t, "RotateTokens", mock.Anything, mock.Anything)
+	select {
+	case <-notificationLoaded:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for token reuse notification device lookup")
+	}
 }
 
 func TestUserService_RefreshToken_UserIDMismatchReturnsInvalidToken(t *testing.T) {
