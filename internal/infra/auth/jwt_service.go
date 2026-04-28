@@ -28,6 +28,14 @@ type jwtService struct {
 	refreshTTL       time.Duration // Time-to-live for refresh tokens.
 }
 
+type linkingTokenMetadata struct {
+	Provider        string
+	ProviderUserID  string
+	RequestedRole   string
+	StoreName       string
+	BusinessLicense string
+}
+
 // NewJWTService is the constructor for jwtService.
 // It takes configuration values to create a new token service instance.
 func NewJWTService(cfg *config.Config) (service.TokenService, error) {
@@ -71,12 +79,12 @@ func deriveTokenSecret(accessSecret, tokenType string) string {
 
 // GenerateTokens creates a new access token and refresh token for a given user and roles.
 func (s *jwtService) GenerateTokens(userID uuid.UUID, roles []string) (accessToken string, refreshToken string, err error) {
-	accessToken, err = s.generateToken(userID, roles, s.accessTTL, s.accessSecret, service.TokenTypeAccess)
+	accessToken, err = s.generateToken(userID, roles, s.accessTTL, s.accessSecret, service.TokenTypeAccess, nil)
 	if err != nil {
 		return "", "", err
 	}
 
-	refreshToken, err = s.generateToken(userID, nil, s.refreshTTL, s.refreshSecret, service.TokenTypeRefresh)
+	refreshToken, err = s.generateToken(userID, nil, s.refreshTTL, s.refreshSecret, service.TokenTypeRefresh, nil)
 	if err != nil {
 		return "", "", err
 	}
@@ -101,7 +109,7 @@ func (s *jwtService) ValidateToken(tokenString string) (*service.Claims, error) 
 
 // GenerateOnboardingToken creates a short-lived onboarding token for a given user.
 func (s *jwtService) GenerateOnboardingToken(userID uuid.UUID) (string, error) {
-	token, err := s.generateToken(userID, nil, s.onboardingTTL, s.onboardingSecret, service.TokenTypeOnboarding)
+	token, err := s.generateToken(userID, nil, s.onboardingTTL, s.onboardingSecret, service.TokenTypeOnboarding, nil)
 	if err != nil {
 		return "", err
 	}
@@ -124,11 +132,13 @@ func (s *jwtService) GenerateLinkingToken(
 		s.linkingTTL,
 		s.linkingSecret,
 		service.TokenTypeLinking,
-		provider,
-		providerUserID,
-		requestedRole,
-		storeName,
-		businessLicense,
+		&linkingTokenMetadata{
+			Provider:        provider,
+			ProviderUserID:  providerUserID,
+			RequestedRole:   requestedRole,
+			StoreName:       storeName,
+			BusinessLicense: businessLicense,
+		},
 	)
 	if err != nil {
 		return "", err
@@ -222,7 +232,7 @@ func (s *jwtService) generateToken(
 	roles []string,
 	ttl time.Duration,
 	secret, tokenType string,
-	linkingMetadata ...string,
+	linkingMetadata *linkingTokenMetadata,
 ) (string, error) {
 	claims := service.Claims{
 		UserID: userID,
@@ -236,14 +246,12 @@ func (s *jwtService) generateToken(
 		},
 		Type: tokenType,
 	}
-	if len(linkingMetadata) >= 2 {
-		claims.Provider = linkingMetadata[0]
-		claims.ProviderUserID = linkingMetadata[1]
-	}
-	if len(linkingMetadata) >= 5 {
-		claims.RequestedRole = linkingMetadata[2]
-		claims.StoreName = linkingMetadata[3]
-		claims.BusinessLicense = linkingMetadata[4]
+	if linkingMetadata != nil {
+		claims.Provider = linkingMetadata.Provider
+		claims.ProviderUserID = linkingMetadata.ProviderUserID
+		claims.RequestedRole = linkingMetadata.RequestedRole
+		claims.StoreName = linkingMetadata.StoreName
+		claims.BusinessLicense = linkingMetadata.BusinessLicense
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
