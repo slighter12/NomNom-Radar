@@ -193,6 +193,9 @@ func TestUserService_RefreshToken_Success(t *testing.T) {
 
 	ctx := context.Background()
 	userID := uuid.New()
+	oldTokenID := uuid.New()
+	newTokenID := uuid.New()
+	familyID := uuid.New()
 	input := &usecase.RefreshTokenInput{RefreshToken: "refresh-token"}
 
 	fx.tokenService.EXPECT().
@@ -204,8 +207,12 @@ func TestUserService_RefreshToken_Success(t *testing.T) {
 		Return("refresh-token-hash").
 		Once()
 	fx.tokenService.EXPECT().
-		GenerateTokens(userID, []string{"user", "merchant"}).
-		Return("new-access-token", "ignored-refresh-token", nil).
+		RotateTokens(userID, []string{"user", "merchant"}).
+		Return("new-access-token", "new-refresh-token", "new-refresh-token-hash", nil).
+		Once()
+	fx.tokenService.EXPECT().
+		GetRefreshTokenDuration().
+		Return(24 * time.Hour).
 		Once()
 
 	fx.txManager.EXPECT().
@@ -218,9 +225,17 @@ func TestUserService_RefreshToken_Success(t *testing.T) {
 			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
 			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
 
+			mockUserRepo.EXPECT().
+				AcquireSessionMutex(ctx, userID).
+				Return(nil)
 			mockRefreshRepo.EXPECT().
-				FindRefreshTokenByHash(ctx, "refresh-token-hash").
-				Return(&entity.RefreshToken{ID: uuid.New(), UserID: userID}, nil)
+				FindRefreshTokenByHashIncludingRevoked(ctx, "refresh-token-hash").
+				Return(&entity.RefreshToken{
+					ID:        oldTokenID,
+					UserID:    userID,
+					FamilyID:  familyID,
+					ExpiresAt: time.Now().Add(time.Hour),
+				}, nil)
 			mockUserRepo.EXPECT().
 				FindByID(ctx, userID).
 				Return(&entity.User{
@@ -228,6 +243,26 @@ func TestUserService_RefreshToken_Success(t *testing.T) {
 					UserProfile:     &entity.UserProfile{UserID: userID},
 					MerchantProfile: &entity.MerchantProfile{UserID: userID},
 				}, nil)
+			mockRefreshRepo.EXPECT().
+				CreateRefreshToken(ctx, mock.MatchedBy(func(token *entity.RefreshToken) bool {
+					return token.UserID == userID &&
+						token.FamilyID == familyID &&
+						token.TokenHash == "new-refresh-token-hash"
+				})).
+				Run(func(_ context.Context, token *entity.RefreshToken) {
+					token.ID = newTokenID
+				}).
+				Return(nil).
+				Once()
+			mockRefreshRepo.EXPECT().
+				UpdateRefreshToken(ctx, mock.MatchedBy(func(token *entity.RefreshToken) bool {
+					return token.ID == oldTokenID &&
+						token.IsRevoked &&
+						token.ReplacedBy != nil &&
+						*token.ReplacedBy == newTokenID
+				})).
+				Return(nil).
+				Once()
 
 			require.NoError(t, fn(mockFactory))
 		}).
@@ -239,6 +274,127 @@ func TestUserService_RefreshToken_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, output)
 	assert.Equal(t, "new-access-token", output.AccessToken)
+	assert.Equal(t, "new-refresh-token", output.RefreshToken)
+}
+
+func TestUserService_RefreshToken_ExpiredRevokedTokenTriggersReuseDetection(t *testing.T) {
+	fx := createTestUserService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	familyID := uuid.New()
+	notificationLoaded := make(chan struct{})
+	input := &usecase.RefreshTokenInput{RefreshToken: "expired-revoked-refresh-token"}
+
+	fx.tokenService.EXPECT().
+		ValidateToken(input.RefreshToken).
+		Return(&service.Claims{UserID: userID, Type: service.TokenTypeRefresh}, nil).
+		Once()
+	fx.tokenService.EXPECT().
+		HashToken(input.RefreshToken).
+		Return("expired-revoked-refresh-token-hash").
+		Once()
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
+			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
+
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+
+			mockUserRepo.EXPECT().
+				AcquireSessionMutex(ctx, userID).
+				Return(nil)
+			mockRefreshRepo.EXPECT().
+				FindRefreshTokenByHashIncludingRevoked(ctx, "expired-revoked-refresh-token-hash").
+				Return(&entity.RefreshToken{
+					ID:        uuid.New(),
+					UserID:    userID,
+					FamilyID:  familyID,
+					IsRevoked: true,
+					ExpiresAt: time.Now().Add(-time.Minute),
+				}, nil)
+			mockRefreshRepo.EXPECT().
+				RevokeTokenFamily(ctx, familyID).
+				Return(nil)
+
+			require.NoError(t, fn(mockFactory))
+		}).
+		Return(nil).
+		Once()
+	fx.deviceRepo.EXPECT().
+		FindDevicesByUser(mock.Anything, userID, mock.Anything).
+		Run(func(_ context.Context, _ uuid.UUID, _ repository.DeviceListFilter) {
+			close(notificationLoaded)
+		}).
+		Return(nil, nil).
+		Once()
+
+	output, err := fx.service.RefreshToken(ctx, input)
+
+	require.Error(t, err)
+	assert.Nil(t, output)
+	assert.True(t, errors.Is(err, domainerrors.ErrRefreshTokenInvalid))
+	fx.tokenService.AssertNotCalled(t, "RotateTokens", mock.Anything, mock.Anything)
+	select {
+	case <-notificationLoaded:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for token reuse notification device lookup")
+	}
+}
+
+func TestUserService_RefreshToken_UserIDMismatchReturnsInvalidToken(t *testing.T) {
+	fx := createTestUserService(t)
+
+	ctx := context.Background()
+	claimsUserID := uuid.New()
+	storedTokenUserID := uuid.New()
+	input := &usecase.RefreshTokenInput{RefreshToken: "refresh-token"}
+
+	fx.tokenService.EXPECT().
+		ValidateToken(input.RefreshToken).
+		Return(&service.Claims{UserID: claimsUserID, Type: service.TokenTypeRefresh}, nil).
+		Once()
+	fx.tokenService.EXPECT().
+		HashToken(input.RefreshToken).
+		Return("refresh-token-hash").
+		Once()
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
+			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
+
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+
+			mockUserRepo.EXPECT().
+				AcquireSessionMutex(ctx, claimsUserID).
+				Return(nil)
+			mockRefreshRepo.EXPECT().
+				FindRefreshTokenByHashIncludingRevoked(ctx, "refresh-token-hash").
+				Return(&entity.RefreshToken{
+					ID:        uuid.New(),
+					UserID:    storedTokenUserID,
+					FamilyID:  uuid.New(),
+					ExpiresAt: time.Now().Add(time.Hour),
+				}, nil)
+
+			require.ErrorIs(t, fn(mockFactory), domainerrors.ErrRefreshTokenInvalid)
+		}).
+		Return(domainerrors.ErrRefreshTokenInvalid).
+		Once()
+
+	output, err := fx.service.RefreshToken(ctx, input)
+
+	require.Error(t, err)
+	assert.Nil(t, output)
+	assert.True(t, errors.Is(err, domainerrors.ErrRefreshTokenInvalid))
 }
 
 func TestUserService_RefreshToken_InvalidTokenType(t *testing.T) {
@@ -281,11 +437,16 @@ func TestUserService_RefreshToken_RefreshTokenNotFound(t *testing.T) {
 		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
 		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
 			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
 			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
 			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+			mockUserRepo.EXPECT().
+				AcquireSessionMutex(ctx, userID).
+				Return(nil)
 			mockRefreshRepo.EXPECT().
-				FindRefreshTokenByHash(ctx, "missing-refresh-token-hash").
+				FindRefreshTokenByHashIncludingRevoked(ctx, "missing-refresh-token-hash").
 				Return(nil, domainerrors.ErrRefreshTokenNotFound)
 
 			return fn(mockFactory)
@@ -296,9 +457,8 @@ func TestUserService_RefreshToken_RefreshTokenNotFound(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Nil(t, output)
-	assert.True(t, errors.Is(err, domainerrors.ErrRefreshTokenNotFound))
-	fx.refreshTokenRepo.AssertNotCalled(t, "DeleteRefreshTokenByHash", mock.Anything, mock.Anything)
-	fx.tokenService.AssertNotCalled(t, "GenerateTokens", mock.Anything, mock.Anything)
+	assert.True(t, errors.Is(err, domainerrors.ErrRefreshTokenInvalid))
+	fx.tokenService.AssertNotCalled(t, "RotateTokens", mock.Anything, mock.Anything)
 }
 
 func TestUserService_RefreshToken_RefreshTokenExpired(t *testing.T) {
@@ -321,12 +481,22 @@ func TestUserService_RefreshToken_RefreshTokenExpired(t *testing.T) {
 		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
 		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
 			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
 			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
 			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+			mockUserRepo.EXPECT().
+				AcquireSessionMutex(ctx, userID).
+				Return(nil)
 			mockRefreshRepo.EXPECT().
-				FindRefreshTokenByHash(ctx, "expired-refresh-token-hash").
-				Return(nil, domainerrors.ErrRefreshTokenExpired)
+				FindRefreshTokenByHashIncludingRevoked(ctx, "expired-refresh-token-hash").
+				Return(&entity.RefreshToken{
+					ID:        uuid.New(),
+					UserID:    userID,
+					FamilyID:  uuid.New(),
+					ExpiresAt: time.Now().Add(-time.Minute),
+				}, nil)
 
 			return fn(mockFactory)
 		}).
@@ -337,8 +507,7 @@ func TestUserService_RefreshToken_RefreshTokenExpired(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, output)
 	assert.True(t, errors.Is(err, domainerrors.ErrRefreshTokenExpired))
-	fx.refreshTokenRepo.AssertNotCalled(t, "DeleteRefreshTokenByHash", mock.Anything, mock.Anything)
-	fx.tokenService.AssertNotCalled(t, "GenerateTokens", mock.Anything, mock.Anything)
+	fx.tokenService.AssertNotCalled(t, "RotateTokens", mock.Anything, mock.Anything)
 }
 
 func TestUserService_RefreshToken_UserNotFound_CleansOrphanToken(t *testing.T) {
@@ -366,20 +535,23 @@ func TestUserService_RefreshToken_UserNotFound_CleansOrphanToken(t *testing.T) {
 
 			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
 			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+			mockUserRepo.EXPECT().
+				AcquireSessionMutex(ctx, userID).
+				Return(nil)
 			mockRefreshRepo.EXPECT().
-				FindRefreshTokenByHash(ctx, "orphan-refresh-token-hash").
-				Return(&entity.RefreshToken{ID: uuid.New(), UserID: userID}, nil)
+				FindRefreshTokenByHashIncludingRevoked(ctx, "orphan-refresh-token-hash").
+				Return(&entity.RefreshToken{
+					ID:        uuid.New(),
+					UserID:    userID,
+					FamilyID:  uuid.New(),
+					ExpiresAt: time.Now().Add(time.Hour),
+				}, nil)
 			mockUserRepo.EXPECT().
 				FindByID(ctx, userID).
 				Return(nil, domainerrors.ErrUserNotFound)
 
 			return fn(mockFactory)
 		}).
-		Once()
-
-	fx.refreshTokenRepo.EXPECT().
-		DeleteRefreshTokenByHash(ctx, "orphan-refresh-token-hash").
-		Return(nil).
 		Once()
 
 	output, err := fx.service.RefreshToken(ctx, input)
@@ -414,20 +586,23 @@ func TestUserService_RefreshToken_UserNotFound_CleanupFailureStillReturnsUnautho
 
 			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
 			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+			mockUserRepo.EXPECT().
+				AcquireSessionMutex(ctx, userID).
+				Return(nil)
 			mockRefreshRepo.EXPECT().
-				FindRefreshTokenByHash(ctx, "orphan-refresh-token-hash").
-				Return(&entity.RefreshToken{ID: uuid.New(), UserID: userID}, nil)
+				FindRefreshTokenByHashIncludingRevoked(ctx, "orphan-refresh-token-hash").
+				Return(&entity.RefreshToken{
+					ID:        uuid.New(),
+					UserID:    userID,
+					FamilyID:  uuid.New(),
+					ExpiresAt: time.Now().Add(time.Hour),
+				}, nil)
 			mockUserRepo.EXPECT().
 				FindByID(ctx, userID).
 				Return(nil, domainerrors.ErrUserNotFound)
 
 			return fn(mockFactory)
 		}).
-		Once()
-
-	fx.refreshTokenRepo.EXPECT().
-		DeleteRefreshTokenByHash(ctx, "orphan-refresh-token-hash").
-		Return(errors.New("cleanup failed")).
 		Once()
 
 	output, err := fx.service.RefreshToken(ctx, input)
@@ -442,6 +617,7 @@ func TestUserService_Logout_InvalidTokenStillDeletesRefreshToken(t *testing.T) {
 
 	ctx := context.Background()
 	input := &usecase.LogoutInput{RefreshToken: "stale-refresh-token"}
+	familyID := uuid.New()
 
 	fx.tokenService.EXPECT().
 		ValidateToken(input.RefreshToken).
@@ -451,8 +627,30 @@ func TestUserService_Logout_InvalidTokenStillDeletesRefreshToken(t *testing.T) {
 		HashToken(input.RefreshToken).
 		Return("stale-refresh-token-hash").
 		Once()
-	fx.refreshTokenRepo.EXPECT().
-		DeleteRefreshTokenByHash(ctx, "stale-refresh-token-hash").
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
+
+			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+
+			storedToken := &entity.RefreshToken{ID: uuid.New(), UserID: uuid.New(), FamilyID: familyID}
+			mockRefreshRepo.EXPECT().
+				FindRefreshTokenByHashIncludingRevoked(ctx, "stale-refresh-token-hash").
+				Return(storedToken, nil)
+			mockUserRepo.EXPECT().
+				AcquireSessionMutex(ctx, storedToken.UserID).
+				Return(nil)
+			mockRefreshRepo.EXPECT().
+				RevokeTokenFamily(ctx, familyID).
+				Return(nil)
+
+			require.NoError(t, fn(mockFactory))
+		}).
 		Return(nil).
 		Once()
 
@@ -473,9 +671,22 @@ func TestUserService_Logout_RefreshTokenNotFoundIsIdempotent(t *testing.T) {
 		HashToken(input.RefreshToken).
 		Return("already-deleted-token-hash").
 		Once()
-	fx.refreshTokenRepo.EXPECT().
-		DeleteRefreshTokenByHash(ctx, "already-deleted-token-hash").
-		Return(domainerrors.ErrRefreshTokenNotFound).
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
+
+			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+			mockRefreshRepo.EXPECT().
+				FindRefreshTokenByHashIncludingRevoked(ctx, "already-deleted-token-hash").
+				Return(nil, domainerrors.ErrRefreshTokenNotFound)
+
+			require.NoError(t, fn(mockFactory))
+		}).
+		Return(nil).
 		Once()
 
 	require.NoError(t, fx.service.Logout(ctx, input))
@@ -486,6 +697,7 @@ func TestUserService_Logout_DeleteRefreshTokenErrorReturnsInternalError(t *testi
 
 	ctx := context.Background()
 	input := &usecase.LogoutInput{RefreshToken: "delete-error-token"}
+	familyID := uuid.New()
 
 	fx.tokenService.EXPECT().
 		ValidateToken(input.RefreshToken).
@@ -495,8 +707,29 @@ func TestUserService_Logout_DeleteRefreshTokenErrorReturnsInternalError(t *testi
 		HashToken(input.RefreshToken).
 		Return("delete-error-token-hash").
 		Once()
-	fx.refreshTokenRepo.EXPECT().
-		DeleteRefreshTokenByHash(ctx, "delete-error-token-hash").
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
+
+			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+
+			storedToken := &entity.RefreshToken{ID: uuid.New(), UserID: uuid.New(), FamilyID: familyID}
+			mockRefreshRepo.EXPECT().
+				FindRefreshTokenByHashIncludingRevoked(ctx, "delete-error-token-hash").
+				Return(storedToken, nil)
+			mockUserRepo.EXPECT().
+				AcquireSessionMutex(ctx, storedToken.UserID).
+				Return(nil)
+			mockRefreshRepo.EXPECT().
+				RevokeTokenFamily(ctx, familyID).
+				Return(errors.New("db error"))
+
+			require.Error(t, fn(mockFactory))
+		}).
 		Return(errors.New("db error")).
 		Once()
 
@@ -513,7 +746,7 @@ func TestUserService_LogoutAllDevices_Success(t *testing.T) {
 	userID := uuid.New()
 
 	fx.refreshTokenRepo.EXPECT().
-		DeleteRefreshTokensByUserID(ctx, userID).
+		RevokeTokenFamiliesByUserID(ctx, userID).
 		Return(nil).
 		Once()
 
@@ -540,7 +773,7 @@ func TestUserService_GetActiveSessions_Success(t *testing.T) {
 	assert.Equal(t, sessions, got)
 }
 
-func TestUserService_GoogleCallback_ExistingEmailUserLinksGoogleAuth(t *testing.T) {
+func TestUserService_GoogleCallback_ExistingEmailUserReturnsLinkingRequired(t *testing.T) {
 	fx := createTestUserService(t)
 
 	ctx := context.Background()
@@ -561,16 +794,8 @@ func TestUserService_GoogleCallback_ExistingEmailUserLinksGoogleAuth(t *testing.
 		Return(oauthUser, nil).
 		Once()
 	fx.tokenService.EXPECT().
-		GenerateTokens(userID, []string{"user"}).
-		Return("access-token", "refresh-token", nil).
-		Once()
-	fx.tokenService.EXPECT().
-		HashToken("refresh-token").
-		Return("refresh-token-hash").
-		Once()
-	fx.tokenService.EXPECT().
-		GetRefreshTokenDuration().
-		Return(time.Hour).
+		GenerateLinkingToken(userID, entity.ProviderTypeGoogle.String(), oauthUser.ID, entity.RoleUser.String(), "", "").
+		Return("linking-token", nil).
 		Once()
 
 	fx.txManager.EXPECT().
@@ -593,43 +818,23 @@ func TestUserService_GoogleCallback_ExistingEmailUserLinksGoogleAuth(t *testing.
 					Email:       oauthUser.Email,
 					UserProfile: &entity.UserProfile{UserID: userID},
 				}, nil)
-			mockAuthRepo.EXPECT().
-				FindAuthenticationByUserIDAndProvider(ctx, userID, entity.ProviderTypeGoogle).
-				Return(nil, domainerrors.ErrAuthNotFound)
-			mockAuthRepo.EXPECT().
-				CreateAuthentication(ctx, mock.AnythingOfType("*entity.Authentication")).
-				Run(func(_ context.Context, auth *entity.Authentication) {
-					assert.Equal(t, userID, auth.UserID)
-					assert.Equal(t, entity.ProviderTypeGoogle, auth.Provider)
-					assert.Equal(t, oauthUser.ID, auth.ProviderUserID)
-				}).
-				Return(nil)
 
 			return fn(mockFactory)
 		}).
-		Once()
-	fx.refreshTokenRepo.EXPECT().
-		CreateRefreshToken(ctx, mock.AnythingOfType("*entity.RefreshToken")).
-		Run(func(_ context.Context, token *entity.RefreshToken) {
-			assert.Equal(t, userID, token.UserID)
-			assert.Equal(t, "refresh-token-hash", token.TokenHash)
-			assert.False(t, token.ExpiresAt.IsZero())
-		}).
-		Return(nil).
 		Once()
 
 	output, err := fx.service.GoogleCallback(ctx, input)
 
 	require.NoError(t, err)
 	require.NotNil(t, output)
-	assert.Equal(t, usecase.AuthStatusAuthenticated, output.Status)
-	assert.Equal(t, "access-token", output.AccessToken)
-	assert.Equal(t, "refresh-token", output.RefreshToken)
-	require.NotNil(t, output.User)
-	require.NotNil(t, output.User.UserProfile)
+	assert.Equal(t, usecase.AuthStatusLinkingRequired, output.Status)
+	assert.Equal(t, "linking-token", output.LinkingToken)
+	assert.Empty(t, output.AccessToken)
+	assert.Empty(t, output.RefreshToken)
+	assert.Nil(t, output.User)
 }
 
-func TestUserService_GoogleCallback_ExistingEmailUserMerchantStateAttachesMerchantProfile(t *testing.T) {
+func TestUserService_GoogleCallback_ExistingEmailMerchantStateReturnsLinkingRequired(t *testing.T) {
 	fx := createTestUserService(t)
 
 	ctx := context.Background()
@@ -652,16 +857,15 @@ func TestUserService_GoogleCallback_ExistingEmailUserMerchantStateAttachesMercha
 		Return(oauthUser, nil).
 		Once()
 	fx.tokenService.EXPECT().
-		GenerateTokens(userID, []string{"user", "merchant"}).
-		Return("access-token", "refresh-token", nil).
-		Once()
-	fx.tokenService.EXPECT().
-		HashToken("refresh-token").
-		Return("refresh-token-hash").
-		Once()
-	fx.tokenService.EXPECT().
-		GetRefreshTokenDuration().
-		Return(time.Hour).
+		GenerateLinkingToken(
+			userID,
+			entity.ProviderTypeGoogle.String(),
+			oauthUser.ID,
+			entity.RoleMerchant.String(),
+			input.StoreName,
+			input.BusinessLicense,
+		).
+		Return("linking-token", nil).
 		Once()
 
 	fx.txManager.EXPECT().
@@ -684,14 +888,90 @@ func TestUserService_GoogleCallback_ExistingEmailUserMerchantStateAttachesMercha
 					Email:       oauthUser.Email,
 					UserProfile: &entity.UserProfile{UserID: userID},
 				}, nil)
+
+			return fn(mockFactory)
+		}).
+		Once()
+
+	output, err := fx.service.GoogleCallback(ctx, input)
+
+	require.NoError(t, err)
+	require.NotNil(t, output)
+	assert.Equal(t, usecase.AuthStatusLinkingRequired, output.Status)
+	assert.Equal(t, "linking-token", output.LinkingToken)
+	assert.Empty(t, output.AccessToken)
+	assert.Empty(t, output.RefreshToken)
+	assert.Nil(t, output.User)
+}
+
+func TestUserService_LinkProvider_Success(t *testing.T) {
+	fx := createTestUserService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	input := usecase.LinkProviderInput{
+		LinkingToken: "linking-token",
+		Password:     "Password123!",
+	}
+	user := &entity.User{
+		ID:          userID,
+		Email:       "member@example.com",
+		UserProfile: &entity.UserProfile{UserID: userID},
+	}
+
+	fx.tokenService.EXPECT().
+		ValidateToken(input.LinkingToken).
+		Return(&service.Claims{
+			UserID:         userID,
+			Type:           service.TokenTypeLinking,
+			Provider:       entity.ProviderTypeGoogle.String(),
+			ProviderUserID: "google-user-id",
+		}, nil).
+		Once()
+	fx.hasher.EXPECT().
+		Check(input.Password, "hashed-password").
+		Return(true).
+		Once()
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
+			mockAuthRepo := mockRepo.NewMockAuthRepository(t)
+
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+			mockFactory.EXPECT().AuthRepo().Return(mockAuthRepo)
+
 			mockUserRepo.EXPECT().
-				Update(ctx, mock.AnythingOfType("*entity.User")).
-				Run(func(_ context.Context, user *entity.User) {
-					require.NotNil(t, user.MerchantProfile)
-					assert.Equal(t, input.StoreName, user.MerchantProfile.StoreName)
-					assert.Equal(t, input.BusinessLicense, user.MerchantProfile.BusinessLicense)
-				}).
-				Return(nil)
+				FindByID(ctx, userID).
+				Return(user, nil)
+			mockAuthRepo.EXPECT().
+				FindAuthenticationByUserIDAndProvider(ctx, userID, entity.ProviderTypeEmail).
+				Return(&entity.Authentication{
+					UserID:       userID,
+					Provider:     entity.ProviderTypeEmail,
+					PasswordHash: "hashed-password",
+				}, nil)
+			mockAuthRepo.EXPECT().
+				FindAuthentication(ctx, entity.ProviderTypeGoogle, "google-user-id").
+				Return(nil, domainerrors.ErrAuthNotFound)
+
+			return fn(mockFactory)
+		}).
+		Once()
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
+			mockAuthRepo := mockRepo.NewMockAuthRepository(t)
+
+			mockFactory.EXPECT().AuthRepo().Return(mockAuthRepo)
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+			mockAuthRepo.EXPECT().
+				FindAuthentication(ctx, entity.ProviderTypeGoogle, "google-user-id").
+				Return(nil, domainerrors.ErrAuthNotFound)
 			mockAuthRepo.EXPECT().
 				FindAuthenticationByUserIDAndProvider(ctx, userID, entity.ProviderTypeGoogle).
 				Return(nil, domainerrors.ErrAuthNotFound)
@@ -700,26 +980,333 @@ func TestUserService_GoogleCallback_ExistingEmailUserMerchantStateAttachesMercha
 				Run(func(_ context.Context, auth *entity.Authentication) {
 					assert.Equal(t, userID, auth.UserID)
 					assert.Equal(t, entity.ProviderTypeGoogle, auth.Provider)
-					assert.Equal(t, oauthUser.ID, auth.ProviderUserID)
+					assert.Equal(t, "google-user-id", auth.ProviderUserID)
 				}).
 				Return(nil)
 
 			return fn(mockFactory)
 		}).
 		Once()
+
+	fx.tokenService.EXPECT().
+		GenerateTokens(userID, []string{"user"}).
+		Return("access-token", "refresh-token", nil).
+		Once()
+	fx.tokenService.EXPECT().
+		HashToken("refresh-token").
+		Return("refresh-token-hash").
+		Once()
+	fx.tokenService.EXPECT().
+		GetRefreshTokenDuration().
+		Return(time.Hour).
+		Once()
 	fx.refreshTokenRepo.EXPECT().
 		CreateRefreshToken(ctx, mock.AnythingOfType("*entity.RefreshToken")).
 		Return(nil).
 		Once()
 
-	output, err := fx.service.GoogleCallback(ctx, input)
+	attemptKey := entity.NormalizeEmail(user.Email)
+	fx.loginAttemptRepo.EXPECT().
+		DecayLockoutCounts(ctx, 7).
+		Return(nil).
+		Once()
+	fx.authRepo.EXPECT().
+		FindAuthentication(ctx, entity.ProviderTypeEmail, attemptKey).
+		Return(&entity.Authentication{UserID: userID, Provider: entity.ProviderTypeEmail, ProviderUserID: attemptKey}, nil).
+		Once()
+	fx.loginAttemptRepo.EXPECT().
+		FindOrCreateByAttemptKey(ctx, attemptKey, &userID).
+		Return(&entity.LoginAttempt{AttemptKey: attemptKey, UserID: &userID}, nil).
+		Once()
+	fx.loginAttemptRepo.EXPECT().
+		ResetOnSuccess(ctx, attemptKey).
+		Return(nil).
+		Once()
+
+	output, err := fx.service.LinkProvider(ctx, input)
+
+	require.NoError(t, err)
+	require.NotNil(t, output)
+	assert.Equal(t, usecase.AuthStatusAuthenticated, output.Status)
+	assert.Equal(t, "access-token", output.AccessToken)
+	assert.Equal(t, "refresh-token", output.RefreshToken)
+	require.NotNil(t, output.User)
+	assert.Equal(t, userID, output.User.ID)
+}
+
+func TestUserService_LinkProvider_MerchantIntentAttachesMerchantProfile(t *testing.T) {
+	fx := createTestUserService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	input := usecase.LinkProviderInput{
+		LinkingToken: "merchant-linking-token",
+		Password:     "Password123!",
+	}
+	user := &entity.User{
+		ID:          userID,
+		Name:        "Merchant Owner",
+		Email:       "member@example.com",
+		UserProfile: &entity.UserProfile{UserID: userID},
+	}
+
+	fx.tokenService.EXPECT().
+		ValidateToken(input.LinkingToken).
+		Return(&service.Claims{
+			UserID:          userID,
+			Type:            service.TokenTypeLinking,
+			Provider:        entity.ProviderTypeGoogle.String(),
+			ProviderUserID:  "google-user-id",
+			RequestedRole:   entity.RoleMerchant.String(),
+			StoreName:       "NomNom Bento",
+			BusinessLicense: "A123456789",
+		}, nil).
+		Once()
+	fx.hasher.EXPECT().
+		Check(input.Password, "hashed-password").
+		Return(true).
+		Once()
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
+			mockAuthRepo := mockRepo.NewMockAuthRepository(t)
+
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+			mockFactory.EXPECT().AuthRepo().Return(mockAuthRepo)
+			mockUserRepo.EXPECT().
+				FindByID(ctx, userID).
+				Return(user, nil)
+			mockAuthRepo.EXPECT().
+				FindAuthenticationByUserIDAndProvider(ctx, userID, entity.ProviderTypeEmail).
+				Return(&entity.Authentication{
+					UserID:       userID,
+					Provider:     entity.ProviderTypeEmail,
+					PasswordHash: "hashed-password",
+				}, nil)
+			mockAuthRepo.EXPECT().
+				FindAuthentication(ctx, entity.ProviderTypeGoogle, "google-user-id").
+				Return(nil, domainerrors.ErrAuthNotFound)
+
+			return fn(mockFactory)
+		}).
+		Once()
+
+	attemptKey := entity.NormalizeEmail(user.Email)
+	fx.loginAttemptRepo.EXPECT().
+		DecayLockoutCounts(ctx, 7).
+		Return(nil).
+		Once()
+	fx.authRepo.EXPECT().
+		FindAuthentication(ctx, entity.ProviderTypeEmail, attemptKey).
+		Return(&entity.Authentication{UserID: userID, Provider: entity.ProviderTypeEmail, ProviderUserID: attemptKey}, nil).
+		Once()
+	fx.loginAttemptRepo.EXPECT().
+		FindOrCreateByAttemptKey(ctx, attemptKey, &userID).
+		Return(&entity.LoginAttempt{AttemptKey: attemptKey, UserID: &userID}, nil).
+		Once()
+	fx.loginAttemptRepo.EXPECT().
+		ResetOnSuccess(ctx, attemptKey).
+		Return(nil).
+		Once()
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
+			mockAuthRepo := mockRepo.NewMockAuthRepository(t)
+
+			mockFactory.EXPECT().AuthRepo().Return(mockAuthRepo)
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+			mockAuthRepo.EXPECT().
+				FindAuthentication(ctx, entity.ProviderTypeGoogle, "google-user-id").
+				Return(nil, domainerrors.ErrAuthNotFound)
+			mockAuthRepo.EXPECT().
+				FindAuthenticationByUserIDAndProvider(ctx, userID, entity.ProviderTypeGoogle).
+				Return(nil, domainerrors.ErrAuthNotFound)
+			mockAuthRepo.EXPECT().
+				CreateAuthentication(ctx, mock.AnythingOfType("*entity.Authentication")).
+				Return(nil)
+			mockUserRepo.EXPECT().
+				Update(ctx, mock.AnythingOfType("*entity.User")).
+				Run(func(_ context.Context, user *entity.User) {
+					require.NotNil(t, user.MerchantProfile)
+					assert.Equal(t, userID, user.MerchantProfile.UserID)
+					assert.Equal(t, "NomNom Bento", user.MerchantProfile.StoreName)
+					assert.Equal(t, "A123456789", user.MerchantProfile.BusinessLicense)
+				}).
+				Return(nil)
+
+			return fn(mockFactory)
+		}).
+		Once()
+
+	fx.tokenService.EXPECT().
+		GenerateTokens(userID, []string{"user", "merchant"}).
+		Return("access-token", "refresh-token", nil).
+		Once()
+	fx.tokenService.EXPECT().
+		HashToken("refresh-token").
+		Return("refresh-token-hash").
+		Once()
+	fx.tokenService.EXPECT().
+		GetRefreshTokenDuration().
+		Return(time.Hour).
+		Once()
+	fx.refreshTokenRepo.EXPECT().
+		CreateRefreshToken(ctx, mock.AnythingOfType("*entity.RefreshToken")).
+		Return(nil).
+		Once()
+
+	output, err := fx.service.LinkProvider(ctx, input)
 
 	require.NoError(t, err)
 	require.NotNil(t, output)
 	assert.Equal(t, usecase.AuthStatusAuthenticated, output.Status)
 	require.NotNil(t, output.User)
+	require.NotNil(t, output.User.UserProfile)
 	require.NotNil(t, output.User.MerchantProfile)
-	assert.Equal(t, input.StoreName, output.User.MerchantProfile.StoreName)
+}
+
+func TestUserService_LinkProvider_UserIntentAttachesUserProfile(t *testing.T) {
+	fx := createTestUserService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	input := usecase.LinkProviderInput{
+		LinkingToken: "user-linking-token",
+		Password:     "Password123!",
+	}
+	user := &entity.User{
+		ID:    userID,
+		Name:  "Merchant Owner",
+		Email: "merchant@example.com",
+		MerchantProfile: &entity.MerchantProfile{
+			UserID:          userID,
+			StoreName:       "NomNom Bento",
+			BusinessLicense: "A123456789",
+		},
+	}
+
+	fx.tokenService.EXPECT().
+		ValidateToken(input.LinkingToken).
+		Return(&service.Claims{
+			UserID:         userID,
+			Type:           service.TokenTypeLinking,
+			Provider:       entity.ProviderTypeGoogle.String(),
+			ProviderUserID: "google-user-id",
+			RequestedRole:  entity.RoleUser.String(),
+		}, nil).
+		Once()
+	fx.hasher.EXPECT().
+		Check(input.Password, "hashed-password").
+		Return(true).
+		Once()
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
+			mockAuthRepo := mockRepo.NewMockAuthRepository(t)
+
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+			mockFactory.EXPECT().AuthRepo().Return(mockAuthRepo)
+			mockUserRepo.EXPECT().
+				FindByID(ctx, userID).
+				Return(user, nil)
+			mockAuthRepo.EXPECT().
+				FindAuthenticationByUserIDAndProvider(ctx, userID, entity.ProviderTypeEmail).
+				Return(&entity.Authentication{
+					UserID:       userID,
+					Provider:     entity.ProviderTypeEmail,
+					PasswordHash: "hashed-password",
+				}, nil)
+			mockAuthRepo.EXPECT().
+				FindAuthentication(ctx, entity.ProviderTypeGoogle, "google-user-id").
+				Return(nil, domainerrors.ErrAuthNotFound)
+
+			return fn(mockFactory)
+		}).
+		Once()
+
+	attemptKey := entity.NormalizeEmail(user.Email)
+	fx.loginAttemptRepo.EXPECT().
+		DecayLockoutCounts(ctx, 7).
+		Return(nil).
+		Once()
+	fx.authRepo.EXPECT().
+		FindAuthentication(ctx, entity.ProviderTypeEmail, attemptKey).
+		Return(&entity.Authentication{UserID: userID, Provider: entity.ProviderTypeEmail, ProviderUserID: attemptKey}, nil).
+		Once()
+	fx.loginAttemptRepo.EXPECT().
+		FindOrCreateByAttemptKey(ctx, attemptKey, &userID).
+		Return(&entity.LoginAttempt{AttemptKey: attemptKey, UserID: &userID}, nil).
+		Once()
+	fx.loginAttemptRepo.EXPECT().
+		ResetOnSuccess(ctx, attemptKey).
+		Return(nil).
+		Once()
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
+			mockAuthRepo := mockRepo.NewMockAuthRepository(t)
+
+			mockFactory.EXPECT().AuthRepo().Return(mockAuthRepo)
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+			mockAuthRepo.EXPECT().
+				FindAuthentication(ctx, entity.ProviderTypeGoogle, "google-user-id").
+				Return(nil, domainerrors.ErrAuthNotFound)
+			mockAuthRepo.EXPECT().
+				FindAuthenticationByUserIDAndProvider(ctx, userID, entity.ProviderTypeGoogle).
+				Return(nil, domainerrors.ErrAuthNotFound)
+			mockAuthRepo.EXPECT().
+				CreateAuthentication(ctx, mock.AnythingOfType("*entity.Authentication")).
+				Return(nil)
+			mockUserRepo.EXPECT().
+				Update(ctx, mock.AnythingOfType("*entity.User")).
+				Run(func(_ context.Context, user *entity.User) {
+					require.NotNil(t, user.UserProfile)
+					assert.Equal(t, userID, user.UserProfile.UserID)
+					require.NotNil(t, user.MerchantProfile)
+				}).
+				Return(nil)
+
+			return fn(mockFactory)
+		}).
+		Once()
+
+	fx.tokenService.EXPECT().
+		GenerateTokens(userID, []string{"user", "merchant"}).
+		Return("access-token", "refresh-token", nil).
+		Once()
+	fx.tokenService.EXPECT().
+		HashToken("refresh-token").
+		Return("refresh-token-hash").
+		Once()
+	fx.tokenService.EXPECT().
+		GetRefreshTokenDuration().
+		Return(time.Hour).
+		Once()
+	fx.refreshTokenRepo.EXPECT().
+		CreateRefreshToken(ctx, mock.AnythingOfType("*entity.RefreshToken")).
+		Return(nil).
+		Once()
+
+	output, err := fx.service.LinkProvider(ctx, input)
+
+	require.NoError(t, err)
+	require.NotNil(t, output)
+	assert.Equal(t, usecase.AuthStatusAuthenticated, output.Status)
+	require.NotNil(t, output.User)
+	require.NotNil(t, output.User.UserProfile)
+	require.NotNil(t, output.User.MerchantProfile)
 }
 
 func TestUserService_GoogleCallback_ExistingGoogleMerchantUserStateAttachesUserProfile(t *testing.T) {
@@ -851,9 +1438,11 @@ func TestUserService_GoogleCallback_NewMerchantStateCreatesMerchant(t *testing.T
 			mockFactory := mockRepo.NewMockRepositoryFactory(t)
 			mockUserRepo := mockRepo.NewMockUserRepository(t)
 			mockAuthRepo := mockRepo.NewMockAuthRepository(t)
+			mockLoginAttemptRepo := mockRepo.NewMockLoginAttemptRepository(t)
 
 			mockFactory.EXPECT().AuthRepo().Return(mockAuthRepo)
 			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+			mockFactory.EXPECT().LoginAttemptRepo().Return(mockLoginAttemptRepo)
 
 			mockAuthRepo.EXPECT().
 				FindAuthentication(ctx, entity.ProviderTypeGoogle, oauthUser.ID).
@@ -872,6 +1461,9 @@ func TestUserService_GoogleCallback_NewMerchantStateCreatesMerchant(t *testing.T
 				Return(nil)
 			mockAuthRepo.EXPECT().
 				CreateAuthentication(ctx, mock.AnythingOfType("*entity.Authentication")).
+				Return(nil)
+			mockLoginAttemptRepo.EXPECT().
+				ResetForAccountCreation(ctx, oauthUser.Email, mock.AnythingOfType("uuid.UUID")).
 				Return(nil)
 
 			return fn(mockFactory)
@@ -923,9 +1515,11 @@ func TestUserService_GoogleCallback_NewMerchantWithoutDraftReturnsOnboardingRequ
 			mockFactory := mockRepo.NewMockRepositoryFactory(t)
 			mockUserRepo := mockRepo.NewMockUserRepository(t)
 			mockAuthRepo := mockRepo.NewMockAuthRepository(t)
+			mockLoginAttemptRepo := mockRepo.NewMockLoginAttemptRepository(t)
 
 			mockFactory.EXPECT().AuthRepo().Return(mockAuthRepo)
 			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+			mockFactory.EXPECT().LoginAttemptRepo().Return(mockLoginAttemptRepo)
 
 			mockAuthRepo.EXPECT().
 				FindAuthentication(ctx, entity.ProviderTypeGoogle, oauthUser.ID).
@@ -943,6 +1537,9 @@ func TestUserService_GoogleCallback_NewMerchantWithoutDraftReturnsOnboardingRequ
 				Return(nil)
 			mockAuthRepo.EXPECT().
 				CreateAuthentication(ctx, mock.AnythingOfType("*entity.Authentication")).
+				Return(nil)
+			mockLoginAttemptRepo.EXPECT().
+				ResetForAccountCreation(ctx, oauthUser.Email, userID).
 				Return(nil)
 
 			return fn(mockFactory)
@@ -1088,19 +1685,25 @@ func TestUserService_RevokeSession_Success(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 	tokenID := uuid.New()
+	familyID := uuid.New()
 
 	fx.txManager.EXPECT().
 		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
 		Run(func(ctx context.Context, fn func(repository.RepositoryFactory) error) {
 			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
 			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
 			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+			mockUserRepo.EXPECT().
+				AcquireSessionMutex(ctx, userID).
+				Return(nil)
 			mockRefreshRepo.EXPECT().
 				FindRefreshTokenByID(ctx, tokenID).
-				Return(&entity.RefreshToken{ID: tokenID, UserID: userID}, nil)
+				Return(&entity.RefreshToken{ID: tokenID, UserID: userID, FamilyID: familyID}, nil)
 			mockRefreshRepo.EXPECT().
-				DeleteRefreshToken(ctx, tokenID).
+				RevokeTokenFamily(ctx, familyID).
 				Return(nil)
 
 			require.NoError(t, fn(mockFactory))
@@ -1158,9 +1761,14 @@ func TestUserService_RevokeSession_Forbidden(t *testing.T) {
 		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
 		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
 			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
 			mockRefreshRepo := mockRepo.NewMockRefreshTokenRepository(t)
 
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
 			mockFactory.EXPECT().RefreshTokenRepo().Return(mockRefreshRepo)
+			mockUserRepo.EXPECT().
+				AcquireSessionMutex(ctx, userID).
+				Return(nil)
 			mockRefreshRepo.EXPECT().
 				FindRefreshTokenByID(ctx, tokenID).
 				Return(&entity.RefreshToken{ID: tokenID, UserID: uuid.New()}, nil)

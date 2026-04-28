@@ -10,15 +10,16 @@ import (
 // UserDeviceModel is the GORM-specific struct for the 'user_devices' table.
 // It represents a user's device registered for push notifications.
 type UserDeviceModel struct {
-	ID        uuid.UUID `gorm:"type:uuid;primary_key;default:uuid_generate_v7()"`
-	UserID    uuid.UUID `gorm:"type:uuid;not null;index"`
-	FCMToken  string    `gorm:"type:text;not null"`
-	DeviceID  string    `gorm:"type:text;not null"`
-	Platform  string    `gorm:"type:text;not null"`
-	IsActive  bool      `gorm:"not null;default:true"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	DeletedAt gorm.DeletedAt `gorm:"index"`
+	ID               uuid.UUID `gorm:"type:uuid;primary_key;default:uuid_generate_v7()"`
+	UserID           uuid.UUID `gorm:"type:uuid;not null;index"`
+	FCMToken         string    `gorm:"type:text;not null"`
+	DeviceID         string    `gorm:"type:text;not null"`
+	Platform         string    `gorm:"type:text;not null"`
+	IsActive         bool      `gorm:"not null;default:true"`
+	TokenRefreshedAt time.Time `gorm:"not null;default:now()"`
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	DeletedAt        gorm.DeletedAt `gorm:"index"`
 }
 
 // TableName explicitly sets the table name for GORM.

@@ -114,13 +114,13 @@ func (s *firebaseService) SendBatchNotification(ctx context.Context, tokens []st
 	successCount = response.SuccessCount
 	failureCount = response.FailureCount
 
-	// Collect invalid tokens
+	// Collect tokens that Firebase has confirmed are permanently unregistered.
+	// INVALID_ARGUMENT can also mean the payload is invalid, so it is not safe
+	// to use it as a device deletion signal.
 	invalidTokens = make([]string, 0)
 	for idx, sendResponse := range response.Responses {
 		if sendResponse.Error != nil {
-			// Check if error is due to invalid or unregistered token
-			if messaging.IsInvalidArgument(sendResponse.Error) ||
-				messaging.IsUnregistered(sendResponse.Error) {
+			if messaging.IsUnregistered(sendResponse.Error) {
 				invalidTokens = append(invalidTokens, tokens[idx])
 			}
 		}

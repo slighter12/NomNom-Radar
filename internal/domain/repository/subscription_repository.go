@@ -44,9 +44,9 @@ type SubscriptionRepository interface {
 	// Returns addresses bundled with their subscription notification radius to avoid N+1 lookups.
 	FindSubscriberAddressesWithinRadius(ctx context.Context, merchantID uuid.UUID, merchantLat, merchantLon float64) ([]*entity.SubscriberAddress, error)
 
-	// FindDevicesForUsers retrieves all active devices for a list of user IDs.
-	// Used for batch fetching devices for notification sending.
-	FindDevicesForUsers(ctx context.Context, userIDs []uuid.UUID) ([]*entity.UserDevice, error)
+	// FindDevicesForUsers retrieves healthy devices for a list of user IDs.
+	// Healthy means active, non-deleted, and token refreshed within the health window.
+	FindDevicesForUsers(ctx context.Context, userIDs []uuid.UUID, healthyWindowDays int) ([]*entity.UserDevice, error)
 
 	// FindSubscriberAddressesByUserIDs retrieves addresses for specific user IDs who subscribe to a merchant.
 	// Returns addresses bundled with their subscription notification radius.

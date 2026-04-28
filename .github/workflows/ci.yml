@@ -45,6 +45,7 @@ jobs:
       any: ${{ steps.build-flags.outputs.any }}
       radar: ${{ steps.build-flags.outputs.radar }}
       geoworker: ${{ steps.build-flags.outputs.geoworker }}
+      device_cleanup: ${{ steps.build-flags.outputs.device_cleanup }}
       tag: ${{ steps.set-vars.outputs.TAG }}
       image_name: ${{ steps.set-vars.outputs.IMAGE_NAME }}
     steps:
@@ -70,25 +71,38 @@ jobs:
           base: ${{ github.event.before }}
           ref: ${{ github.sha }}
           filters: |
-            shared:
+            shared_all:
               - 'Dockerfile'
               - '.dockerignore'
               - 'go.mod'
               - 'go.sum'
               - 'config/**'
+            shared_internal:
               - 'internal/**'
+            device_cleanup_shared_internal:
+              - 'internal/domain/entity/**'
+              - 'internal/domain/errors/**'
+              - 'internal/domain/lifecycle/**'
+              - 'internal/domain/repository/**'
+              - 'internal/infra/log/**'
+              - 'internal/infra/persistence/**'
             radar:
               - 'cmd/radar/**'
             geoworker:
               - 'cmd/geoworker/**'
+            device_cleanup:
+              - 'cmd/device-cleanup/**'
 
       - name: Compute build flags
         id: build-flags
         run: |
-          SHARED="${{ steps.changes.outputs.shared }}"
-          echo "any=$([ "$SHARED" = 'true' ] || [ '${{ steps.changes.outputs.radar }}' = 'true' ] || [ '${{ steps.changes.outputs.geoworker }}' = 'true' ] && echo true || echo false)" >> $GITHUB_OUTPUT
-          echo "radar=$([ "$SHARED" = 'true' ] || [ '${{ steps.changes.outputs.radar }}' = 'true' ] && echo true || echo false)" >> $GITHUB_OUTPUT
-          echo "geoworker=$([ "$SHARED" = 'true' ] || [ '${{ steps.changes.outputs.geoworker }}' = 'true' ] && echo true || echo false)" >> $GITHUB_OUTPUT
+          SHARED_ALL="${{ steps.changes.outputs.shared_all }}"
+          SHARED_INTERNAL="${{ steps.changes.outputs.shared_internal }}"
+          DEVICE_CLEANUP_SHARED_INTERNAL="${{ steps.changes.outputs.device_cleanup_shared_internal }}"
+          echo "any=$([ "$SHARED_ALL" = 'true' ] || [ "$SHARED_INTERNAL" = 'true' ] || [ "$DEVICE_CLEANUP_SHARED_INTERNAL" = 'true' ] || [ '${{ steps.changes.outputs.radar }}' = 'true' ] || [ '${{ steps.changes.outputs.geoworker }}' = 'true' ] || [ '${{ steps.changes.outputs.device_cleanup }}' = 'true' ] && echo true || echo false)" >> $GITHUB_OUTPUT
+          echo "radar=$([ "$SHARED_ALL" = 'true' ] || [ "$SHARED_INTERNAL" = 'true' ] || [ '${{ steps.changes.outputs.radar }}' = 'true' ] && echo true || echo false)" >> $GITHUB_OUTPUT
+          echo "geoworker=$([ "$SHARED_ALL" = 'true' ] || [ "$SHARED_INTERNAL" = 'true' ] || [ '${{ steps.changes.outputs.geoworker }}' = 'true' ] && echo true || echo false)" >> $GITHUB_OUTPUT
+          echo "device_cleanup=$([ "$SHARED_ALL" = 'true' ] || [ "$DEVICE_CLEANUP_SHARED_INTERNAL" = 'true' ] || [ '${{ steps.changes.outputs.device_cleanup }}' = 'true' ] && echo true || echo false)" >> $GITHUB_OUTPUT
 
       - name: Skip build (no image-impacting changes)
         if: steps.build-flags.outputs.any != 'true'
@@ -158,6 +172,42 @@ jobs:
           cache-from: type=gha,scope=geoworker-latest
           cache-to: type=gha,mode=max,scope=geoworker-latest
 
+      - name: Build Device Cleanup image
+        if: steps.build-flags.outputs.device_cleanup == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          target: device-cleanup
+          platforms: linux/amd64
+          push: false
+          load: true
+          pull: true
+          provenance: false
+          sbom: false
+          tags: |
+            device-cleanup:${{ steps.set-vars.outputs.TAG }}
+            device-cleanup:latest
+          build-args: |
+            VERSION=${{ steps.set-vars.outputs.TAG }}
+            BUILT=${{ github.event.head_commit.timestamp }}
+            GIT_COMMIT=${{ github.sha }}
+            IMAGE_NAME=${{ steps.set-vars.outputs.IMAGE_NAME }}
+          cache-from: type=gha,scope=device-cleanup-latest
+          cache-to: type=gha,mode=max,scope=device-cleanup-latest
+
+      - name: Save Device Cleanup image artifact
+        if: steps.build-flags.outputs.device_cleanup == 'true'
+        run: docker save "device-cleanup:${{ steps.set-vars.outputs.TAG }}" --output /tmp/device-cleanup-image.tar
+
+      - name: Upload Device Cleanup image artifact
+        if: steps.build-flags.outputs.device_cleanup == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-cleanup-image
+          path: /tmp/device-cleanup-image.tar
+          retention-days: 1
+
       - name: Save Geoworker image artifact
         if: steps.build-flags.outputs.geoworker == 'true'
         run: docker save "geoworker:${{ steps.set-vars.outputs.TAG }}" --output /tmp/geoworker-image.tar
@@ -208,6 +258,13 @@ jobs:
           name: geoworker-image
           path: /tmp
 
+      - name: Download Device Cleanup image artifact
+        if: needs.build-images.outputs.device_cleanup == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: device-cleanup-image
+          path: /tmp
+
       - name: Google Auth (dev)
         uses: google-github-actions/auth@v2
         with:
@@ -242,6 +299,18 @@ jobs:
           TARGET_BASE="${REGISTRY}/${IMAGE_NAME}/geoworker"
           docker tag "geoworker:${TAG}" "${TARGET_BASE}:${TAG}"
           docker tag "geoworker:${TAG}" "${TARGET_BASE}:latest"
+          docker push "${TARGET_BASE}:${TAG}"
+          docker push "${TARGET_BASE}:latest"
+
+      - name: Push Device Cleanup image (dev)
+        if: needs.build-images.outputs.device_cleanup == 'true'
+        run: |
+          set -euo pipefail
+
+          docker load --input /tmp/device-cleanup-image.tar
+          TARGET_BASE="${REGISTRY}/${IMAGE_NAME}/device-cleanup"
+          docker tag "device-cleanup:${TAG}" "${TARGET_BASE}:${TAG}"
+          docker tag "device-cleanup:${TAG}" "${TARGET_BASE}:latest"
           docker push "${TARGET_BASE}:${TAG}"
           docker push "${TARGET_BASE}:latest"
 
@@ -283,6 +352,13 @@ jobs:
           name: geoworker-image
           path: /tmp
 
+      - name: Download Device Cleanup image artifact
+        if: needs.build-images.outputs.device_cleanup == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: device-cleanup-image
+          path: /tmp
+
       - name: Google Auth (prod)
         uses: google-github-actions/auth@v2
         with:
@@ -317,5 +393,17 @@ jobs:
           TARGET_BASE="${REGISTRY}/${IMAGE_NAME}/geoworker"
           docker tag "geoworker:${TAG}" "${TARGET_BASE}:${TAG}"
           docker tag "geoworker:${TAG}" "${TARGET_BASE}:latest"
+          docker push "${TARGET_BASE}:${TAG}"
+          docker push "${TARGET_BASE}:latest"
+
+      - name: Push Device Cleanup image (prod)
+        if: needs.build-images.outputs.device_cleanup == 'true'
+        run: |
+          set -euo pipefail
+
+          docker load --input /tmp/device-cleanup-image.tar
+          TARGET_BASE="${REGISTRY}/${IMAGE_NAME}/device-cleanup"
+          docker tag "device-cleanup:${TAG}" "${TARGET_BASE}:${TAG}"
+          docker tag "device-cleanup:${TAG}" "${TARGET_BASE}:latest"
           docker push "${TARGET_BASE}:${TAG}"
           docker push "${TARGET_BASE}:latest"

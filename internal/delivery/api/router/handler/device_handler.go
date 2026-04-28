@@ -88,6 +88,21 @@ func (h *DeviceHandler) GetUserDevices(c echo.Context) error {
 	return response.Success(c, http.StatusOK, devices)
 }
 
+// GetDeviceHealth handles retrieving computed device health for the authenticated user.
+func (h *DeviceHandler) GetDeviceHealth(c echo.Context) error {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+	}
+
+	devices, err := h.deviceUC.GetDeviceHealth(c.Request().Context(), userID)
+	if err != nil {
+		return err
+	}
+
+	return response.Success(c, http.StatusOK, devices)
+}
+
 // UpdateFCMToken handles updating FCM token for a device
 func (h *DeviceHandler) UpdateFCMToken(c echo.Context) error {
 	userID, ok := middleware.GetUserID(c)

@@ -12,6 +12,7 @@ var (
 	ErrAuthCreateFailed          = NewBaseError(http.StatusInternalServerError, "AUTH_CREATE_FAILED", "建立認證方式失敗", "")
 	ErrAuthUpdateFailed          = NewBaseError(http.StatusInternalServerError, "AUTH_UPDATE_FAILED", "更新認證方式失敗", "")
 	ErrInvalidCredentials        = NewBaseError(http.StatusUnauthorized, "INVALID_CREDENTIALS", "電子郵件或密碼錯誤", "")
+	ErrInvalidLinkingToken       = NewBaseError(http.StatusUnauthorized, "INVALID_TOKEN", "無效或已過期的連結權杖", "")
 	ErrRefreshTokenInvalid       = NewBaseError(http.StatusUnauthorized, "REFRESH_TOKEN_INVALID", "無效或已過期的重新整理權杖", "")
 	ErrPasswordHashFailed        = NewBaseError(http.StatusInternalServerError, "PASSWORD_HASH_FAILED", "密碼處理錯誤", "")
 	ErrPasswordStrength          = NewBaseError(http.StatusBadRequest, "PASSWORD_STRENGTH", "密碼強度不足", "")
@@ -39,5 +40,6 @@ var (
 		"更新重新整理權杖失敗",
 		"",
 	)
-	ErrSessionLimitExceeded = NewBaseError(http.StatusTooManyRequests, "SESSION_LIMIT_EXCEEDED", "已達到最大同時登入裝置數量", "")
+	ErrProviderAlreadyLinked = NewBaseError(http.StatusConflict, "PROVIDER_ALREADY_LINKED", "此第三方帳號已綁定至其他帳號", "")
+	ErrSessionLimitExceeded  = NewBaseError(http.StatusTooManyRequests, "SESSION_LIMIT_EXCEEDED", "已達到最大同時登入裝置數量", "")
 )

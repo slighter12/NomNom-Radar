@@ -13,6 +13,7 @@ import (
 
 	deliverycontext "radar/internal/delivery/context"
 	"radar/internal/domain/entity"
+	"radar/internal/domain/policy"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
 	"radar/internal/usecase"
@@ -225,7 +226,7 @@ func (h *PushHandler) processNotification(ctx context.Context, event *service.No
 		ctx, tokens, deviceMap, title, body, notificationData, notificationID,
 	)
 
-	// Cleanup invalid tokens
+	// Cleanup tokens confirmed unregistered by FCM.
 	h.cleanupInvalidTokens(ctx, invalidTokens, deviceMap)
 
 	// Save results
@@ -302,7 +303,7 @@ func (h *PushHandler) filterSubscribersByDistance(ctx context.Context, merchantI
 
 // getDevicesForUsers retrieves devices for the given user IDs
 func (h *PushHandler) getDevicesForUsers(ctx context.Context, userIDs []uuid.UUID, notificationID string) ([]*entity.UserDevice, map[string]*entity.UserDevice, error) {
-	devices, err := h.subscriptionRepo.FindDevicesForUsers(ctx, userIDs)
+	devices, err := h.subscriptionRepo.FindDevicesForUsers(ctx, userIDs, policy.DefaultDevicePolicy().HealthyWindowDays)
 	if err != nil {
 		return nil, nil, newRetryableError(fmt.Errorf("find devices for users: %w", err))
 	}
@@ -422,7 +423,7 @@ func (h *PushHandler) sendBatchedNotifications(ctx context.Context, tokens []str
 			errorMsg := ""
 			if slices.Contains(batchInvalidTokens, token) {
 				status = "failed"
-				errorMsg = "invalid or unregistered token"
+				errorMsg = "unregistered token"
 			}
 
 			notificationLogs = append(notificationLogs, &entity.NotificationLog{
@@ -440,7 +441,7 @@ func (h *PushHandler) sendBatchedNotifications(ctx context.Context, tokens []str
 	return totalSent, totalFailed, allInvalidTokens, notificationLogs
 }
 
-// cleanupInvalidTokens removes devices with invalid FCM tokens
+// cleanupInvalidTokens removes devices with tokens confirmed unregistered by FCM.
 func (h *PushHandler) cleanupInvalidTokens(ctx context.Context, invalidTokens []string, deviceMap map[string]*entity.UserDevice) {
 	for _, token := range invalidTokens {
 		if device, ok := deviceMap[token]; ok {

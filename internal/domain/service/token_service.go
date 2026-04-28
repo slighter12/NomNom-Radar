@@ -11,13 +11,19 @@ const (
 	TokenTypeAccess     = "access"
 	TokenTypeRefresh    = "refresh"
 	TokenTypeOnboarding = "onboarding"
+	TokenTypeLinking    = "linking"
 )
 
 // Claims defines the custom claims for the JWT tokens.
 type Claims struct {
-	UserID uuid.UUID
-	Roles  []string
-	Type   string
+	UserID          uuid.UUID
+	Roles           []string
+	Type            string
+	Provider        string
+	ProviderUserID  string
+	RequestedRole   string
+	StoreName       string
+	BusinessLicense string
 	jwt.RegisteredClaims
 }
 
@@ -32,6 +38,16 @@ type TokenService interface {
 
 	// GenerateOnboardingToken creates a short-lived token for completing onboarding.
 	GenerateOnboardingToken(userID uuid.UUID) (string, error)
+
+	// GenerateLinkingToken creates a short-lived token for confirming OAuth account linking.
+	GenerateLinkingToken(
+		userID uuid.UUID,
+		provider,
+		providerUserID,
+		requestedRole,
+		storeName,
+		businessLicense string,
+	) (string, error)
 
 	// GetRefreshTokenDuration returns the configured duration for refresh tokens.
 	GetRefreshTokenDuration() time.Duration

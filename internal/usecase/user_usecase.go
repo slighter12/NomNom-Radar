@@ -8,6 +8,19 @@ import (
 	"github.com/google/uuid"
 )
 
+type LockoutError struct {
+	RetryAfterSeconds int
+	Err               error
+}
+
+func (e *LockoutError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *LockoutError) Unwrap() error {
+	return e.Err
+}
+
 // --- Input DTOs ---
 
 // RegisterUserInput defines the data required to register a new user.
@@ -58,6 +71,11 @@ type CompleteMerchantOnboardingInput struct {
 	BusinessLicense string `json:"business_license" validate:"required"`
 }
 
+type LinkProviderInput struct {
+	LinkingToken string `json:"linking_token" validate:"required"`
+	Password     string `json:"password" validate:"required"`
+}
+
 // --- Output DTOs ---
 
 type AuthStatus string
@@ -65,6 +83,7 @@ type AuthStatus string
 const (
 	AuthStatusAuthenticated      AuthStatus = "authenticated"
 	AuthStatusOnboardingRequired AuthStatus = "onboarding_required"
+	AuthStatusLinkingRequired    AuthStatus = "linking_required"
 )
 
 // AuthResult returns the result of an authentication attempt.
@@ -73,17 +92,17 @@ type AuthResult struct {
 	AccessToken     string       `json:"access_token,omitempty"`
 	RefreshToken    string       `json:"refresh_token,omitempty"`
 	OnboardingToken string       `json:"onboarding_token,omitempty"`
+	LinkingToken    string       `json:"linking_token,omitempty"`
 	RequestedRole   string       `json:"requested_role,omitempty"`
 	RequiredFields  []string     `json:"required_fields,omitempty"`
 	User            *entity.User `json:"user,omitempty"`
 }
 
-// RefreshTokenOutput returns the new generated access token only.
-// The refresh token remains unchanged for security reasons.
+type LinkProviderOutput = AuthResult
+
 type RefreshTokenOutput struct {
-	AccessToken string `json:"access_token"`
-	// Note: Refresh token is not returned to maintain security
-	// and prevent token rotation attacks
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 // UserUsecase defines the interface for user-related business operations.
@@ -96,6 +115,7 @@ type UserUsecase interface {
 	Logout(ctx context.Context, input *LogoutInput) error
 	GoogleCallback(ctx context.Context, input *GoogleCallbackInput) (*AuthResult, error)
 	CompleteMerchantOnboarding(ctx context.Context, input *CompleteMerchantOnboardingInput) (*AuthResult, error)
+	LinkProvider(ctx context.Context, input LinkProviderInput) (*LinkProviderOutput, error)
 
 	// Session management methods
 	LogoutAllDevices(ctx context.Context, userID uuid.UUID) error

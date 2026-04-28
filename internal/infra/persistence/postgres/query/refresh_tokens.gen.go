@@ -7,14 +7,16 @@ package query
 import (
 	"context"
 
-	"radar/internal/infra/persistence/model"
-
-	"gorm.io/gen"
-	"gorm.io/gen/field"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/schema"
+
+	"gorm.io/gen"
+	"gorm.io/gen/field"
+
 	"gorm.io/plugin/dbresolver"
+
+	"radar/internal/infra/persistence/model"
 )
 
 func newRefreshTokenModel(db *gorm.DB, opts ...gen.DOOption) refreshTokenModel {
@@ -28,6 +30,9 @@ func newRefreshTokenModel(db *gorm.DB, opts ...gen.DOOption) refreshTokenModel {
 	_refreshTokenModel.ID = field.NewField(tableName, "id")
 	_refreshTokenModel.UserID = field.NewField(tableName, "user_id")
 	_refreshTokenModel.TokenHash = field.NewString(tableName, "token_hash")
+	_refreshTokenModel.FamilyID = field.NewField(tableName, "family_id")
+	_refreshTokenModel.IsRevoked = field.NewBool(tableName, "is_revoked")
+	_refreshTokenModel.ReplacedBy = field.NewField(tableName, "replaced_by")
 	_refreshTokenModel.ExpiresAt = field.NewTime(tableName, "expires_at")
 	_refreshTokenModel.CreatedAt = field.NewTime(tableName, "created_at")
 
@@ -39,12 +44,15 @@ func newRefreshTokenModel(db *gorm.DB, opts ...gen.DOOption) refreshTokenModel {
 type refreshTokenModel struct {
 	refreshTokenModelDo refreshTokenModelDo
 
-	ALL       field.Asterisk
-	ID        field.Field
-	UserID    field.Field
-	TokenHash field.String
-	ExpiresAt field.Time
-	CreatedAt field.Time
+	ALL        field.Asterisk
+	ID         field.Field
+	UserID     field.Field
+	TokenHash  field.String
+	FamilyID   field.Field
+	IsRevoked  field.Bool
+	ReplacedBy field.Field
+	ExpiresAt  field.Time
+	CreatedAt  field.Time
 
 	fieldMap map[string]field.Expr
 }
@@ -64,6 +72,9 @@ func (r *refreshTokenModel) updateTableName(table string) *refreshTokenModel {
 	r.ID = field.NewField(table, "id")
 	r.UserID = field.NewField(table, "user_id")
 	r.TokenHash = field.NewString(table, "token_hash")
+	r.FamilyID = field.NewField(table, "family_id")
+	r.IsRevoked = field.NewBool(table, "is_revoked")
+	r.ReplacedBy = field.NewField(table, "replaced_by")
 	r.ExpiresAt = field.NewTime(table, "expires_at")
 	r.CreatedAt = field.NewTime(table, "created_at")
 
@@ -94,10 +105,13 @@ func (r *refreshTokenModel) GetFieldByName(fieldName string) (field.OrderExpr, b
 }
 
 func (r *refreshTokenModel) fillFieldMap() {
-	r.fieldMap = make(map[string]field.Expr, 5)
+	r.fieldMap = make(map[string]field.Expr, 8)
 	r.fieldMap["id"] = r.ID
 	r.fieldMap["user_id"] = r.UserID
 	r.fieldMap["token_hash"] = r.TokenHash
+	r.fieldMap["family_id"] = r.FamilyID
+	r.fieldMap["is_revoked"] = r.IsRevoked
+	r.fieldMap["replaced_by"] = r.ReplacedBy
 	r.fieldMap["expires_at"] = r.ExpiresAt
 	r.fieldMap["created_at"] = r.CreatedAt
 }

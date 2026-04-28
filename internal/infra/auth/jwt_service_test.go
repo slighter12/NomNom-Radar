@@ -5,23 +5,34 @@ import (
 	"time"
 
 	"radar/config"
+	"radar/internal/domain/service"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestJWTService_GenerateAndValidateTokens(t *testing.T) {
-	// Create test config
-	cfg := &config.Config{
+func newJWTTestConfig(access, refresh string) *config.Config {
+	return &config.Config{
 		SecretKey: struct {
 			Access     string `json:"access" yaml:"access"`
 			Refresh    string `json:"refresh" yaml:"refresh"`
 			Onboarding string `json:"onboarding" yaml:"onboarding"`
+			Linking    string `json:"linking" yaml:"linking"`
 		}{
-			Access:  "test_access_secret_key_very_long_for_testing",
-			Refresh: "test_refresh_secret_key_very_long_for_testing",
+			Access:  access,
+			Refresh: refresh,
+		},
+		Auth: &config.AuthConfig{
+			AccessTokenTTL:     15 * time.Minute,
+			RefreshTokenTTL:    7 * 24 * time.Hour,
+			OnboardingTokenTTL: 10 * time.Minute,
+			LinkingTokenTTL:    10 * time.Minute,
 		},
 	}
+}
+
+func TestJWTService_GenerateAndValidateTokens(t *testing.T) {
+	cfg := newJWTTestConfig("test_access_secret_key_very_long_for_testing", "test_refresh_secret_key_very_long_for_testing")
 
 	// Create JWT service
 	jwtService, err := NewJWTService(cfg)
@@ -56,17 +67,7 @@ func TestJWTService_GenerateAndValidateTokens(t *testing.T) {
 }
 
 func TestJWTService_InvalidToken(t *testing.T) {
-	// Create test config
-	cfg := &config.Config{
-		SecretKey: struct {
-			Access     string `json:"access" yaml:"access"`
-			Refresh    string `json:"refresh" yaml:"refresh"`
-			Onboarding string `json:"onboarding" yaml:"onboarding"`
-		}{
-			Access:  "test_access_secret_key_very_long_for_testing",
-			Refresh: "test_refresh_secret_key_very_long_for_testing",
-		},
-	}
+	cfg := newJWTTestConfig("test_access_secret_key_very_long_for_testing", "test_refresh_secret_key_very_long_for_testing")
 
 	// Create JWT service
 	jwtService, err := NewJWTService(cfg)
@@ -80,18 +81,63 @@ func TestJWTService_InvalidToken(t *testing.T) {
 	assert.Contains(t, err.Error(), "token is malformed")
 }
 
+func TestJWTService_GenerateLinkingToken(t *testing.T) {
+	cfg := newJWTTestConfig("test_access_secret_key_very_long_for_testing", "test_refresh_secret_key_very_long_for_testing")
+
+	jwtService, err := NewJWTService(cfg)
+	assert.NoError(t, err)
+
+	userID := uuid.New()
+	token, err := jwtService.GenerateLinkingToken(
+		userID,
+		"google",
+		"google-user-id",
+		"merchant",
+		"NomNom Bento",
+		"A123456789",
+	)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token)
+
+	claims, err := jwtService.ValidateToken(token)
+	assert.NoError(t, err)
+	assert.Equal(t, userID, claims.UserID)
+	assert.Equal(t, service.TokenTypeLinking, claims.Type)
+	assert.Equal(t, "google", claims.Provider)
+	assert.Equal(t, "google-user-id", claims.ProviderUserID)
+	assert.Equal(t, "merchant", claims.RequestedRole)
+	assert.Equal(t, "NomNom Bento", claims.StoreName)
+	assert.Equal(t, "A123456789", claims.BusinessLicense)
+	assert.Nil(t, claims.Roles)
+}
+
+func TestJWTService_GenerateLinkingToken_UsesConfiguredLinkingSecret(t *testing.T) {
+	cfg := newJWTTestConfig("test_access_secret_key_very_long_for_testing", "test_refresh_secret_key_very_long_for_testing")
+	cfg.SecretKey.Linking = "test_linking_secret_key_very_long_for_testing"
+
+	jwtService, err := NewJWTService(cfg)
+	assert.NoError(t, err)
+
+	userID := uuid.New()
+	token, err := jwtService.GenerateLinkingToken(userID, "google", "google-user-id", "user", "", "")
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token)
+
+	claims, err := jwtService.ValidateToken(token)
+	assert.NoError(t, err)
+	assert.Equal(t, userID, claims.UserID)
+
+	derivedSecretCfg := newJWTTestConfig("test_access_secret_key_very_long_for_testing", "test_refresh_secret_key_very_long_for_testing")
+	derivedSecretService, err := NewJWTService(derivedSecretCfg)
+	assert.NoError(t, err)
+
+	claims, err = derivedSecretService.ValidateToken(token)
+	assert.Error(t, err)
+	assert.Nil(t, claims)
+}
+
 func TestJWTService_UnknownTokenType(t *testing.T) {
-	// Create test config
-	cfg := &config.Config{
-		SecretKey: struct {
-			Access     string `json:"access" yaml:"access"`
-			Refresh    string `json:"refresh" yaml:"refresh"`
-			Onboarding string `json:"onboarding" yaml:"onboarding"`
-		}{
-			Access:  "test_access_secret_key_very_long_for_testing",
-			Refresh: "test_refresh_secret_key_very_long_for_testing",
-		},
-	}
+	cfg := newJWTTestConfig("test_access_secret_key_very_long_for_testing", "test_refresh_secret_key_very_long_for_testing")
 
 	// Create JWT service
 	jwtService, err := NewJWTService(cfg)
@@ -106,16 +152,7 @@ func TestJWTService_UnknownTokenType(t *testing.T) {
 
 func TestJWTService_EmptySecrets(t *testing.T) {
 	// Test with empty secrets
-	cfg := &config.Config{
-		SecretKey: struct {
-			Access     string `json:"access" yaml:"access"`
-			Refresh    string `json:"refresh" yaml:"refresh"`
-			Onboarding string `json:"onboarding" yaml:"onboarding"`
-		}{
-			Access:  "",
-			Refresh: "",
-		},
-	}
+	cfg := newJWTTestConfig("", "")
 
 	// Should fail to create service
 	jwtService, err := NewJWTService(cfg)
@@ -125,17 +162,7 @@ func TestJWTService_EmptySecrets(t *testing.T) {
 }
 
 func TestJWTService_GetRefreshTokenDuration(t *testing.T) {
-	// Create test config
-	cfg := &config.Config{
-		SecretKey: struct {
-			Access     string `json:"access" yaml:"access"`
-			Refresh    string `json:"refresh" yaml:"refresh"`
-			Onboarding string `json:"onboarding" yaml:"onboarding"`
-		}{
-			Access:  "test_access_secret_key_very_long_for_testing",
-			Refresh: "test_refresh_secret_key_very_long_for_testing",
-		},
-	}
+	cfg := newJWTTestConfig("test_access_secret_key_very_long_for_testing", "test_refresh_secret_key_very_long_for_testing")
 
 	// Create JWT service
 	jwtService, err := NewJWTService(cfg)
@@ -148,17 +175,7 @@ func TestJWTService_GetRefreshTokenDuration(t *testing.T) {
 }
 
 func TestJWTService_HashToken(t *testing.T) {
-	// Create test config
-	cfg := &config.Config{
-		SecretKey: struct {
-			Access     string `json:"access" yaml:"access"`
-			Refresh    string `json:"refresh" yaml:"refresh"`
-			Onboarding string `json:"onboarding" yaml:"onboarding"`
-		}{
-			Access:  "test_access_secret_key_very_long_for_testing",
-			Refresh: "test_refresh_secret_key_very_long_for_testing",
-		},
-	}
+	cfg := newJWTTestConfig("test_access_secret_key_very_long_for_testing", "test_refresh_secret_key_very_long_for_testing")
 
 	// Create JWT service
 	jwtService, err := NewJWTService(cfg)
@@ -181,17 +198,7 @@ func TestJWTService_HashToken(t *testing.T) {
 }
 
 func TestJWTService_RotateTokens(t *testing.T) {
-	// Create test config
-	cfg := &config.Config{
-		SecretKey: struct {
-			Access     string `json:"access" yaml:"access"`
-			Refresh    string `json:"refresh" yaml:"refresh"`
-			Onboarding string `json:"onboarding" yaml:"onboarding"`
-		}{
-			Access:  "test_access_secret_key_very_long_for_testing",
-			Refresh: "test_refresh_secret_key_very_long_for_testing",
-		},
-	}
+	cfg := newJWTTestConfig("test_access_secret_key_very_long_for_testing", "test_refresh_secret_key_very_long_for_testing")
 
 	// Create JWT service
 	jwtService, err := NewJWTService(cfg)
@@ -234,6 +241,7 @@ func TestJWTService_TokenRotationFunctionality(t *testing.T) {
 			Access     string `json:"access" yaml:"access"`
 			Refresh    string `json:"refresh" yaml:"refresh"`
 			Onboarding string `json:"onboarding" yaml:"onboarding"`
+			Linking    string `json:"linking" yaml:"linking"`
 		}{
 			Access:  "test_access_secret_key_very_long_for_testing",
 			Refresh: "test_refresh_secret_key_very_long_for_testing",

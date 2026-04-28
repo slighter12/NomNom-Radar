@@ -19,9 +19,15 @@ import (
 )
 
 const (
-	defaultPath               = "."
-	defaultMaxRequestBodySize = "100KB"
-	postgresMasterDSNEnvKey   = "POSTGRES_MASTER_DSN"
+	defaultPath                 = "."
+	defaultMaxRequestBodySize   = "100KB"
+	postgresMasterDSNEnvKey     = "POSTGRES_MASTER_DSN"
+	defaultAccessTokenTTL       = 15 * time.Minute
+	defaultRefreshTokenTTL      = 7 * 24 * time.Hour
+	defaultOnboardingTokenTTL   = 10 * time.Minute
+	defaultLinkingTokenTTL      = 10 * time.Minute
+	defaultNotificationTimeout  = 10 * time.Second
+	defaultDeviceCleanupTimeout = 5 * time.Minute
 )
 
 type Config struct {
@@ -51,11 +57,14 @@ type Config struct {
 		Access     string `json:"access" yaml:"access"`
 		Refresh    string `json:"refresh" yaml:"refresh"`
 		Onboarding string `json:"onboarding" yaml:"onboarding"`
+		Linking    string `json:"linking" yaml:"linking"`
 	} `json:"secretKey" yaml:"secretKey"`
 
 	GoogleOAuth *GoogleOAuthConfig `json:"googleOAuth" yaml:"googleOAuth"`
 
 	Auth *AuthConfig `json:"auth" yaml:"auth"`
+
+	LoginThrottle *LoginThrottleConfig `json:"loginThrottle" yaml:"loginThrottle"`
 
 	PasswordStrength *PasswordStrengthConfig `json:"passwordStrength" yaml:"passwordStrength"`
 
@@ -64,6 +73,9 @@ type Config struct {
 
 	// LocationNotification configuration for location notification system
 	LocationNotification *LocationNotificationConfig `json:"locationNotification" yaml:"locationNotification"`
+
+	// Notification configuration for notification delivery behavior
+	Notification *NotificationConfig `json:"notification" yaml:"notification"`
 
 	// Firebase configuration for push notifications
 	Firebase *FirebaseConfig `json:"firebase" yaml:"firebase"`
@@ -79,6 +91,9 @@ type Config struct {
 
 	// PMTiles configuration for serverless routing
 	PMTiles *PMTilesConfig `json:"pmtiles" yaml:"pmtiles"`
+
+	// DeviceCleanup configuration for stale device cleanup job
+	DeviceCleanup *DeviceCleanupConfig `json:"deviceCleanup" yaml:"deviceCleanup"`
 }
 
 type GoogleOAuthConfig struct {
@@ -89,8 +104,21 @@ type GoogleOAuthConfig struct {
 
 // AuthConfig defines authentication-related configuration
 type AuthConfig struct {
-	BcryptCost        int `json:"bcryptCost" yaml:"bcryptCost"`
-	MaxActiveSessions int `json:"maxActiveSessions" yaml:"maxActiveSessions"`
+	Argon2Memory        uint32        `json:"argon2Memory" yaml:"argon2Memory"`
+	Argon2Iterations    uint32        `json:"argon2Iterations" yaml:"argon2Iterations"`
+	Argon2Parallelism   uint8         `json:"argon2Parallelism" yaml:"argon2Parallelism"`
+	Argon2MaxConcurrent int           `json:"argon2MaxConcurrent" yaml:"argon2MaxConcurrent"`
+	MaxActiveSessions   int           `json:"maxActiveSessions" yaml:"maxActiveSessions"`
+	AccessTokenTTL      time.Duration `json:"accessTokenTTL" yaml:"accessTokenTTL"`
+	RefreshTokenTTL     time.Duration `json:"refreshTokenTTL" yaml:"refreshTokenTTL"`
+	OnboardingTokenTTL  time.Duration `json:"onboardingTokenTTL" yaml:"onboardingTokenTTL"`
+	LinkingTokenTTL     time.Duration `json:"linkingTokenTTL" yaml:"linkingTokenTTL"`
+}
+
+// LoginThrottleConfig defines progressive login throttling configuration.
+type LoginThrottleConfig struct {
+	MaxAttempts      int `json:"maxAttempts" yaml:"maxAttempts"`
+	LockoutDecayDays int `json:"lockoutDecayDays" yaml:"lockoutDecayDays"`
 }
 
 // PasswordStrengthConfig defines password strength requirements
@@ -119,6 +147,11 @@ type LocationNotificationConfig struct {
 	MerchantMaxLocations int     `json:"merchantMaxLocations" yaml:"merchantMaxLocations"`
 	DefaultRadius        float64 `json:"defaultRadius" yaml:"defaultRadius"`
 	MaxRadius            float64 `json:"maxRadius" yaml:"maxRadius"`
+}
+
+// NotificationConfig defines notification behavior configuration.
+type NotificationConfig struct {
+	Timeout time.Duration `json:"timeout" yaml:"timeout"`
 }
 
 // FirebaseConfig defines Firebase configuration for push notifications
@@ -187,6 +220,11 @@ type PMTilesConfig struct {
 
 	// Zoom level for tile queries
 	ZoomLevel int `json:"zoomLevel" yaml:"zoomLevel"`
+}
+
+// DeviceCleanupConfig defines cleanup-job runtime configuration.
+type DeviceCleanupConfig struct {
+	Timeout time.Duration `json:"timeout" yaml:"timeout"`
 }
 
 // LoadWithEnv loads .yaml files through koanf.
@@ -270,9 +308,7 @@ func New() (*Config, error) {
 		return nil, err
 	}
 
-	if strings.TrimSpace(cfg.HTTP.MaxRequestBodySize) == "" {
-		cfg.HTTP.MaxRequestBodySize = defaultMaxRequestBodySize
-	}
+	ApplyDefaults(cfg)
 
 	// Build replicas from environment variables (POSTGRES_REPLICAS_0_HOST, POSTGRES_REPLICAS_0_PORT, etc.)
 	cfg.Postgres.Replicas = buildReplicasFromEnv()
@@ -281,6 +317,106 @@ func New() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// ApplyDefaults mutates cfg in-place to ensure all supported default values are present.
+func ApplyDefaults(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+
+	applyHTTPDefaults(cfg)
+	applyAuthDefaults(cfg)
+	applyLoginThrottleDefaults(cfg)
+	applyLocationNotificationDefaults(cfg)
+	applyNotificationDefaults(cfg)
+	applyDeviceCleanupDefaults(cfg)
+}
+
+func applyHTTPDefaults(cfg *Config) {
+	if strings.TrimSpace(cfg.HTTP.MaxRequestBodySize) != "" {
+		return
+	}
+
+	cfg.HTTP.MaxRequestBodySize = defaultMaxRequestBodySize
+}
+
+func applyAuthDefaults(cfg *Config) {
+	if cfg.Auth == nil {
+		cfg.Auth = &AuthConfig{}
+	}
+	if cfg.Auth.Argon2Memory == 0 {
+		cfg.Auth.Argon2Memory = 65536
+	}
+	if cfg.Auth.Argon2Iterations == 0 {
+		cfg.Auth.Argon2Iterations = 3
+	}
+	if cfg.Auth.Argon2Parallelism == 0 {
+		cfg.Auth.Argon2Parallelism = 1
+	}
+	if cfg.Auth.Argon2MaxConcurrent <= 0 {
+		cfg.Auth.Argon2MaxConcurrent = 4
+	}
+	if cfg.Auth.AccessTokenTTL <= 0 {
+		cfg.Auth.AccessTokenTTL = defaultAccessTokenTTL
+	}
+	if cfg.Auth.RefreshTokenTTL <= 0 {
+		cfg.Auth.RefreshTokenTTL = defaultRefreshTokenTTL
+	}
+	if cfg.Auth.OnboardingTokenTTL <= 0 {
+		cfg.Auth.OnboardingTokenTTL = defaultOnboardingTokenTTL
+	}
+	if cfg.Auth.LinkingTokenTTL <= 0 {
+		cfg.Auth.LinkingTokenTTL = defaultLinkingTokenTTL
+	}
+}
+
+func applyLoginThrottleDefaults(cfg *Config) {
+	if cfg.LoginThrottle == nil {
+		cfg.LoginThrottle = &LoginThrottleConfig{}
+	}
+	if cfg.LoginThrottle.MaxAttempts <= 0 {
+		cfg.LoginThrottle.MaxAttempts = 5
+	}
+	if cfg.LoginThrottle.LockoutDecayDays <= 0 {
+		cfg.LoginThrottle.LockoutDecayDays = 7
+	}
+}
+
+func applyLocationNotificationDefaults(cfg *Config) {
+	if cfg.LocationNotification == nil {
+		cfg.LocationNotification = &LocationNotificationConfig{}
+	}
+	if cfg.LocationNotification.UserMaxLocations <= 0 {
+		cfg.LocationNotification.UserMaxLocations = 5
+	}
+	if cfg.LocationNotification.MerchantMaxLocations <= 0 {
+		cfg.LocationNotification.MerchantMaxLocations = 10
+	}
+	if cfg.LocationNotification.DefaultRadius <= 0 {
+		cfg.LocationNotification.DefaultRadius = 1000
+	}
+	if cfg.LocationNotification.MaxRadius <= 0 {
+		cfg.LocationNotification.MaxRadius = 5000
+	}
+}
+
+func applyNotificationDefaults(cfg *Config) {
+	if cfg.Notification == nil {
+		cfg.Notification = &NotificationConfig{}
+	}
+	if cfg.Notification.Timeout <= 0 {
+		cfg.Notification.Timeout = defaultNotificationTimeout
+	}
+}
+
+func applyDeviceCleanupDefaults(cfg *Config) {
+	if cfg.DeviceCleanup == nil {
+		cfg.DeviceCleanup = &DeviceCleanupConfig{}
+	}
+	if cfg.DeviceCleanup.Timeout <= 0 {
+		cfg.DeviceCleanup.Timeout = defaultDeviceCleanupTimeout
+	}
 }
 
 func canonicalizeEnvKey(rawKey string, existing map[string]any) string {

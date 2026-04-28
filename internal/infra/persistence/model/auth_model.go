@@ -25,11 +25,14 @@ func (AuthenticationModel) TableName() string {
 
 // RefreshTokenModel mirrors the 'refresh_tokens' table. UUID columns align with PostgreSQL schema.
 type RefreshTokenModel struct {
-	ID        uuid.UUID `gorm:"type:uuid;primary_key;default:uuid_generate_v7()"`
-	UserID    uuid.UUID `gorm:"type:uuid;not null"`
-	TokenHash string    `gorm:"type:text;unique;not null"`
-	ExpiresAt time.Time `gorm:"not null"`
-	CreatedAt time.Time
+	ID         uuid.UUID  `gorm:"type:uuid;primary_key;default:uuid_generate_v7()"`
+	UserID     uuid.UUID  `gorm:"type:uuid;not null"`
+	TokenHash  string     `gorm:"type:text;unique;not null"`
+	FamilyID   uuid.UUID  `gorm:"type:uuid;not null;index"`
+	IsRevoked  bool       `gorm:"not null;default:false"`
+	ReplacedBy *uuid.UUID `gorm:"type:uuid"`
+	ExpiresAt  time.Time  `gorm:"not null"`
+	CreatedAt  time.Time
 }
 
 // TableName explicitly sets the table name for GORM.

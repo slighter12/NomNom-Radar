@@ -3,7 +3,7 @@
 package service
 
 // PasswordHasher defines the interface for password hashing and verification.
-// This abstracts the underlying hashing algorithm (e.g., bcrypt), keeping the domain pure.
+// This abstracts the underlying hashing algorithm (e.g., Argon2id), keeping the domain pure.
 type PasswordHasher interface {
 	// Hash generates a salted hash from a plaintext password.
 	Hash(password string) (string, error)

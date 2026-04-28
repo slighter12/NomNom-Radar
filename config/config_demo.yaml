@@ -36,6 +36,8 @@ postgres:
 secretKey:
   access: "access_secret"
   refresh: "refresh_secret"
+  onboarding: ""
+  linking: ""
 
 googleOAuth:
   # Only ClientID is needed for ID token verification
@@ -43,8 +45,19 @@ googleOAuth:
   clientId: "demo_google_client_id"
 
 auth:
-  bcryptCost: 12
+  argon2Memory: 65536
+  argon2Iterations: 3
+  argon2Parallelism: 1
+  argon2MaxConcurrent: 4
   maxActiveSessions: 20
+  accessTokenTTL: 15m
+  refreshTokenTTL: 168h
+  onboardingTokenTTL: 10m
+  linkingTokenTTL: 10m
+
+loginThrottle:
+  maxAttempts: 5
+  lockoutDecayDays: 7
 
 passwordStrength:
   minLength: 8
@@ -62,6 +75,9 @@ locationNotification:
   merchantMaxLocations: 10
   defaultRadius: 1000.0
   maxRadius: 5000.0
+
+notification:
+  timeout: 10s
 
 firebase:
   projectId: "demo-project-id"
@@ -91,3 +107,6 @@ pmtiles:
   source: "http://localhost:8080/map.pmtiles" # PMTiles source URL
   roadLayer: "transportation" # MVT road layer name
   zoomLevel: 14 # Zoom level for tile queries
+
+deviceCleanup:
+  timeout: 5m

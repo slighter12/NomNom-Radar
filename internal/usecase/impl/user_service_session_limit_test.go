@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
+	"radar/internal/domain/policy"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
 	"radar/internal/usecase"
@@ -47,8 +49,8 @@ func (tm *sessionLimitTestTxManager) Execute(ctx context.Context, fn func(txRepo
 		tm.mu.Unlock()
 
 		// Mirror transactional behavior: release row locks only after commit/rollback.
-		for i := len(state.unlocks) - 1; i >= 0; i-- {
-			state.unlocks[i]()
+		for _, v := range slices.Backward(state.unlocks) {
+			v()
 		}
 	}()
 
@@ -89,6 +91,10 @@ func (f *sessionLimitTestRepoFactory) AddressRepo() repository.AddressRepository
 
 func (f *sessionLimitTestRepoFactory) RefreshTokenRepo() repository.RefreshTokenRepository {
 	return f.refreshRepo
+}
+
+func (f *sessionLimitTestRepoFactory) LoginAttemptRepo() repository.LoginAttemptRepository {
+	return nil
 }
 
 type sessionLimitTestUserRepo struct {
@@ -224,6 +230,10 @@ func (r *sessionLimitTestRefreshRepo) FindRefreshTokenByHash(_ context.Context, 
 	panic("not implemented")
 }
 
+func (r *sessionLimitTestRefreshRepo) FindRefreshTokenByHashIncludingRevoked(_ context.Context, _ string) (*entity.RefreshToken, error) {
+	panic("not implemented")
+}
+
 func (r *sessionLimitTestRefreshRepo) FindRefreshTokenByID(_ context.Context, _ uuid.UUID) (*entity.RefreshToken, error) {
 	panic("not implemented")
 }
@@ -248,7 +258,15 @@ func (r *sessionLimitTestRefreshRepo) DeleteRefreshTokensByUserID(_ context.Cont
 	panic("not implemented")
 }
 
-func (r *sessionLimitTestRefreshRepo) DeleteExpiredRefreshTokens(_ context.Context) error {
+func (r *sessionLimitTestRefreshRepo) DeleteExpiredRefreshTokens(_ context.Context, _ int) error {
+	panic("not implemented")
+}
+
+func (r *sessionLimitTestRefreshRepo) RevokeTokenFamily(_ context.Context, _ uuid.UUID) error {
+	panic("not implemented")
+}
+
+func (r *sessionLimitTestRefreshRepo) RevokeTokenFamiliesByUserID(_ context.Context, _ uuid.UUID) error {
 	panic("not implemented")
 }
 
@@ -298,6 +316,10 @@ func (s *sessionLimitTestTokenService) GenerateOnboardingToken(_ uuid.UUID) (str
 	panic("not implemented")
 }
 
+func (s *sessionLimitTestTokenService) GenerateLinkingToken(_ uuid.UUID, _, _, _, _, _ string) (string, error) {
+	panic("not implemented")
+}
+
 func (s *sessionLimitTestTokenService) GetRefreshTokenDuration() time.Duration {
 	return time.Hour
 }
@@ -318,6 +340,87 @@ func (s *sessionLimitTestOAuthService) VerifyIDToken(_ context.Context, _ string
 
 func (s *sessionLimitTestOAuthService) GetProvider() entity.ProviderType {
 	return entity.ProviderTypeGoogle
+}
+
+type sessionLimitTestLoginAttemptRepo struct{}
+
+func (r *sessionLimitTestLoginAttemptRepo) FindOrCreateByAttemptKey(_ context.Context, attemptKey string, userID *uuid.UUID) (*entity.LoginAttempt, error) {
+	return &entity.LoginAttempt{
+		AttemptKey: attemptKey,
+		UserID:     userID,
+	}, nil
+}
+
+func (r *sessionLimitTestLoginAttemptRepo) IncrementFailedCount(_ context.Context, attemptKey string, _ int, _ policy.LoginThrottlePolicy) (*entity.LoginAttempt, error) {
+	return &entity.LoginAttempt{AttemptKey: attemptKey, FailedCount: 1}, nil
+}
+
+func (r *sessionLimitTestLoginAttemptRepo) ResetOnSuccess(_ context.Context, _ string) error {
+	return nil
+}
+
+func (r *sessionLimitTestLoginAttemptRepo) ResetForAccountCreation(_ context.Context, _ string, _ uuid.UUID) error {
+	return nil
+}
+
+func (r *sessionLimitTestLoginAttemptRepo) DecayLockoutCounts(_ context.Context, _ int) error {
+	return nil
+}
+
+type sessionLimitTestDeviceRepo struct{}
+
+func (r *sessionLimitTestDeviceRepo) CreateDevice(_ context.Context, _ *entity.UserDevice) error {
+	panic("not implemented")
+}
+
+func (r *sessionLimitTestDeviceRepo) FindDeviceByID(_ context.Context, _ uuid.UUID) (*entity.UserDevice, error) {
+	panic("not implemented")
+}
+
+func (r *sessionLimitTestDeviceRepo) FindDeviceByUserAndDeviceID(_ context.Context, _ uuid.UUID, _ string) (*entity.UserDevice, error) {
+	panic("not implemented")
+}
+
+func (r *sessionLimitTestDeviceRepo) FindDevicesByUser(_ context.Context, _ uuid.UUID, _ repository.DeviceListFilter) ([]*entity.UserDevice, error) {
+	panic("not implemented")
+}
+
+func (r *sessionLimitTestDeviceRepo) FindDeviceHealthByUser(_ context.Context, _ uuid.UUID) ([]repository.DeviceHealthRecord, error) {
+	panic("not implemented")
+}
+
+func (r *sessionLimitTestDeviceRepo) UpdateFCMToken(_ context.Context, _ uuid.UUID, _ string) error {
+	panic("not implemented")
+}
+
+func (r *sessionLimitTestDeviceRepo) DeleteDevice(_ context.Context, _ uuid.UUID) error {
+	panic("not implemented")
+}
+
+func (r *sessionLimitTestDeviceRepo) FindDeviceByUserAndDeviceIDIncludingDeleted(_ context.Context, _ uuid.UUID, _ string) (*entity.UserDevice, error) {
+	panic("not implemented")
+}
+
+func (r *sessionLimitTestDeviceRepo) SetDeviceActive(_ context.Context, _ uuid.UUID, _ bool) error {
+	panic("not implemented")
+}
+
+func (r *sessionLimitTestDeviceRepo) RestoreAndUpdateDevice(_ context.Context, _, _ uuid.UUID, _ string) error {
+	panic("not implemented")
+}
+
+func (r *sessionLimitTestDeviceRepo) SoftDeleteStaleDevices(_ context.Context, _ int) (int64, error) {
+	panic("not implemented")
+}
+
+type sessionLimitTestNotificationService struct{}
+
+func (s *sessionLimitTestNotificationService) SendBatchNotification(_ context.Context, _ []string, _, _ string, _ map[string]string) (int, int, []string, error) {
+	return 0, 0, nil, nil
+}
+
+func (s *sessionLimitTestNotificationService) SendSingleNotification(_ context.Context, _, _, _ string, _ map[string]string) error {
+	return nil
 }
 
 func newSessionLimitTestService(t *testing.T, maxActiveSessions int) (usecase.UserUsecase, *sessionLimitTestUserRepo, *sessionLimitTestRefreshRepo) {
@@ -362,9 +465,12 @@ func newSessionLimitTestService(t *testing.T, maxActiveSessions int) (usecase.Us
 		UserRepo:          userRepo,
 		AuthRepo:          authRepo,
 		RefreshTokenRepo:  refreshRepo,
+		LoginAttemptRepo:  &sessionLimitTestLoginAttemptRepo{},
+		DeviceRepo:        &sessionLimitTestDeviceRepo{},
 		Hasher:            &sessionLimitTestHasher{},
 		TokenService:      &sessionLimitTestTokenService{},
 		GoogleAuthService: &sessionLimitTestOAuthService{},
+		NotificationSvc:   &sessionLimitTestNotificationService{},
 		Config:            newTestConfig(maxActiveSessions),
 		Logger:            logger,
 	})

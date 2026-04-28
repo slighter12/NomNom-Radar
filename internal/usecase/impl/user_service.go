@@ -12,25 +12,33 @@ import (
 	deliverycontext "radar/internal/delivery/context"
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
+	"radar/internal/domain/policy"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
 	"radar/internal/usecase"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"go.uber.org/fx"
 )
 
 // userService implements the UserUsecase interface.
 type userService struct {
-	txManager         repository.TransactionManager
-	userRepo          repository.UserRepository
-	authRepo          repository.AuthRepository
-	refreshTokenRepo  repository.RefreshTokenRepository
-	hasher            service.PasswordHasher
-	tokenService      service.TokenService
-	googleAuthService service.OAuthAuthService
-	maxActiveSessions int
-	logger            *slog.Logger
+	txManager           repository.TransactionManager
+	userRepo            repository.UserRepository
+	authRepo            repository.AuthRepository
+	refreshTokenRepo    repository.RefreshTokenRepository
+	loginAttemptRepo    repository.LoginAttemptRepository
+	deviceRepo          repository.DeviceRepository
+	hasher              service.PasswordHasher
+	tokenService        service.TokenService
+	googleAuthService   service.OAuthAuthService
+	notificationSvc     service.NotificationService
+	maxActiveSessions   int
+	loginThrottleCfg    *config.LoginThrottleConfig
+	loginThrottlePolicy policy.LoginThrottlePolicy
+	notificationTimeout time.Duration
+	logger              *slog.Logger
 }
 
 type registrationConfig struct {
@@ -52,30 +60,44 @@ type UserServiceParams struct {
 	UserRepo          repository.UserRepository
 	AuthRepo          repository.AuthRepository
 	RefreshTokenRepo  repository.RefreshTokenRepository
+	LoginAttemptRepo  repository.LoginAttemptRepository
+	DeviceRepo        repository.DeviceRepository
 	Hasher            service.PasswordHasher
 	TokenService      service.TokenService
 	GoogleAuthService service.OAuthAuthService
+	NotificationSvc   service.NotificationService
 	Config            *config.Config
 	Logger            *slog.Logger
 }
 
 // NewUserService is the constructor for userService. It receives all dependencies as interfaces.
 func NewUserService(params UserServiceParams) usecase.UserUsecase {
-	maxActiveSessions := 0
-	if params.Config != nil && params.Config.Auth != nil {
-		maxActiveSessions = params.Config.Auth.MaxActiveSessions
+	cfg := params.Config
+	if cfg == nil {
+		cfg = &config.Config{}
 	}
+	config.ApplyDefaults(cfg)
+
+	maxActiveSessions := cfg.Auth.MaxActiveSessions
+	loginThrottleCfg := cfg.LoginThrottle
+	notificationTimeout := cfg.Notification.Timeout
 
 	return &userService{
-		txManager:         params.TxManager,
-		userRepo:          params.UserRepo,
-		authRepo:          params.AuthRepo,
-		refreshTokenRepo:  params.RefreshTokenRepo,
-		hasher:            params.Hasher,
-		tokenService:      params.TokenService,
-		googleAuthService: params.GoogleAuthService,
-		maxActiveSessions: maxActiveSessions,
-		logger:            params.Logger,
+		txManager:           params.TxManager,
+		userRepo:            params.UserRepo,
+		authRepo:            params.AuthRepo,
+		refreshTokenRepo:    params.RefreshTokenRepo,
+		loginAttemptRepo:    params.LoginAttemptRepo,
+		deviceRepo:          params.DeviceRepo,
+		hasher:              params.Hasher,
+		tokenService:        params.TokenService,
+		googleAuthService:   params.GoogleAuthService,
+		notificationSvc:     params.NotificationSvc,
+		maxActiveSessions:   maxActiveSessions,
+		loginThrottleCfg:    loginThrottleCfg,
+		loginThrottlePolicy: policy.DefaultLoginThrottlePolicy(),
+		notificationTimeout: notificationTimeout,
+		logger:              params.Logger,
 	}
 }
 
@@ -243,20 +265,42 @@ func (srv *userService) RegisterMerchant(ctx context.Context, input *usecase.Reg
 
 // Login orchestrates the unified email login flow.
 func (srv *userService) Login(ctx context.Context, input *usecase.LoginInput) (*usecase.AuthResult, error) {
-	return srv.authenticate(ctx, &authRequest{
+	attempt, err := srv.checkLoginThrottle(ctx, input.Email)
+	if err != nil {
+		return nil, err
+	}
+
+	output, err := srv.authenticate(ctx, &authRequest{
 		Method:   authMethodEmailPassword,
 		Intent:   authIntentLogin,
 		Provider: entity.ProviderTypeEmail,
 		Email:    input.Email,
 		Password: input.Password,
 	})
+	if err != nil {
+		if errors.Is(err, domainerrors.ErrInvalidCredentials) {
+			if recordErr := srv.recordLoginFailure(ctx, input.Email, attempt.UserID); recordErr != nil {
+				return nil, recordErr
+			}
+		}
+
+		return nil, err
+	}
+
+	if err := srv.recordLoginSuccess(ctx, input.Email); err != nil {
+		return nil, err
+	}
+
+	return output, nil
 }
 
 func (srv *userService) persistLoginRefreshToken(ctx context.Context, userID uuid.UUID, refreshTokenString string) error {
+	familyID := uuid.New()
+
 	if srv.maxActiveSessions > 0 {
 		// When session limit is enabled, keep lock/count/insert in one short transaction.
 		if err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-			return srv.storeRefreshToken(ctx, repoFactory, userID, refreshTokenString)
+			return srv.storeRefreshToken(ctx, repoFactory, userID, refreshTokenString, familyID)
 		}); err != nil {
 			return err
 		}
@@ -265,15 +309,20 @@ func (srv *userService) persistLoginRefreshToken(ctx context.Context, userID uui
 	}
 
 	// No session limit: direct insert avoids unnecessary transaction overhead.
-	if err := srv.storeRefreshTokenDirect(ctx, userID, refreshTokenString); err != nil {
+	if err := srv.storeRefreshTokenDirect(ctx, userID, refreshTokenString, familyID); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-// RefreshToken handles the process of issuing a new access token using a refresh token.
-// The refresh token remains unchanged for security reasons.
+type refreshTokenRotationResult struct {
+	AccessToken   string
+	RefreshToken  string
+	ReuseDetected bool
+}
+
+// RefreshToken handles refresh token rotation with token family reuse detection.
 func (srv *userService) RefreshToken(ctx context.Context, input *usecase.RefreshTokenInput) (*usecase.RefreshTokenOutput, error) {
 	srv.log(ctx).Info("Attempting to refresh access token")
 
@@ -283,11 +332,7 @@ func (srv *userService) RefreshToken(ctx context.Context, input *usecase.Refresh
 	}
 
 	tokenHash := srv.tokenService.HashToken(input.RefreshToken)
-	newAccessToken, cleanupOrphanedToken, err := srv.generateAccessTokenFromRefresh(ctx, claims, tokenHash)
-
-	if cleanupOrphanedToken {
-		srv.cleanupOrphanedRefreshToken(ctx, tokenHash, claims.UserID)
-	}
+	result, err := srv.rotateRefreshTokenPair(ctx, claims, tokenHash)
 
 	if err != nil {
 		if _, ok := errors.AsType[domainerrors.AppError](err); !ok {
@@ -296,83 +341,199 @@ func (srv *userService) RefreshToken(ctx context.Context, input *usecase.Refresh
 
 		return nil, err
 	}
+	if result.ReuseDetected {
+		srv.sendTokenReuseNotification(ctx, claims.UserID)
+
+		return nil, domainerrors.ErrRefreshTokenInvalid
+	}
 
 	return &usecase.RefreshTokenOutput{
-		AccessToken: newAccessToken,
+		AccessToken:  result.AccessToken,
+		RefreshToken: result.RefreshToken,
 	}, nil
 }
 
 func (srv *userService) validateRefreshTokenInput(refreshToken string) (*service.Claims, error) {
 	claims, err := srv.tokenService.ValidateToken(refreshToken)
-	if err != nil {
+	if err == nil {
+		if claims.Type != service.TokenTypeRefresh {
+			return nil, domainerrors.ErrUnauthorized
+		}
+
+		return claims, nil
+	}
+
+	if !errors.Is(err, jwt.ErrTokenExpired) {
 		return nil, domainerrors.ErrRefreshTokenInvalid
 	}
 
-	if claims.Type != service.TokenTypeRefresh {
+	token, _, parseErr := new(jwt.Parser).ParseUnverified(refreshToken, &service.Claims{})
+	if parseErr != nil {
+		return nil, domainerrors.ErrRefreshTokenInvalid
+	}
+
+	expiredClaims, ok := token.Claims.(*service.Claims)
+	if !ok {
+		return nil, domainerrors.ErrRefreshTokenInvalid
+	}
+
+	if expiredClaims.Type != service.TokenTypeRefresh {
 		return nil, domainerrors.ErrUnauthorized
 	}
 
-	return claims, nil
+	return expiredClaims, nil
 }
 
-func (srv *userService) generateAccessTokenFromRefresh(
+func (srv *userService) rotateRefreshTokenPair(
 	ctx context.Context,
 	claims *service.Claims,
 	tokenHash string,
-) (accessToken string, cleanupOrphanedToken bool, err error) {
-	err = srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		refreshRepo := repoFactory.RefreshTokenRepo()
+) (*refreshTokenRotationResult, error) {
+	result := &refreshTokenRotationResult{}
 
-		if err := srv.ensureRefreshTokenUsable(ctx, refreshRepo, tokenHash); err != nil {
-			return err
-		}
-
-		userRepo := repoFactory.UserRepo()
-		user, shouldCleanup, err := srv.loadRefreshTokenUser(ctx, userRepo, claims.UserID)
-		if shouldCleanup {
-			cleanupOrphanedToken = true
-		}
-		if err != nil {
-			return err
-		}
-
-		// Generate only a new access token. Refresh token remains unchanged.
-		accessToken, _, err = srv.tokenService.GenerateTokens(user.ID, srv.extractUserRoles(user).ToStrings())
-		if err != nil {
-			return fmt.Errorf("failed to generate new access token: %w", err)
-		}
-
-		return nil
+	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
+		return srv.executeRefreshTokenRotationTx(ctx, repoFactory, claims, tokenHash, result)
 	})
 	if err != nil {
-		if appErr, ok := errors.AsType[domainerrors.AppError](err); ok {
-			return "", cleanupOrphanedToken, appErr
-		}
-
-		return "", cleanupOrphanedToken, fmt.Errorf("execute refresh token transaction: %w", err)
+		return nil, mapRefreshTokenRotationError(err)
 	}
 
-	return accessToken, cleanupOrphanedToken, nil
+	return result, nil
 }
 
-func (srv *userService) ensureRefreshTokenUsable(
+func mapRefreshTokenRotationError(err error) error {
+	if appErr, ok := errors.AsType[domainerrors.AppError](err); ok {
+		return appErr
+	}
+
+	return fmt.Errorf("execute refresh token transaction: %w", err)
+}
+
+func (srv *userService) executeRefreshTokenRotationTx(
+	ctx context.Context,
+	repoFactory repository.RepositoryFactory,
+	claims *service.Claims,
+	tokenHash string,
+	result *refreshTokenRotationResult,
+) error {
+	refreshRepo := repoFactory.RefreshTokenRepo()
+	userRepo := repoFactory.UserRepo()
+
+	if err := userRepo.AcquireSessionMutex(ctx, claims.UserID); err != nil {
+		return err
+	}
+
+	storedToken, err := loadStoredRefreshToken(ctx, refreshRepo, tokenHash)
+	if err != nil {
+		return err
+	}
+	if storedToken.UserID != claims.UserID {
+		return domainerrors.ErrRefreshTokenInvalid
+	}
+
+	if storedToken.IsRevoked {
+		return handleRevokedRefreshToken(ctx, refreshRepo, storedToken, result)
+	}
+	if storedToken.ExpiresAt.Before(time.Now()) {
+		return domainerrors.ErrRefreshTokenExpired
+	}
+
+	return srv.rotateActiveRefreshToken(ctx, refreshRepo, userRepo, storedToken, result)
+}
+
+func handleRevokedRefreshToken(
+	ctx context.Context,
+	refreshRepo repository.RefreshTokenRepository,
+	storedToken *entity.RefreshToken,
+	result *refreshTokenRotationResult,
+) error {
+	if err := markRefreshTokenReuse(ctx, refreshRepo, storedToken.FamilyID); err != nil {
+		return err
+	}
+
+	result.ReuseDetected = true
+
+	return nil
+}
+
+func (srv *userService) rotateActiveRefreshToken(
+	ctx context.Context,
+	refreshRepo repository.RefreshTokenRepository,
+	userRepo repository.UserRepository,
+	storedToken *entity.RefreshToken,
+	result *refreshTokenRotationResult,
+) error {
+	user, _, err := srv.loadRefreshTokenUser(ctx, userRepo, storedToken.UserID)
+	if err != nil {
+		return err
+	}
+
+	accessToken, refreshToken, err := srv.issueAndStoreRotatedTokenPair(ctx, refreshRepo, user, storedToken)
+	if err != nil {
+		return err
+	}
+
+	result.AccessToken = accessToken
+	result.RefreshToken = refreshToken
+
+	return nil
+}
+
+func (srv *userService) issueAndStoreRotatedTokenPair(
+	ctx context.Context,
+	refreshRepo repository.RefreshTokenRepository,
+	user *entity.User,
+	storedToken *entity.RefreshToken,
+) (string, string, error) {
+	accessToken, refreshToken, refreshTokenHash, err := srv.tokenService.RotateTokens(
+		user.ID,
+		srv.extractUserRoles(user).ToStrings(),
+	)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to rotate refresh token pair: %w", err)
+	}
+
+	newRefreshToken := &entity.RefreshToken{
+		UserID:    user.ID,
+		TokenHash: refreshTokenHash,
+		FamilyID:  storedToken.FamilyID,
+		ExpiresAt: time.Now().Add(srv.tokenService.GetRefreshTokenDuration()),
+	}
+	if err := refreshRepo.CreateRefreshToken(ctx, newRefreshToken); err != nil {
+		return "", "", err
+	}
+
+	storedToken.IsRevoked = true
+	storedToken.ReplacedBy = &newRefreshToken.ID
+	if err := refreshRepo.UpdateRefreshToken(ctx, storedToken); err != nil {
+		return "", "", err
+	}
+
+	return accessToken, refreshToken, nil
+}
+
+func loadStoredRefreshToken(
 	ctx context.Context,
 	refreshRepo repository.RefreshTokenRepository,
 	tokenHash string,
-) error {
-	_, err := refreshRepo.FindRefreshTokenByHash(ctx, tokenHash)
-	if err == nil {
-		return nil
+) (*entity.RefreshToken, error) {
+	storedToken, err := refreshRepo.FindRefreshTokenByHashIncludingRevoked(ctx, tokenHash)
+	if errors.Is(err, domainerrors.ErrRefreshTokenNotFound) {
+		return nil, domainerrors.ErrRefreshTokenInvalid
+	}
+	if err != nil {
+		return nil, err
 	}
 
-	switch {
-	case errors.Is(err, domainerrors.ErrRefreshTokenNotFound):
-		return domainerrors.ErrRefreshTokenNotFound
-	case errors.Is(err, domainerrors.ErrRefreshTokenExpired):
-		return domainerrors.ErrRefreshTokenExpired
-	default:
-		return err
-	}
+	return storedToken, nil
+}
+
+func markRefreshTokenReuse(
+	ctx context.Context,
+	refreshRepo repository.RefreshTokenRepository,
+	familyID uuid.UUID,
+) error {
+	return refreshRepo.RevokeTokenFamily(ctx, familyID)
 }
 
 func (srv *userService) loadRefreshTokenUser(
@@ -392,20 +553,7 @@ func (srv *userService) loadRefreshTokenUser(
 	return nil, false, err
 }
 
-func (srv *userService) cleanupOrphanedRefreshToken(ctx context.Context, tokenHash string, userID uuid.UUID) {
-	cleanupErr := srv.refreshTokenRepo.DeleteRefreshTokenByHash(ctx, tokenHash)
-	if cleanupErr == nil || errors.Is(cleanupErr, domainerrors.ErrRefreshTokenNotFound) {
-		return
-	}
-
-	srv.log(ctx).Warn(
-		"Failed to cleanup orphaned refresh token",
-		slog.Any("error", cleanupErr),
-		slog.Any("user_id", userID),
-	)
-}
-
-// Logout handles the process of invalidating a user's session by deleting their refresh token.
+// Logout handles the process of invalidating a user's token family.
 func (srv *userService) Logout(ctx context.Context, input *usecase.LogoutInput) error {
 	srv.log(ctx).Info("Attempting to log out")
 
@@ -417,15 +565,26 @@ func (srv *userService) Logout(ctx context.Context, input *usecase.LogoutInput) 
 
 	tokenHash := srv.tokenService.HashToken(input.RefreshToken)
 
-	// Single operation - use direct repository instance
-	if err := srv.refreshTokenRepo.DeleteRefreshTokenByHash(ctx, tokenHash); err != nil {
-		if errors.Is(err, domainerrors.ErrRefreshTokenNotFound) {
-			srv.log(ctx).Info("Refresh token already invalidated during logout")
+	if err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
+		refreshRepo := repoFactory.RefreshTokenRepo()
+		userRepo := repoFactory.UserRepo()
 
-			return nil
+		token, err := refreshRepo.FindRefreshTokenByHashIncludingRevoked(ctx, tokenHash)
+		if err != nil {
+			if errors.Is(err, domainerrors.ErrRefreshTokenNotFound) {
+				return nil
+			}
+
+			return err
 		}
 
-		srv.log(ctx).Error("Failed to delete refresh token", slog.Any("error", err))
+		if err := userRepo.AcquireSessionMutex(ctx, token.UserID); err != nil {
+			return err
+		}
+
+		return refreshRepo.RevokeTokenFamily(ctx, token.FamilyID)
+	}); err != nil {
+		srv.log(ctx).Error("Failed to revoke refresh token family during logout", slog.Any("error", err))
 
 		return domainerrors.ErrInternalError
 	}
@@ -453,6 +612,241 @@ func (srv *userService) GoogleCallback(ctx context.Context, input *usecase.Googl
 		IDToken:       input.IDToken,
 		MerchantSeed:  merchantSeed,
 	})
+}
+
+func (srv *userService) LinkProvider(ctx context.Context, input usecase.LinkProviderInput) (*usecase.LinkProviderOutput, error) {
+	claims, provider, providerUserID, err := srv.parseLinkingClaims(input.LinkingToken)
+	if err != nil {
+		return nil, err
+	}
+
+	linkRequest := buildAuthRequestFromLinkingClaims(claims)
+	resolution, err := srv.resolveLinkProviderInput(ctx, claims.UserID, provider, providerUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := srv.checkLoginThrottle(ctx, resolution.user.Email); err != nil {
+		return nil, err
+	}
+
+	if !srv.isLinkProviderPasswordValid(input.Password, resolution.emailAuth.PasswordHash) {
+		if err := srv.recordLoginFailure(ctx, resolution.user.Email, &resolution.user.ID); err != nil {
+			return nil, err
+		}
+
+		return nil, domainerrors.ErrInvalidCredentials
+	}
+
+	if err := srv.recordLoginSuccess(ctx, resolution.user.Email); err != nil {
+		return nil, err
+	}
+
+	output, err := srv.executeProviderLinking(ctx, linkRequest, resolution, provider, providerUserID)
+	if err != nil {
+		return nil, err
+	}
+	if output != nil {
+		return output, nil
+	}
+
+	return srv.buildAuthenticatedResult(ctx, resolution.user)
+}
+
+type linkProviderResolution struct {
+	user      *entity.User
+	emailAuth *entity.Authentication
+}
+
+func (srv *userService) parseLinkingClaims(linkingToken string) (*service.Claims, entity.ProviderType, string, error) {
+	claims, err := srv.tokenService.ValidateToken(linkingToken)
+	if err != nil || claims.Type != service.TokenTypeLinking {
+		return nil, "", "", domainerrors.ErrInvalidLinkingToken
+	}
+
+	provider := entity.ProviderType(strings.TrimSpace(strings.ToLower(claims.Provider)))
+	providerUserID := strings.TrimSpace(claims.ProviderUserID)
+	if !provider.IsOAuthProvider() || providerUserID == "" {
+		return nil, "", "", domainerrors.ErrInvalidLinkingToken
+	}
+
+	return claims, provider, providerUserID, nil
+}
+
+func (srv *userService) resolveLinkProviderInput(
+	ctx context.Context,
+	userID uuid.UUID,
+	provider entity.ProviderType,
+	providerUserID string,
+) (*linkProviderResolution, error) {
+	resolution := &linkProviderResolution{}
+
+	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
+		userRepo := repoFactory.UserRepo()
+		authRepo := repoFactory.AuthRepo()
+
+		user, err := userRepo.FindByID(ctx, userID)
+		if errors.Is(err, domainerrors.ErrUserNotFound) {
+			return domainerrors.ErrUnauthorized
+		}
+		if err != nil {
+			return err
+		}
+
+		emailAuth, err := authRepo.FindAuthenticationByUserIDAndProvider(ctx, userID, entity.ProviderTypeEmail)
+		if errors.Is(err, domainerrors.ErrAuthNotFound) {
+			return domainerrors.ErrInvalidCredentials
+		}
+		if err != nil {
+			return err
+		}
+
+		if err := validateProviderLinkAvailability(ctx, authRepo, provider, providerUserID, user.ID); err != nil {
+			return err
+		}
+
+		resolution.user = user
+		resolution.emailAuth = emailAuth
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return resolution, nil
+}
+
+func validateProviderLinkAvailability(
+	ctx context.Context,
+	authRepo repository.AuthRepository,
+	provider entity.ProviderType,
+	providerUserID string,
+	userID uuid.UUID,
+) error {
+	existingAuth, err := authRepo.FindAuthentication(ctx, provider, providerUserID)
+	if errors.Is(err, domainerrors.ErrAuthNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if existingAuth != nil && existingAuth.UserID != userID {
+		return domainerrors.ErrProviderAlreadyLinked
+	}
+
+	return nil
+}
+
+func (srv *userService) isLinkProviderPasswordValid(password, passwordHash string) bool {
+	if passwordHash == "" {
+		return false
+	}
+
+	return srv.hasher.Check(password, passwordHash)
+}
+
+func (srv *userService) executeProviderLinking(
+	ctx context.Context,
+	linkRequest *authRequest,
+	resolution *linkProviderResolution,
+	provider entity.ProviderType,
+	providerUserID string,
+) (*usecase.AuthResult, error) {
+	var output *usecase.AuthResult
+
+	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
+		linkedResolution, err := srv.linkProviderAndSyncAccountRoles(
+			ctx,
+			repoFactory,
+			linkRequest,
+			resolution.user,
+			provider,
+			providerUserID,
+		)
+		if err != nil {
+			return err
+		}
+
+		resolution.user = linkedResolution.User
+		if !linkedResolution.OnboardingRequired {
+			return nil
+		}
+
+		output, err = srv.buildOnboardingRequiredResult(linkedResolution.User, linkRequest.RequestedRole)
+
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return output, nil
+}
+
+func buildAuthRequestFromLinkingClaims(claims *service.Claims) *authRequest {
+	req := &authRequest{
+		Method:        authMethodOAuth,
+		Intent:        authIntentLogin,
+		RequestedRole: normalizeRequestedRole(claims.RequestedRole, ""),
+	}
+
+	storeName := strings.TrimSpace(claims.StoreName)
+	businessLicense := strings.TrimSpace(claims.BusinessLicense)
+	if storeName != "" || businessLicense != "" {
+		req.MerchantSeed = &merchantProfileSeed{
+			StoreName:       storeName,
+			BusinessLicense: businessLicense,
+		}
+	}
+
+	return req
+}
+
+func (srv *userService) linkProviderAndSyncAccountRoles(
+	ctx context.Context,
+	repoFactory repository.RepositoryFactory,
+	req *authRequest,
+	user *entity.User,
+	provider entity.ProviderType,
+	providerUserID string,
+) (*authResolution, error) {
+	authRepo := repoFactory.AuthRepo()
+	userRepo := repoFactory.UserRepo()
+
+	existingAuth, err := authRepo.FindAuthentication(ctx, provider, providerUserID)
+	if err != nil && !errors.Is(err, domainerrors.ErrAuthNotFound) {
+		return nil, err
+	}
+	if existingAuth != nil {
+		if existingAuth.UserID != user.ID {
+			return nil, domainerrors.ErrProviderAlreadyLinked
+		}
+	} else if err := ensureOAuthAuthLink(ctx, authRepo, user.ID, provider, providerUserID); err != nil {
+		return nil, err
+	}
+
+	identity := &verifiedIdentity{
+		Provider:       provider,
+		ProviderUserID: providerUserID,
+		Email:          user.Email,
+		Name:           user.Name,
+		EmailVerified:  true,
+	}
+
+	// Product design depends on account role expansion being bidirectional:
+	// user -> merchant and merchant -> user must stay on this shared path for both
+	// normal OAuth auth and the re-authenticated linking flow. Do not split these
+	// branches unless the product account model changes.
+	onboardingRequired, err := srv.ensureRequestedRole(ctx, userRepo, user, req, identity)
+	if err != nil {
+		return nil, err
+	}
+
+	return &authResolution{
+		User:               user,
+		OnboardingRequired: onboardingRequired,
+	}, nil
 }
 
 func normalizeRequestedRole(requestedRole, legacyState string) entity.Role {
@@ -521,8 +915,14 @@ func (srv *userService) extractUserRoles(user *entity.User) entity.Roles {
 	return roles
 }
 
-// storeRefreshToken stores the refresh token in the database
-func (srv *userService) storeRefreshToken(ctx context.Context, repoFactory repository.RepositoryFactory, userID uuid.UUID, refreshTokenString string) error {
+// storeRefreshToken stores the refresh token in the database.
+func (srv *userService) storeRefreshToken(
+	ctx context.Context,
+	repoFactory repository.RepositoryFactory,
+	userID uuid.UUID,
+	refreshTokenString string,
+	familyID uuid.UUID,
+) error {
 	refreshRepo := repoFactory.RefreshTokenRepo()
 	userRepo := repoFactory.UserRepo()
 
@@ -542,20 +942,32 @@ func (srv *userService) storeRefreshToken(ctx context.Context, repoFactory repos
 		}
 	}
 
-	return srv.storeRefreshTokenWithRepo(ctx, refreshRepo, userID, refreshTokenString)
+	return srv.storeRefreshTokenWithRepo(ctx, refreshRepo, userID, refreshTokenString, familyID)
 }
 
-func (srv *userService) storeRefreshTokenDirect(ctx context.Context, userID uuid.UUID, refreshTokenString string) error {
-	return srv.storeRefreshTokenWithRepo(ctx, srv.refreshTokenRepo, userID, refreshTokenString)
+func (srv *userService) storeRefreshTokenDirect(
+	ctx context.Context,
+	userID uuid.UUID,
+	refreshTokenString string,
+	familyID uuid.UUID,
+) error {
+	return srv.storeRefreshTokenWithRepo(ctx, srv.refreshTokenRepo, userID, refreshTokenString, familyID)
 }
 
-func (srv *userService) storeRefreshTokenWithRepo(ctx context.Context, refreshRepo repository.RefreshTokenRepository, userID uuid.UUID, refreshTokenString string) error {
+func (srv *userService) storeRefreshTokenWithRepo(
+	ctx context.Context,
+	refreshRepo repository.RefreshTokenRepository,
+	userID uuid.UUID,
+	refreshTokenString string,
+	familyID uuid.UUID,
+) error {
 	// Hash the refresh token
 	refreshTokenHash := srv.tokenService.HashToken(refreshTokenString)
 
 	newRefreshToken := &entity.RefreshToken{
 		UserID:    userID,
 		TokenHash: refreshTokenHash,
+		FamilyID:  familyID,
 		ExpiresAt: time.Now().Add(srv.tokenService.GetRefreshTokenDuration()),
 	}
 
@@ -566,13 +978,13 @@ func (srv *userService) storeRefreshTokenWithRepo(ctx context.Context, refreshRe
 	return nil
 }
 
-// LogoutAllDevices handles the process of invalidating all user sessions by deleting all refresh tokens.
+// LogoutAllDevices handles the process of invalidating all user sessions by revoking all refresh token families.
 func (srv *userService) LogoutAllDevices(ctx context.Context, userID uuid.UUID) error {
 	srv.log(ctx).Info("Attempting to log out from all devices", slog.Any("user_id", userID))
 
 	// Single operation - use direct repository instance
-	if err := srv.refreshTokenRepo.DeleteRefreshTokensByUserID(ctx, userID); err != nil {
-		srv.log(ctx).Error("Failed to delete all refresh tokens", slog.Any("error", err), slog.Any("user_id", userID))
+	if err := srv.refreshTokenRepo.RevokeTokenFamiliesByUserID(ctx, userID); err != nil {
+		srv.log(ctx).Error("Failed to revoke all refresh token families", slog.Any("error", err), slog.Any("user_id", userID))
 
 		return err
 	}
@@ -596,12 +1008,17 @@ func (srv *userService) GetActiveSessions(ctx context.Context, userID uuid.UUID)
 	return sessions, nil
 }
 
-// RevokeSession revokes a specific session by refresh token ID.
+// RevokeSession revokes a specific token family by refresh token ID.
 func (srv *userService) RevokeSession(ctx context.Context, userID, tokenID uuid.UUID) error {
 	srv.log(ctx).Info("Attempting to revoke session", slog.Any("user_id", userID), slog.Any("token_id", tokenID))
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
 		refreshRepo := repoFactory.RefreshTokenRepo()
+		userRepo := repoFactory.UserRepo()
+
+		if err := userRepo.AcquireSessionMutex(ctx, userID); err != nil {
+			return err
+		}
 
 		// Verify the token belongs to the user before deleting
 		token, err := refreshRepo.FindRefreshTokenByID(ctx, tokenID)
@@ -613,7 +1030,7 @@ func (srv *userService) RevokeSession(ctx context.Context, userID, tokenID uuid.
 			return fmt.Errorf("token does not belong to user: %w", domainerrors.ErrForbidden)
 		}
 
-		if err := refreshRepo.DeleteRefreshToken(ctx, tokenID); err != nil {
+		if err := refreshRepo.RevokeTokenFamily(ctx, token.FamilyID); err != nil {
 			return err
 		}
 

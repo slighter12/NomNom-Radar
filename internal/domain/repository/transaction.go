@@ -22,4 +22,6 @@ type RepositoryFactory interface {
 	AddressRepo() AddressRepository
 	// RefreshTokenRepo returns a RefreshTokenRepo instance bound to the current transaction.
 	RefreshTokenRepo() RefreshTokenRepository
+	// LoginAttemptRepo returns a LoginAttemptRepository instance bound to the current transaction.
+	LoginAttemptRepo() LoginAttemptRepository
 }

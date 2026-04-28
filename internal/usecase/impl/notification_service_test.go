@@ -10,6 +10,7 @@ import (
 	"radar/config"
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
+	"radar/internal/domain/policy"
 	"radar/internal/domain/service"
 	mockRepo "radar/internal/mocks/repository"
 	mockSvc "radar/internal/mocks/service"
@@ -106,7 +107,7 @@ func TestNotificationService_PublishLocationNotification_Success(t *testing.T) {
 
 	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberOwnerID, FCMToken: "test-fcm-token"}
 	fx.subscriptionRepo.EXPECT().
-		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
+		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}, policy.DefaultDevicePolicy().HealthyWindowDays).
 		Return([]*entity.UserDevice{userDevice}, nil)
 
 	fx.notificationSvc.EXPECT().
@@ -186,7 +187,7 @@ func TestNotificationService_PublishLocationNotification_PartialDeliveryFailure(
 
 	deviceID := uuid.New()
 	fx.subscriptionRepo.EXPECT().
-		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
+		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}, policy.DefaultDevicePolicy().HealthyWindowDays).
 		Return([]*entity.UserDevice{{ID: deviceID, UserID: subscriberOwnerID, FCMToken: "bad-token"}}, nil)
 
 	// Simulate: 0 success, 1 failure with an invalid token that should be cleaned up
@@ -354,7 +355,7 @@ func TestNotificationService_PublishLocationNotification_WithAddressID(t *testin
 
 	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberOwnerID, FCMToken: "token-123"}
 	fx.subscriptionRepo.EXPECT().
-		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
+		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}, policy.DefaultDevicePolicy().HealthyWindowDays).
 		Return([]*entity.UserDevice{userDevice}, nil)
 
 	fx.notificationSvc.EXPECT().
@@ -428,7 +429,7 @@ func TestNotificationService_PublishLocationNotification_FindDevicesError(t *tes
 		}, nil)
 
 	fx.subscriptionRepo.EXPECT().
-		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
+		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}, policy.DefaultDevicePolicy().HealthyWindowDays).
 		Return(nil, errors.New("device query failed"))
 
 	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
@@ -456,7 +457,7 @@ func TestNotificationService_PublishLocationNotification_SendBatchError(t *testi
 
 	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberOwnerID, FCMToken: "token-xyz"}
 	fx.subscriptionRepo.EXPECT().
-		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
+		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}, policy.DefaultDevicePolicy().HealthyWindowDays).
 		Return([]*entity.UserDevice{userDevice}, nil)
 
 	// SendBatchNotification returns an error (e.g., Firebase service unavailable)
@@ -493,7 +494,7 @@ func TestNotificationService_PublishLocationNotification_UpdateStatusError(t *te
 
 	userDevice := &entity.UserDevice{ID: uuid.New(), UserID: subscriberOwnerID, FCMToken: "token-abc"}
 	fx.subscriptionRepo.EXPECT().
-		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
+		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}, policy.DefaultDevicePolicy().HealthyWindowDays).
 		Return([]*entity.UserDevice{userDevice}, nil)
 
 	fx.notificationSvc.EXPECT().
@@ -538,7 +539,7 @@ func TestNotificationService_PublishLocationNotification_MultipleSubscribers(t *
 	fx.subscriptionRepo.EXPECT().
 		FindDevicesForUsers(ctx, mock.MatchedBy(func(ids []uuid.UUID) bool {
 			return assert.ElementsMatch(t, []uuid.UUID{user1ID, user2ID}, ids)
-		})).
+		}), policy.DefaultDevicePolicy().HealthyWindowDays).
 		Return([]*entity.UserDevice{
 			{ID: uuid.New(), UserID: user1ID, FCMToken: "token-1"},
 			{ID: uuid.New(), UserID: user2ID, FCMToken: "token-2"},
@@ -578,7 +579,7 @@ func TestNotificationService_PublishLocationNotification_NoDevicesForSubscribers
 
 	// Subscriber exists but has no registered devices
 	fx.subscriptionRepo.EXPECT().
-		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}).
+		FindDevicesForUsers(ctx, []uuid.UUID{subscriberOwnerID}, policy.DefaultDevicePolicy().HealthyWindowDays).
 		Return([]*entity.UserDevice{}, nil)
 
 	notification, err := fx.service.PublishLocationNotification(ctx, merchantID, nil, locationData, "")
@@ -645,7 +646,7 @@ func TestNotificationService_HaversineDistanceFiltering(t *testing.T) {
 	// Only the nearby subscriber should have their device queried
 	nearbyDevice := &entity.UserDevice{ID: uuid.New(), UserID: nearbyOwner, FCMToken: "nearby-token"}
 	fx.subscriptionRepo.EXPECT().
-		FindDevicesForUsers(ctx, []uuid.UUID{nearbyOwner}).
+		FindDevicesForUsers(ctx, []uuid.UUID{nearbyOwner}, policy.DefaultDevicePolicy().HealthyWindowDays).
 		Return([]*entity.UserDevice{nearbyDevice}, nil)
 
 	fx.notificationSvc.EXPECT().

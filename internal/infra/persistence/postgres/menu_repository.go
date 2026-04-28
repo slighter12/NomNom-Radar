@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql/driver"
 	"errors"
 	"strings"
 
@@ -9,14 +10,17 @@ import (
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	"radar/internal/infra/persistence/model"
+	"radar/internal/infra/persistence/postgres/query"
 
 	"github.com/google/uuid"
+	"gorm.io/gen"
+	"gorm.io/gen/field"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 type menuRepository struct {
-	db *gorm.DB
+	q *query.Query
 }
 
 const reorderMenuItemsValidationMessage = "reorder request must include all active menu item ids"
@@ -26,26 +30,26 @@ type menuItemMerchantRecord struct {
 }
 
 func NewMenuRepository(db *gorm.DB) repository.MenuRepository {
-	return &menuRepository{db: db}
+	return &menuRepository{q: query.Use(db)}
 }
 
 func (repo *menuRepository) CreateMenuItem(ctx context.Context, item *entity.MenuItem) error {
 	itemM := fromMenuItemDomain(item)
 
-	return repo.withTransaction(ctx, func(tx *gorm.DB) error {
-		if err := repo.lockMerchantProfileForMenuWrite(tx, item.MerchantID); err != nil {
+	return repo.withTransaction(func(transactionQuery *query.Query) error {
+		if err := repo.lockMerchantProfileForMenuWrite(ctx, transactionQuery, item.MerchantID); err != nil {
 			return err //nolint:wrapcheck // already classified upstream when needed
 		}
 
-		nextDisplayOrder, err := repo.getNextDisplayOrder(tx, item.MerchantID)
+		nextDisplayOrder, err := repo.getNextDisplayOrder(ctx, transactionQuery, item.MerchantID)
 		if err != nil {
-			return domainerrors.ErrPersistenceFailed
+			return err //nolint:wrapcheck // already classified upstream when needed
 		}
 
 		itemM.DisplayOrder = nextDisplayOrder
 		item.DisplayOrder = nextDisplayOrder
 
-		if err := tx.Create(itemM).Error; err != nil {
+		if err := transactionQuery.MenuItemModel.WithContext(ctx).Create(itemM); err != nil {
 			return repo.toMenuItemCreateError(err)
 		}
 
@@ -58,10 +62,9 @@ func (repo *menuRepository) CreateMenuItem(ctx context.Context, item *entity.Men
 }
 
 func (repo *menuRepository) FindMenuItemByID(ctx context.Context, id uuid.UUID) (*entity.MenuItem, error) {
-	var itemM model.MenuItemModel
-	err := repo.db.WithContext(ctx).
-		Where("id = ?", id).
-		First(&itemM).Error
+	itemM, err := repo.q.MenuItemModel.WithContext(ctx).
+		Where(repo.q.MenuItemModel.ID.Eq(id)).
+		First()
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, domainerrors.ErrMenuItemNotFound
@@ -70,33 +73,53 @@ func (repo *menuRepository) FindMenuItemByID(ctx context.Context, id uuid.UUID) 
 		return nil, domainerrors.ErrPersistenceFailed
 	}
 
-	return toMenuItemDomain(&itemM), nil
+	return toMenuItemDomain(itemM), nil
 }
 
 func (repo *menuRepository) ListActiveMenuItemIDsByMerchant(ctx context.Context, merchantID uuid.UUID) ([]uuid.UUID, error) {
-	var itemIDs []uuid.UUID
-	if err := repo.db.WithContext(ctx).
-		Model(&model.MenuItemModel{}).
-		Where("merchant_id = ?", merchantID).
-		Order("display_order ASC").
-		Pluck("id", &itemIDs).Error; err != nil {
+	itemModels, err := repo.q.MenuItemModel.WithContext(ctx).
+		Select(repo.q.MenuItemModel.ID).
+		Where(repo.q.MenuItemModel.MerchantID.Eq(merchantID)).
+		Order(repo.q.MenuItemModel.DisplayOrder.Asc()).
+		Find()
+	if err != nil {
 		return nil, domainerrors.ErrPersistenceFailed
+	}
+
+	itemIDs := make([]uuid.UUID, 0, len(itemModels))
+	for idx := range itemModels {
+		itemIDs = append(itemIDs, itemModels[idx].ID)
 	}
 
 	return itemIDs, nil
 }
 
 func (repo *menuRepository) ListMenuItemsByMerchant(ctx context.Context, merchantID uuid.UUID, filter repository.MenuItemListFilter) ([]*entity.MenuItem, int64, error) {
-	countQuery := repo.buildMenuItemListQuery(ctx, merchantID, filter)
+	menuItem := repo.q.MenuItemModel
+	conditions := []gen.Condition{menuItem.MerchantID.Eq(merchantID)}
 
-	var total int64
-	if err := countQuery.Count(&total).Error; err != nil {
+	if filter.Category != nil {
+		conditions = append(conditions, menuItem.Category.Eq(filter.Category.String()))
+	}
+	if filter.IsAvailable != nil {
+		conditions = append(conditions, menuItem.IsAvailable.Is(*filter.IsAvailable))
+	}
+	if keyword := strings.TrimSpace(filter.Keyword); keyword != "" {
+		normalizedKeyword := "%" + strings.ToLower(keyword) + "%"
+		conditions = append(conditions, field.Or(
+			menuItem.Name.Lower().Like(normalizedKeyword),
+			menuItem.Description.Lower().Like(normalizedKeyword),
+		))
+	}
+
+	total, err := menuItem.WithContext(ctx).Where(conditions...).Count()
+	if err != nil {
 		return nil, 0, domainerrors.ErrPersistenceFailed
 	}
 
-	dataQuery := repo.buildMenuItemListQuery(ctx, merchantID, filter).
-		Order("display_order ASC").
-		Order("created_at ASC")
+	dataQuery := menuItem.WithContext(ctx).
+		Where(conditions...).
+		Order(menuItem.DisplayOrder.Asc(), menuItem.CreatedAt.Asc())
 	if filter.Limit > 0 {
 		dataQuery = dataQuery.Limit(filter.Limit)
 	}
@@ -104,8 +127,8 @@ func (repo *menuRepository) ListMenuItemsByMerchant(ctx context.Context, merchan
 		dataQuery = dataQuery.Offset(filter.Offset)
 	}
 
-	var itemModels []*model.MenuItemModel
-	if err := dataQuery.Find(&itemModels).Error; err != nil {
+	itemModels, err := dataQuery.Find()
+	if err != nil {
 		return nil, 0, domainerrors.ErrPersistenceFailed
 	}
 
@@ -118,25 +141,27 @@ func (repo *menuRepository) ListMenuItemsByMerchant(ctx context.Context, merchan
 }
 
 func (repo *menuRepository) UpdateMenuItem(ctx context.Context, item *entity.MenuItem) error {
-	updates := map[string]any{
-		"name":         item.Name,
-		"description":  item.Description,
-		"category":     item.Category,
-		"price":        item.Price,
-		"currency":     item.Currency,
-		"prep_minutes": item.PrepMinutes,
-		"is_available": item.IsAvailable,
-		"is_popular":   item.IsPopular,
-		"image_url":    item.ImageURL,
-		"external_url": item.ExternalURL,
+	menuItem := repo.q.MenuItemModel
+	menuItemQuery := menuItem.WithContext(ctx)
+	assignments := []field.AssignExpr{
+		menuItem.Name.Value(item.Name),
+		nullableStringAssign(&menuItem.Description, item.Description),
+		menuItem.Category.Value(item.Category.String()),
+		menuItem.Price.Value(item.Price),
+		menuItem.Currency.Value(item.Currency),
+		menuItem.PrepMinutes.Value(item.PrepMinutes),
+		menuItem.IsAvailable.Value(item.IsAvailable),
+		menuItem.IsPopular.Value(item.IsPopular),
+		nullableStringAssign(&menuItem.ImageURL, item.ImageURL),
+		nullableStringAssign(&menuItem.ExternalURL, item.ExternalURL),
+		menuItem.UpdatedAt.Value(item.UpdatedAt),
 	}
 
-	result := repo.db.WithContext(ctx).
-		Model(&model.MenuItemModel{}).
-		Where("id = ?", item.ID).
-		Updates(updates)
-	if result.Error != nil {
-		return repo.toMenuItemUpdateError(result.Error)
+	result, err := menuItemQuery.
+		Where(menuItem.ID.Eq(item.ID)).
+		UpdateSimple(assignments...)
+	if err != nil {
+		return repo.toMenuItemUpdateError(err)
 	}
 	if result.RowsAffected == 0 {
 		return domainerrors.ErrMenuItemNotFound
@@ -153,14 +178,11 @@ func (repo *menuRepository) UpdateMenuItem(ctx context.Context, item *entity.Men
 }
 
 func (repo *menuRepository) UpdateMenuItemAvailability(ctx context.Context, id uuid.UUID, isAvailable bool) error {
-	result := repo.db.WithContext(ctx).
-		Model(&model.MenuItemModel{}).
-		Where("id = ?", id).
-		Updates(map[string]any{
-			"is_available": isAvailable,
-		})
-	if result.Error != nil {
-		return repo.toMenuItemUpdateError(result.Error)
+	result, err := repo.q.MenuItemModel.WithContext(ctx).
+		Where(repo.q.MenuItemModel.ID.Eq(id)).
+		Update(repo.q.MenuItemModel.IsAvailable, isAvailable)
+	if err != nil {
+		return repo.toMenuItemUpdateError(err)
 	}
 	if result.RowsAffected == 0 {
 		return domainerrors.ErrMenuItemNotFound
@@ -170,16 +192,21 @@ func (repo *menuRepository) UpdateMenuItemAvailability(ctx context.Context, id u
 }
 
 func (repo *menuRepository) DeleteMenuItem(ctx context.Context, merchantID, menuItemID uuid.UUID) error {
-	return repo.withTransaction(ctx, func(tx *gorm.DB) error {
-		if err := repo.lockMerchantProfileForMenuWrite(tx, merchantID); err != nil {
+	return repo.withTransaction(func(transactionQuery *query.Query) error {
+		if err := repo.lockMerchantProfileForMenuWrite(ctx, transactionQuery, merchantID); err != nil {
 			return err //nolint:wrapcheck // already classified upstream when needed
 		}
 
-		var itemM model.MenuItemModel
-		if err := tx.
+		menuItem := transactionQuery.MenuItemModel
+		menuItemQuery := menuItem.WithContext(ctx)
+		itemM, err := menuItemQuery.
 			Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("id = ? AND merchant_id = ?", menuItemID, merchantID).
-			Take(&itemM).Error; err != nil {
+			Where(
+				menuItem.ID.Eq(menuItemID),
+				menuItem.MerchantID.Eq(merchantID),
+			).
+			Take()
+		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return domainerrors.ErrMenuItemNotFound
 			}
@@ -187,16 +214,18 @@ func (repo *menuRepository) DeleteMenuItem(ctx context.Context, merchantID, menu
 			return domainerrors.ErrPersistenceFailed
 		}
 
-		if err := tx.
-			Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("id = ?", menuItemID).
-			Delete(&model.MenuItemModel{}).Error; err != nil {
+		if _, err := menuItemQuery.
+			Where(menuItem.ID.Eq(menuItemID)).
+			Delete(); err != nil {
 			return domainerrors.ErrPersistenceFailed
 		}
 
-		if err := tx.Model(&model.MenuItemModel{}).
-			Where("merchant_id = ? AND display_order > ?", merchantID, itemM.DisplayOrder).
-			Update("display_order", gorm.Expr("display_order - 1")).Error; err != nil {
+		if _, err := menuItemQuery.
+			Where(
+				menuItem.MerchantID.Eq(merchantID),
+				menuItem.DisplayOrder.Gt(itemM.DisplayOrder),
+			).
+			Update(menuItem.DisplayOrder, gorm.Expr("display_order - 1")); err != nil {
 			return repo.toMenuItemUpdateError(err)
 		}
 
@@ -204,37 +233,38 @@ func (repo *menuRepository) DeleteMenuItem(ctx context.Context, merchantID, menu
 	})
 }
 
-func (repo *menuRepository) getNextDisplayOrder(db *gorm.DB, merchantID uuid.UUID) (int, error) {
-	type nextOrderResult struct {
-		NextDisplayOrder int `gorm:"column:next_display_order"`
-	}
-
-	var result nextOrderResult
-	err := db.
-		Model(&model.MenuItemModel{}).
-		Select("COALESCE(MAX(display_order), 0) + 1 AS next_display_order").
-		Where("merchant_id = ?", merchantID).
-		Scan(&result).Error
+func (repo *menuRepository) getNextDisplayOrder(ctx context.Context, transactionQuery *query.Query, merchantID uuid.UUID) (int, error) {
+	menuItem := transactionQuery.MenuItemModel
+	menuItemQuery := menuItem.WithContext(ctx)
+	itemM, err := menuItemQuery.
+		Select(menuItem.DisplayOrder).
+		Where(menuItem.MerchantID.Eq(merchantID)).
+		Order(menuItem.DisplayOrder.Desc()).
+		Take()
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 1, nil
+		}
+
 		return 0, domainerrors.ErrPersistenceFailed
 	}
-	if result.NextDisplayOrder <= 0 {
+
+	nextDisplayOrder := itemM.DisplayOrder + 1
+	if nextDisplayOrder <= 0 {
 		return 1, nil
 	}
 
-	return result.NextDisplayOrder, nil
+	return nextDisplayOrder, nil
 }
 
-func (repo *menuRepository) lockMerchantProfileForMenuWrite(tx *gorm.DB, merchantID uuid.UUID) error {
-	var lockedMerchant struct {
-		UserID uuid.UUID `gorm:"column:user_id"`
-	}
-
-	err := tx.Table("merchant_profiles").
-		Select("user_id").
+func (repo *menuRepository) lockMerchantProfileForMenuWrite(ctx context.Context, transactionQuery *query.Query, merchantID uuid.UUID) error {
+	merchantProfile := transactionQuery.MerchantProfileModel
+	merchantProfileQuery := merchantProfile.WithContext(ctx)
+	_, err := merchantProfileQuery.
+		Select(merchantProfile.UserID).
 		Clauses(clause.Locking{Strength: "UPDATE"}).
-		Where("user_id = ?", merchantID).
-		Take(&lockedMerchant).Error
+		Where(merchantProfile.UserID.Eq(merchantID)).
+		Take()
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return domainerrors.ErrMenuItemCreateFailed
@@ -279,13 +309,13 @@ func (repo *menuRepository) ReorderMenuItems(ctx context.Context, merchantID uui
 		return nil
 	}
 
-	return repo.withTransaction(ctx, func(tx *gorm.DB) error {
-		return repo.reorderMenuItemsTx(tx, merchantID, itemIDs) //nolint:wrapcheck // already classified upstream when needed
+	return repo.withTransaction(func(transactionQuery *query.Query) error {
+		return repo.reorderMenuItemsTx(ctx, transactionQuery, merchantID, itemIDs) //nolint:wrapcheck // already classified upstream when needed
 	})
 }
 
-func (repo *menuRepository) withTransaction(ctx context.Context, fn func(tx *gorm.DB) error) error {
-	if err := repo.db.WithContext(ctx).Transaction(fn); err != nil {
+func (repo *menuRepository) withTransaction(fn func(transactionQuery *query.Query) error) error {
+	if err := repo.q.Transaction(fn); err != nil {
 		if _, ok := errors.AsType[domainerrors.AppError](err); ok {
 			return err //nolint:wrapcheck // preserve the original classified error
 		}
@@ -296,43 +326,50 @@ func (repo *menuRepository) withTransaction(ctx context.Context, fn func(tx *gor
 	return nil
 }
 
-func (repo *menuRepository) reorderMenuItemsTx(tx *gorm.DB, merchantID uuid.UUID, itemIDs []uuid.UUID) error {
-	if err := repo.lockMerchantProfileForMenuWrite(tx, merchantID); err != nil {
+func (repo *menuRepository) reorderMenuItemsTx(ctx context.Context, transactionQuery *query.Query, merchantID uuid.UUID, itemIDs []uuid.UUID) error {
+	if err := repo.lockMerchantProfileForMenuWrite(ctx, transactionQuery, merchantID); err != nil {
 		return err //nolint:wrapcheck // already classified upstream when needed
 	}
 
-	scopedItemIDs, err := repo.listScopedMenuItemIDs(tx, merchantID)
+	scopedItemIDs, err := repo.listScopedMenuItemIDs(ctx, transactionQuery, merchantID)
 	if err != nil {
 		return err //nolint:wrapcheck // already wrapped with persistence context
 	}
 
-	if err := repo.validateReorderMenuItems(tx, merchantID, scopedItemIDs, itemIDs); err != nil {
+	if err := repo.validateReorderMenuItems(ctx, transactionQuery, merchantID, scopedItemIDs, itemIDs); err != nil {
 		return err //nolint:wrapcheck // already classified upstream when needed
 	}
 
-	if err := repo.bumpMenuItemDisplayOrders(tx, merchantID, len(itemIDs)); err != nil {
+	if err := repo.bumpMenuItemDisplayOrders(ctx, transactionQuery, merchantID, len(itemIDs)); err != nil {
 		return err //nolint:wrapcheck // already classified upstream when needed
 	}
 
-	return repo.applyMenuItemDisplayOrder(tx, itemIDs)
+	return repo.applyMenuItemDisplayOrder(ctx, transactionQuery, itemIDs)
 }
 
-func (repo *menuRepository) listScopedMenuItemIDs(tx *gorm.DB, merchantID uuid.UUID) ([]uuid.UUID, error) {
-	var scopedItemIDs []uuid.UUID
-	if err := tx.
+func (repo *menuRepository) listScopedMenuItemIDs(ctx context.Context, transactionQuery *query.Query, merchantID uuid.UUID) ([]uuid.UUID, error) {
+	menuItem := transactionQuery.MenuItemModel
+	menuItemQuery := menuItem.WithContext(ctx)
+	scopedItems, err := menuItemQuery.
 		Clauses(clause.Locking{Strength: "UPDATE"}).
-		Model(&model.MenuItemModel{}).
-		Where("merchant_id = ?", merchantID).
-		Order("display_order ASC").
-		Pluck("id", &scopedItemIDs).Error; err != nil {
+		Select(menuItem.ID).
+		Where(menuItem.MerchantID.Eq(merchantID)).
+		Order(menuItem.DisplayOrder.Asc()).
+		Find()
+	if err != nil {
 		return nil, domainerrors.ErrPersistenceFailed
+	}
+
+	scopedItemIDs := make([]uuid.UUID, 0, len(scopedItems))
+	for idx := range scopedItems {
+		scopedItemIDs = append(scopedItemIDs, scopedItems[idx].ID)
 	}
 
 	return scopedItemIDs, nil
 }
 
-func (repo *menuRepository) validateReorderMenuItems(tx *gorm.DB, merchantID uuid.UUID, scopedItemIDs, itemIDs []uuid.UUID) error {
-	providedItems, err := repo.listProvidedMenuItems(tx, itemIDs)
+func (repo *menuRepository) validateReorderMenuItems(ctx context.Context, transactionQuery *query.Query, merchantID uuid.UUID, scopedItemIDs, itemIDs []uuid.UUID) error {
+	providedItems, err := repo.listProvidedMenuItems(ctx, transactionQuery, itemIDs)
 	if err != nil {
 		return err //nolint:wrapcheck // already wrapped with persistence context
 	}
@@ -365,59 +402,47 @@ func (repo *menuRepository) validateReorderMenuItems(tx *gorm.DB, merchantID uui
 	return nil
 }
 
-func (repo *menuRepository) listProvidedMenuItems(tx *gorm.DB, itemIDs []uuid.UUID) ([]menuItemMerchantRecord, error) {
+func (repo *menuRepository) listProvidedMenuItems(ctx context.Context, transactionQuery *query.Query, itemIDs []uuid.UUID) ([]menuItemMerchantRecord, error) {
+	menuItem := transactionQuery.MenuItemModel
+	menuItemQuery := menuItem.WithContext(ctx)
+	ids := uuidToDriverValues(itemIDs)
+
 	var providedItems []menuItemMerchantRecord
-	if err := tx.
+	if err := menuItemQuery.
 		Clauses(clause.Locking{Strength: "UPDATE"}).
-		Model(&model.MenuItemModel{}).
-		Select("merchant_id").
-		Where("id IN ?", itemIDs).
-		Find(&providedItems).Error; err != nil {
+		Select(menuItem.MerchantID).
+		Where(menuItem.ID.In(ids...)).
+		Scan(&providedItems); err != nil {
 		return nil, domainerrors.ErrPersistenceFailed
 	}
 
 	return providedItems, nil
 }
 
-func (repo *menuRepository) bumpMenuItemDisplayOrders(tx *gorm.DB, merchantID uuid.UUID, itemCount int) error {
-	if err := tx.Model(&model.MenuItemModel{}).
-		Where("merchant_id = ?", merchantID).
-		Update("display_order", gorm.Expr("display_order + ?", itemCount)).Error; err != nil {
+func (repo *menuRepository) bumpMenuItemDisplayOrders(ctx context.Context, transactionQuery *query.Query, merchantID uuid.UUID, itemCount int) error {
+	menuItem := transactionQuery.MenuItemModel
+	menuItemQuery := menuItem.WithContext(ctx)
+	if _, err := menuItemQuery.
+		Where(menuItem.MerchantID.Eq(merchantID)).
+		Update(menuItem.DisplayOrder, gorm.Expr("display_order + ?", itemCount)); err != nil {
 		return repo.toMenuItemUpdateError(err)
 	}
 
 	return nil
 }
 
-func (repo *menuRepository) applyMenuItemDisplayOrder(tx *gorm.DB, itemIDs []uuid.UUID) error {
+func (repo *menuRepository) applyMenuItemDisplayOrder(ctx context.Context, transactionQuery *query.Query, itemIDs []uuid.UUID) error {
+	menuItem := transactionQuery.MenuItemModel
+	menuItemQuery := menuItem.WithContext(ctx)
 	for index, itemID := range itemIDs {
-		if err := tx.Model(&model.MenuItemModel{}).
-			Where("id = ?", itemID).
-			Update("display_order", index+1).Error; err != nil {
+		if _, err := menuItemQuery.
+			Where(menuItem.ID.Eq(itemID)).
+			Update(menuItem.DisplayOrder, index+1); err != nil {
 			return repo.toMenuItemUpdateError(err)
 		}
 	}
 
 	return nil
-}
-
-func (repo *menuRepository) buildMenuItemListQuery(ctx context.Context, merchantID uuid.UUID, filter repository.MenuItemListFilter) *gorm.DB {
-	query := repo.db.WithContext(ctx).
-		Model(&model.MenuItemModel{}).
-		Where("merchant_id = ?", merchantID)
-
-	if filter.Category != nil {
-		query = query.Where("category = ?", *filter.Category)
-	}
-	if filter.IsAvailable != nil {
-		query = query.Where("is_available = ?", *filter.IsAvailable)
-	}
-	if filter.Keyword != "" {
-		keyword := "%" + strings.TrimSpace(filter.Keyword) + "%"
-		query = query.Where("(name ILIKE ? OR COALESCE(description, '') ILIKE ?)", keyword, keyword)
-	}
-
-	return query
 }
 
 func toMenuItemDomain(data *model.MenuItemModel) *entity.MenuItem {
@@ -466,4 +491,21 @@ func fromMenuItemDomain(data *entity.MenuItem) *model.MenuItemModel {
 		CreatedAt:    data.CreatedAt,
 		UpdatedAt:    data.UpdatedAt,
 	}
+}
+
+func nullableStringAssign(column *field.String, value *string) field.AssignExpr {
+	if value == nil {
+		return column.Null()
+	}
+
+	return column.Value(*value)
+}
+
+func uuidToDriverValues(values []uuid.UUID) []driver.Valuer {
+	driverValues := make([]driver.Valuer, len(values))
+	for idx := range values {
+		driverValues[idx] = values[idx]
+	}
+
+	return driverValues
 }

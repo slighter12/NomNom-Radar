@@ -11,14 +11,11 @@ import (
 	"radar/internal/infra/persistence/postgres/query"
 
 	"github.com/google/uuid"
-	"go.uber.org/fx"
 	"gorm.io/gorm"
 )
 
 // authRepository implements the domain.AuthRepository interface.
 type authRepository struct {
-	fx.In
-
 	q *query.Query
 }
 
