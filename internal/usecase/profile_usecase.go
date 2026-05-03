@@ -13,6 +13,7 @@ type ProfileUsecase interface {
 	GetProfile(ctx context.Context, userID uuid.UUID) (*entity.User, error)
 	UpdateUserProfile(ctx context.Context, userID uuid.UUID, input *UpdateUserProfileInput) error
 	UpdateMerchantProfile(ctx context.Context, userID uuid.UUID, input *UpdateMerchantProfileInput) error
+	SubmitMerchantVerification(ctx context.Context, userID uuid.UUID, input *SubmitMerchantVerificationInput) error
 	SwitchToMerchant(ctx context.Context, userID uuid.UUID, input *SwitchToMerchantInput) error
 	GetUserRole(ctx context.Context, userID uuid.UUID) ([]string, error)
 }
@@ -28,11 +29,13 @@ type UpdateUserProfileInput struct {
 type UpdateMerchantProfileInput struct {
 	StoreName        *string `json:"store_name,omitempty"`
 	StoreDescription *string `json:"store_description,omitempty"`
-	BusinessLicense  *string `json:"business_license,omitempty"`
+}
+
+type SubmitMerchantVerificationInput struct {
+	BusinessLicense string `json:"business_license" validate:"required"`
 }
 
 // SwitchToMerchantInput defines the data required to switch a user to merchant role.
 type SwitchToMerchantInput struct {
-	StoreName       string `json:"store_name"`
-	BusinessLicense string `json:"business_license"`
+	StoreName string `json:"store_name"`
 }

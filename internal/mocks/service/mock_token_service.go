@@ -40,8 +40,8 @@ func (_m *MockTokenService) EXPECT() *MockTokenService_Expecter {
 }
 
 // GenerateLinkingToken provides a mock function for the type MockTokenService
-func (_mock *MockTokenService) GenerateLinkingToken(userID uuid.UUID, provider string, providerUserID string, requestedRole string, storeName string, businessLicense string) (string, error) {
-	ret := _mock.Called(userID, provider, providerUserID, requestedRole, storeName, businessLicense)
+func (_mock *MockTokenService) GenerateLinkingToken(userID uuid.UUID, provider string, providerUserID string, requestedRole string, storeName string) (string, error) {
+	ret := _mock.Called(userID, provider, providerUserID, requestedRole, storeName)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GenerateLinkingToken")
@@ -49,16 +49,16 @@ func (_mock *MockTokenService) GenerateLinkingToken(userID uuid.UUID, provider s
 
 	var r0 string
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(uuid.UUID, string, string, string, string, string) (string, error)); ok {
-		return returnFunc(userID, provider, providerUserID, requestedRole, storeName, businessLicense)
+	if returnFunc, ok := ret.Get(0).(func(uuid.UUID, string, string, string, string) (string, error)); ok {
+		return returnFunc(userID, provider, providerUserID, requestedRole, storeName)
 	}
-	if returnFunc, ok := ret.Get(0).(func(uuid.UUID, string, string, string, string, string) string); ok {
-		r0 = returnFunc(userID, provider, providerUserID, requestedRole, storeName, businessLicense)
+	if returnFunc, ok := ret.Get(0).(func(uuid.UUID, string, string, string, string) string); ok {
+		r0 = returnFunc(userID, provider, providerUserID, requestedRole, storeName)
 	} else {
 		r0 = ret.Get(0).(string)
 	}
-	if returnFunc, ok := ret.Get(1).(func(uuid.UUID, string, string, string, string, string) error); ok {
-		r1 = returnFunc(userID, provider, providerUserID, requestedRole, storeName, businessLicense)
+	if returnFunc, ok := ret.Get(1).(func(uuid.UUID, string, string, string, string) error); ok {
+		r1 = returnFunc(userID, provider, providerUserID, requestedRole, storeName)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -76,12 +76,11 @@ type MockTokenService_GenerateLinkingToken_Call struct {
 //   - providerUserID string
 //   - requestedRole string
 //   - storeName string
-//   - businessLicense string
-func (_e *MockTokenService_Expecter) GenerateLinkingToken(userID interface{}, provider interface{}, providerUserID interface{}, requestedRole interface{}, storeName interface{}, businessLicense interface{}) *MockTokenService_GenerateLinkingToken_Call {
-	return &MockTokenService_GenerateLinkingToken_Call{Call: _e.mock.On("GenerateLinkingToken", userID, provider, providerUserID, requestedRole, storeName, businessLicense)}
+func (_e *MockTokenService_Expecter) GenerateLinkingToken(userID interface{}, provider interface{}, providerUserID interface{}, requestedRole interface{}, storeName interface{}) *MockTokenService_GenerateLinkingToken_Call {
+	return &MockTokenService_GenerateLinkingToken_Call{Call: _e.mock.On("GenerateLinkingToken", userID, provider, providerUserID, requestedRole, storeName)}
 }
 
-func (_c *MockTokenService_GenerateLinkingToken_Call) Run(run func(userID uuid.UUID, provider string, providerUserID string, requestedRole string, storeName string, businessLicense string)) *MockTokenService_GenerateLinkingToken_Call {
+func (_c *MockTokenService_GenerateLinkingToken_Call) Run(run func(userID uuid.UUID, provider string, providerUserID string, requestedRole string, storeName string)) *MockTokenService_GenerateLinkingToken_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 uuid.UUID
 		if args[0] != nil {
@@ -103,17 +102,12 @@ func (_c *MockTokenService_GenerateLinkingToken_Call) Run(run func(userID uuid.U
 		if args[4] != nil {
 			arg4 = args[4].(string)
 		}
-		var arg5 string
-		if args[5] != nil {
-			arg5 = args[5].(string)
-		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
 			arg4,
-			arg5,
 		)
 	})
 	return _c
@@ -124,7 +118,7 @@ func (_c *MockTokenService_GenerateLinkingToken_Call) Return(s string, err error
 	return _c
 }
 
-func (_c *MockTokenService_GenerateLinkingToken_Call) RunAndReturn(run func(userID uuid.UUID, provider string, providerUserID string, requestedRole string, storeName string, businessLicense string) (string, error)) *MockTokenService_GenerateLinkingToken_Call {
+func (_c *MockTokenService_GenerateLinkingToken_Call) RunAndReturn(run func(userID uuid.UUID, provider string, providerUserID string, requestedRole string, storeName string) (string, error)) *MockTokenService_GenerateLinkingToken_Call {
 	_c.Call.Return(run)
 	return _c
 }

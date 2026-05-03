@@ -16,14 +16,13 @@ const (
 
 // Claims defines the custom claims for the JWT tokens.
 type Claims struct {
-	UserID          uuid.UUID
-	Roles           []string
-	Type            string
-	Provider        string
-	ProviderUserID  string
-	RequestedRole   string
-	StoreName       string
-	BusinessLicense string
+	UserID         uuid.UUID
+	Roles          []string
+	Type           string
+	Provider       string
+	ProviderUserID string
+	RequestedRole  string
+	StoreName      string
 	jwt.RegisteredClaims
 }
 
@@ -45,8 +44,7 @@ type TokenService interface {
 		provider,
 		providerUserID,
 		requestedRole,
-		storeName,
-		businessLicense string,
+		storeName string,
 	) (string, error)
 
 	// GetRefreshTokenDuration returns the configured duration for refresh tokens.

@@ -6,6 +6,7 @@ import (
 
 	"radar/internal/delivery"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -73,10 +74,22 @@ func TestUserHandler_InvalidPayloadsAreRejectedAtHTTPBoundary(t *testing.T) {
 		{
 			name:       "merchant onboarding missing store name",
 			target:     "/merchant/onboarding",
-			body:       `{"onboarding_token":"token","business_license":"license"}`,
+			body:       `{"onboarding_token":"token"}`,
 			handle:     handler.CompleteMerchantOnboarding,
 			wantStatus: http.StatusBadRequest,
 			wantBody:   `"message":"store_name is required"`,
+		},
+		{
+			name:   "merchant verification missing business license",
+			target: "/merchant/verification",
+			body:   `{}`,
+			handle: func(c echo.Context) error {
+				c.Set("userID", uuid.New())
+
+				return handler.SubmitMerchantVerification(c)
+			},
+			wantStatus: http.StatusBadRequest,
+			wantBody:   `"message":"business_license is required"`,
 		},
 	}
 

@@ -159,6 +159,7 @@ func (r *router) registerAPIV1MerchantRoutes(apiV1 *echo.Group) {
 	merchantGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant))
 	{
 		merchantGroup.GET("/qr", r.subscriptionHandler.GenerateSubscriptionQR)
+		merchantGroup.POST("/verification", r.userHandler.SubmitMerchantVerification)
 	}
 
 	merchantMenusGroup := apiV1.Group("/menus/merchant")

@@ -28,6 +28,15 @@ type ErrorInfo struct {
 	Details any    `json:"details,omitempty"` // Additional error context (only for 4xx errors)
 }
 
+const ErrorLogContextKey = "response_error_for_log"
+
+type ErrorLogInfo struct {
+	StatusCode int
+	Code       string
+	Message    string
+	Details    any
+}
+
 // MetaInfo represents response metadata
 type MetaInfo struct {
 	RequestID string `json:"request_id"` // Request tracking ID
@@ -49,6 +58,13 @@ func Error(c echo.Context, statusCode int, errorCode string, message string, det
 	if statusCode >= 500 || statusCode == 401 || statusCode == 403 {
 		details = nil
 	}
+
+	c.Set(ErrorLogContextKey, ErrorLogInfo{
+		StatusCode: statusCode,
+		Code:       errorCode,
+		Message:    message,
+		Details:    details,
+	})
 
 	return c.JSON(statusCode, ErrorResponse{
 		Error: &ErrorInfo{

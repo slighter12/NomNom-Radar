@@ -370,6 +370,74 @@ func (_c *MockDeviceRepository_FindDeviceByUserAndDeviceIDIncludingDeleted_Call)
 	return _c
 }
 
+// FindDeviceHealthByUser provides a mock function for the type MockDeviceRepository
+func (_mock *MockDeviceRepository) FindDeviceHealthByUser(ctx context.Context, userID uuid.UUID) ([]repository.DeviceHealthRecord, error) {
+	ret := _mock.Called(ctx, userID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FindDeviceHealthByUser")
+	}
+
+	var r0 []repository.DeviceHealthRecord
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repository.DeviceHealthRecord, error)); ok {
+		return returnFunc(ctx, userID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repository.DeviceHealthRecord); ok {
+		r0 = returnFunc(ctx, userID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repository.DeviceHealthRecord)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = returnFunc(ctx, userID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockDeviceRepository_FindDeviceHealthByUser_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FindDeviceHealthByUser'
+type MockDeviceRepository_FindDeviceHealthByUser_Call struct {
+	*mock.Call
+}
+
+// FindDeviceHealthByUser is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID uuid.UUID
+func (_e *MockDeviceRepository_Expecter) FindDeviceHealthByUser(ctx interface{}, userID interface{}) *MockDeviceRepository_FindDeviceHealthByUser_Call {
+	return &MockDeviceRepository_FindDeviceHealthByUser_Call{Call: _e.mock.On("FindDeviceHealthByUser", ctx, userID)}
+}
+
+func (_c *MockDeviceRepository_FindDeviceHealthByUser_Call) Run(run func(ctx context.Context, userID uuid.UUID)) *MockDeviceRepository_FindDeviceHealthByUser_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockDeviceRepository_FindDeviceHealthByUser_Call) Return(deviceHealthRecords []repository.DeviceHealthRecord, err error) *MockDeviceRepository_FindDeviceHealthByUser_Call {
+	_c.Call.Return(deviceHealthRecords, err)
+	return _c
+}
+
+func (_c *MockDeviceRepository_FindDeviceHealthByUser_Call) RunAndReturn(run func(ctx context.Context, userID uuid.UUID) ([]repository.DeviceHealthRecord, error)) *MockDeviceRepository_FindDeviceHealthByUser_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // FindDevicesByUser provides a mock function for the type MockDeviceRepository
 func (_mock *MockDeviceRepository) FindDevicesByUser(ctx context.Context, userID uuid.UUID, filter repository.DeviceListFilter) ([]*entity.UserDevice, error) {
 	ret := _mock.Called(ctx, userID, filter)
@@ -440,74 +508,6 @@ func (_c *MockDeviceRepository_FindDevicesByUser_Call) Return(userDevices []*ent
 }
 
 func (_c *MockDeviceRepository_FindDevicesByUser_Call) RunAndReturn(run func(ctx context.Context, userID uuid.UUID, filter repository.DeviceListFilter) ([]*entity.UserDevice, error)) *MockDeviceRepository_FindDevicesByUser_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// FindDeviceHealthByUser provides a mock function for the type MockDeviceRepository
-func (_mock *MockDeviceRepository) FindDeviceHealthByUser(ctx context.Context, userID uuid.UUID) ([]repository.DeviceHealthRecord, error) {
-	ret := _mock.Called(ctx, userID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for FindDeviceHealthByUser")
-	}
-
-	var r0 []repository.DeviceHealthRecord
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repository.DeviceHealthRecord, error)); ok {
-		return returnFunc(ctx, userID)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repository.DeviceHealthRecord); ok {
-		r0 = returnFunc(ctx, userID)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]repository.DeviceHealthRecord)
-		}
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
-		r1 = returnFunc(ctx, userID)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// MockDeviceRepository_FindDeviceHealthByUser_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FindDeviceHealthByUser'
-type MockDeviceRepository_FindDeviceHealthByUser_Call struct {
-	*mock.Call
-}
-
-// FindDeviceHealthByUser is a helper method to define mock.On call
-//   - ctx context.Context
-//   - userID uuid.UUID
-func (_e *MockDeviceRepository_Expecter) FindDeviceHealthByUser(ctx interface{}, userID interface{}) *MockDeviceRepository_FindDeviceHealthByUser_Call {
-	return &MockDeviceRepository_FindDeviceHealthByUser_Call{Call: _e.mock.On("FindDeviceHealthByUser", ctx, userID)}
-}
-
-func (_c *MockDeviceRepository_FindDeviceHealthByUser_Call) Run(run func(ctx context.Context, userID uuid.UUID)) *MockDeviceRepository_FindDeviceHealthByUser_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 uuid.UUID
-		if args[1] != nil {
-			arg1 = args[1].(uuid.UUID)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *MockDeviceRepository_FindDeviceHealthByUser_Call) Return(records []repository.DeviceHealthRecord, err error) *MockDeviceRepository_FindDeviceHealthByUser_Call {
-	_c.Call.Return(records, err)
-	return _c
-}
-
-func (_c *MockDeviceRepository_FindDeviceHealthByUser_Call) RunAndReturn(run func(ctx context.Context, userID uuid.UUID) ([]repository.DeviceHealthRecord, error)) *MockDeviceRepository_FindDeviceHealthByUser_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -46,7 +46,7 @@ func (srv *sessionService) log(ctx context.Context) *slog.Logger {
 
 // GetActiveSessions retrieves all active sessions for a user.
 func (srv *sessionService) GetActiveSessions(ctx context.Context, userID uuid.UUID) ([]*entity.SessionInfo, error) {
-	srv.log(ctx).Debug("Getting active sessions", slog.Any("user_id", userID))
+	srv.log(ctx).Debug("Getting active sessions", slog.String("user_id", userID.String()))
 
 	var sessions []*entity.SessionInfo
 
@@ -87,18 +87,18 @@ func (srv *sessionService) GetActiveSessions(ctx context.Context, userID uuid.UU
 	})
 
 	if err != nil {
-		srv.log(ctx).Error("Failed to get active sessions", slog.Any("error", err), slog.Any("user_id", userID))
+		srv.log(ctx).Error("Failed to get active sessions", slog.String("error", err.Error()), slog.String("user_id", userID.String()))
 
 		return nil, err
 	}
-	srv.log(ctx).Debug("Successfully retrieved active sessions", slog.Any("user_id", userID), slog.Int("count", len(sessions)))
+	srv.log(ctx).Debug("Successfully retrieved active sessions", slog.String("user_id", userID.String()), slog.Int("count", len(sessions)))
 
 	return sessions, nil
 }
 
 // RevokeSession revokes a specific session.
 func (srv *sessionService) RevokeSession(ctx context.Context, userID, sessionID uuid.UUID) error {
-	srv.log(ctx).Info("Revoking session", slog.Any("user_id", userID), slog.Any("session_id", sessionID))
+	srv.log(ctx).Info("Revoking session", slog.String("user_id", userID.String()), slog.String("session_id", sessionID.String()))
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
 		userRepo := repoFactory.UserRepo()
@@ -138,18 +138,18 @@ func (srv *sessionService) RevokeSession(ctx context.Context, userID, sessionID 
 	})
 
 	if err != nil {
-		srv.log(ctx).Error("Failed to revoke session", slog.Any("error", err), slog.Any("user_id", userID), slog.Any("session_id", sessionID))
+		srv.log(ctx).Error("Failed to revoke session", slog.String("error", err.Error()), slog.String("user_id", userID.String()), slog.String("session_id", sessionID.String()))
 
 		return err
 	}
-	srv.log(ctx).Info("Successfully revoked session", slog.Any("user_id", userID), slog.Any("session_id", sessionID))
+	srv.log(ctx).Info("Successfully revoked session", slog.String("user_id", userID.String()), slog.String("session_id", sessionID.String()))
 
 	return nil
 }
 
 // RevokeAllSessions revokes all refresh token families for a user.
 func (srv *sessionService) RevokeAllSessions(ctx context.Context, userID uuid.UUID) error {
-	srv.log(ctx).Info("Revoking all sessions", slog.Any("user_id", userID))
+	srv.log(ctx).Info("Revoking all sessions", slog.String("user_id", userID.String()))
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
 		userRepo := repoFactory.UserRepo()
@@ -174,18 +174,18 @@ func (srv *sessionService) RevokeAllSessions(ctx context.Context, userID uuid.UU
 	})
 
 	if err != nil {
-		srv.log(ctx).Error("Failed to revoke all sessions", slog.Any("error", err), slog.Any("user_id", userID))
+		srv.log(ctx).Error("Failed to revoke all sessions", slog.String("error", err.Error()), slog.String("user_id", userID.String()))
 
 		return err
 	}
-	srv.log(ctx).Info("Successfully revoked all sessions", slog.Any("user_id", userID))
+	srv.log(ctx).Info("Successfully revoked all sessions", slog.String("user_id", userID.String()))
 
 	return nil
 }
 
 // RevokeAllOtherSessions revokes all sessions except the current one.
 func (srv *sessionService) RevokeAllOtherSessions(ctx context.Context, userID uuid.UUID, currentSessionID uuid.UUID) error {
-	srv.log(ctx).Info("Revoking all other sessions", slog.Any("user_id", userID), slog.Any("current_session_id", currentSessionID))
+	srv.log(ctx).Info("Revoking all other sessions", slog.String("user_id", userID.String()), slog.String("current_session_id", currentSessionID.String()))
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
 		userRepo := repoFactory.UserRepo()
@@ -220,18 +220,18 @@ func (srv *sessionService) RevokeAllOtherSessions(ctx context.Context, userID uu
 	})
 
 	if err != nil {
-		srv.log(ctx).Error("Failed to revoke all other sessions", slog.Any("error", err), slog.Any("user_id", userID))
+		srv.log(ctx).Error("Failed to revoke all other sessions", slog.String("error", err.Error()), slog.String("user_id", userID.String()))
 
 		return err
 	}
-	srv.log(ctx).Info("Successfully revoked all other sessions", slog.Any("user_id", userID), slog.Any("current_session_id", currentSessionID))
+	srv.log(ctx).Info("Successfully revoked all other sessions", slog.String("user_id", userID.String()), slog.String("current_session_id", currentSessionID.String()))
 
 	return nil
 }
 
 // GetSessionInfo retrieves detailed information about a specific session.
 func (srv *sessionService) GetSessionInfo(ctx context.Context, userID, sessionID uuid.UUID) (*entity.SessionInfo, error) {
-	srv.log(ctx).Debug("Getting session info", slog.Any("user_id", userID), slog.Any("session_id", sessionID))
+	srv.log(ctx).Debug("Getting session info", slog.String("user_id", userID.String()), slog.String("session_id", sessionID.String()))
 
 	var sessionInfo *entity.SessionInfo
 
@@ -279,11 +279,11 @@ func (srv *sessionService) GetSessionInfo(ctx context.Context, userID, sessionID
 	})
 
 	if err != nil {
-		srv.log(ctx).Error("Failed to get session info", slog.Any("error", err), slog.Any("user_id", userID), slog.Any("session_id", sessionID))
+		srv.log(ctx).Error("Failed to get session info", slog.String("error", err.Error()), slog.String("user_id", userID.String()), slog.String("session_id", sessionID.String()))
 
 		return nil, err
 	}
-	srv.log(ctx).Debug("Successfully retrieved session info", slog.Any("user_id", userID), slog.Any("session_id", sessionID))
+	srv.log(ctx).Debug("Successfully retrieved session info", slog.String("user_id", userID.String()), slog.String("session_id", sessionID.String()))
 
 	return sessionInfo, nil
 }
@@ -310,7 +310,7 @@ func (srv *sessionService) CleanupExpiredSessions(ctx context.Context) (int, err
 	})
 
 	if err != nil {
-		srv.log(ctx).Error("Failed to cleanup expired sessions", slog.Any("error", err))
+		srv.log(ctx).Error("Failed to cleanup expired sessions", slog.String("error", err.Error()))
 
 		return 0, fmt.Errorf("failed to cleanup expired sessions: %w", err)
 	}

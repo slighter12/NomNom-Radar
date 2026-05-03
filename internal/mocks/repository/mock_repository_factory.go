@@ -129,52 +129,6 @@ func (_c *MockRepositoryFactory_AuthRepo_Call) RunAndReturn(run func() repositor
 	return _c
 }
 
-// RefreshTokenRepo provides a mock function for the type MockRepositoryFactory
-func (_mock *MockRepositoryFactory) RefreshTokenRepo() repository.RefreshTokenRepository {
-	ret := _mock.Called()
-
-	if len(ret) == 0 {
-		panic("no return value specified for RefreshTokenRepo")
-	}
-
-	var r0 repository.RefreshTokenRepository
-	if returnFunc, ok := ret.Get(0).(func() repository.RefreshTokenRepository); ok {
-		r0 = returnFunc()
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(repository.RefreshTokenRepository)
-		}
-	}
-	return r0
-}
-
-// MockRepositoryFactory_RefreshTokenRepo_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RefreshTokenRepo'
-type MockRepositoryFactory_RefreshTokenRepo_Call struct {
-	*mock.Call
-}
-
-// RefreshTokenRepo is a helper method to define mock.On call
-func (_e *MockRepositoryFactory_Expecter) RefreshTokenRepo() *MockRepositoryFactory_RefreshTokenRepo_Call {
-	return &MockRepositoryFactory_RefreshTokenRepo_Call{Call: _e.mock.On("RefreshTokenRepo")}
-}
-
-func (_c *MockRepositoryFactory_RefreshTokenRepo_Call) Run(run func()) *MockRepositoryFactory_RefreshTokenRepo_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run()
-	})
-	return _c
-}
-
-func (_c *MockRepositoryFactory_RefreshTokenRepo_Call) Return(refreshTokenRepository repository.RefreshTokenRepository) *MockRepositoryFactory_RefreshTokenRepo_Call {
-	_c.Call.Return(refreshTokenRepository)
-	return _c
-}
-
-func (_c *MockRepositoryFactory_RefreshTokenRepo_Call) RunAndReturn(run func() repository.RefreshTokenRepository) *MockRepositoryFactory_RefreshTokenRepo_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // LoginAttemptRepo provides a mock function for the type MockRepositoryFactory
 func (_mock *MockRepositoryFactory) LoginAttemptRepo() repository.LoginAttemptRepository {
 	ret := _mock.Called()
@@ -217,6 +171,52 @@ func (_c *MockRepositoryFactory_LoginAttemptRepo_Call) Return(loginAttemptReposi
 }
 
 func (_c *MockRepositoryFactory_LoginAttemptRepo_Call) RunAndReturn(run func() repository.LoginAttemptRepository) *MockRepositoryFactory_LoginAttemptRepo_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RefreshTokenRepo provides a mock function for the type MockRepositoryFactory
+func (_mock *MockRepositoryFactory) RefreshTokenRepo() repository.RefreshTokenRepository {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for RefreshTokenRepo")
+	}
+
+	var r0 repository.RefreshTokenRepository
+	if returnFunc, ok := ret.Get(0).(func() repository.RefreshTokenRepository); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repository.RefreshTokenRepository)
+		}
+	}
+	return r0
+}
+
+// MockRepositoryFactory_RefreshTokenRepo_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RefreshTokenRepo'
+type MockRepositoryFactory_RefreshTokenRepo_Call struct {
+	*mock.Call
+}
+
+// RefreshTokenRepo is a helper method to define mock.On call
+func (_e *MockRepositoryFactory_Expecter) RefreshTokenRepo() *MockRepositoryFactory_RefreshTokenRepo_Call {
+	return &MockRepositoryFactory_RefreshTokenRepo_Call{Call: _e.mock.On("RefreshTokenRepo")}
+}
+
+func (_c *MockRepositoryFactory_RefreshTokenRepo_Call) Run(run func()) *MockRepositoryFactory_RefreshTokenRepo_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepositoryFactory_RefreshTokenRepo_Call) Return(refreshTokenRepository repository.RefreshTokenRepository) *MockRepositoryFactory_RefreshTokenRepo_Call {
+	_c.Call.Return(refreshTokenRepository)
+	return _c
+}
+
+func (_c *MockRepositoryFactory_RefreshTokenRepo_Call) RunAndReturn(run func() repository.RefreshTokenRepository) *MockRepositoryFactory_RefreshTokenRepo_Call {
 	_c.Call.Return(run)
 	return _c
 }

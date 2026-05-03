@@ -104,7 +104,7 @@ func (srv *userService) sendLockoutNotification(ctx context.Context, userID uuid
 			HealthyWindowDays: policy.DefaultDevicePolicy().HealthyWindowDays,
 		})
 		if err != nil {
-			logger.Warn("Failed to load devices for login lockout notification", slog.Any("user_id", userID), slog.Any("error", err))
+			logger.Warn("Failed to load devices for login lockout notification", slog.String("user_id", userID.String()), slog.String("error", err.Error()))
 
 			return
 		}
@@ -131,7 +131,7 @@ func (srv *userService) sendLockoutNotification(ctx context.Context, userID uuid
 			lockoutNotificationBody,
 			data,
 		); err != nil {
-			logger.Warn("Failed to send login lockout notification", slog.Any("user_id", userID), slog.Any("error", err))
+			logger.Warn("Failed to send login lockout notification", slog.String("user_id", userID.String()), slog.String("error", err.Error()))
 		}
 	}()
 }
@@ -148,7 +148,7 @@ func (srv *userService) sendTokenReuseNotification(ctx context.Context, userID u
 			HealthyWindowDays: policy.DefaultDevicePolicy().HealthyWindowDays,
 		})
 		if err != nil {
-			logger.Warn("Failed to load devices for refresh token reuse notification", slog.Any("user_id", userID), slog.Any("error", err))
+			logger.Warn("Failed to load devices for refresh token reuse notification", slog.String("user_id", userID.String()), slog.String("error", err.Error()))
 
 			return
 		}
@@ -174,7 +174,7 @@ func (srv *userService) sendTokenReuseNotification(ctx context.Context, userID u
 			securitySessionAlertBody,
 			data,
 		); err != nil {
-			logger.Warn("Failed to send refresh token reuse notification", slog.Any("user_id", userID), slog.Any("error", err))
+			logger.Warn("Failed to send refresh token reuse notification", slog.String("user_id", userID.String()), slog.String("error", err.Error()))
 		}
 	}()
 }

@@ -29,11 +29,10 @@ type jwtService struct {
 }
 
 type linkingTokenMetadata struct {
-	Provider        string
-	ProviderUserID  string
-	RequestedRole   string
-	StoreName       string
-	BusinessLicense string
+	Provider       string
+	ProviderUserID string
+	RequestedRole  string
+	StoreName      string
 }
 
 // NewJWTService is the constructor for jwtService.
@@ -123,8 +122,7 @@ func (s *jwtService) GenerateLinkingToken(
 	provider,
 	providerUserID,
 	requestedRole,
-	storeName,
-	businessLicense string,
+	storeName string,
 ) (string, error) {
 	token, err := s.generateToken(
 		userID,
@@ -133,11 +131,10 @@ func (s *jwtService) GenerateLinkingToken(
 		s.linkingSecret,
 		service.TokenTypeLinking,
 		&linkingTokenMetadata{
-			Provider:        provider,
-			ProviderUserID:  providerUserID,
-			RequestedRole:   requestedRole,
-			StoreName:       storeName,
-			BusinessLicense: businessLicense,
+			Provider:       provider,
+			ProviderUserID: providerUserID,
+			RequestedRole:  requestedRole,
+			StoreName:      storeName,
 		},
 	)
 	if err != nil {
@@ -251,7 +248,6 @@ func (s *jwtService) generateToken(
 		claims.ProviderUserID = linkingMetadata.ProviderUserID
 		claims.RequestedRole = linkingMetadata.RequestedRole
 		claims.StoreName = linkingMetadata.StoreName
-		claims.BusinessLicense = linkingMetadata.BusinessLicense
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

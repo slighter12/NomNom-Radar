@@ -83,7 +83,7 @@ func (h *SubscriptionHandler) UnsubscribeFromMerchant(c echo.Context) error {
 		return err
 	}
 
-	return response.Success(c, http.StatusOK, map[string]string{"message": "Unsubscribed successfully"})
+	return response.Success(c, http.StatusOK, map[string]string{responseKeyMessage: "Unsubscribed successfully"})
 }
 
 // GetUserSubscriptions handles retrieving all user subscriptions

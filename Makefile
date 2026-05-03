@@ -2,8 +2,10 @@
     sec-scan trivy-scan vuln-scan \
     db-postgres-init db-postgres-seeders-init \
     db-postgres-create db-postgres-up db-postgres-down db-postgres-down-all \
+    db-postgres-status db-postgres-install-goose \
 	gci-format build docker-image-build \
 	docker-up docker-down docker-logs docker-clean \
+	k6-full \
 	routing-cli routing-prepare routing-validate \
 	generate-mocks
 
@@ -18,6 +20,14 @@ SHELL := /bin/bash
 DOCKER_PLATFORM ?= linux/amd64
 TEST_PKGS ?= ./...
 USECASE_TEST_PKGS ?= ./internal/usecase/impl/...
+K6 ?= $(shell if command -v k6 >/dev/null 2>&1; then command -v k6; elif command -v mise >/dev/null 2>&1 && mise which k6 >/dev/null 2>&1; then mise which k6; else echo k6; fi)
+K6_BASE_URL ?= http://localhost:4433
+K6_RUN_ID ?= $(shell date '+%Y%m%d%H%M%S')
+K6_TEST_PASSWORD ?= K6pass!1234
+FULL_VUS ?= 1
+FULL_ITERATIONS ?= 1
+FULL_MAX_DURATION ?= 5m
+FULL_SLEEP_SECONDS ?= 0
 
 ########
 # test #
@@ -54,9 +64,14 @@ vuln-scan: ## scan for vulnerability issues with govulncheck (govulncheck binary
 ######
 POSTGRES_SQL_PATH := ./database/migration/postgres
 POSTGRES_SEEDERS_SQL_PATH := ./database/migration/postgres/seeders
-POSTGRES_DB_NAME := auth_db
-POSTGRES_DB_USER := user
-POSTGRES_DB_PASSWORD := password
+POSTGRES_HOST ?= localhost
+POSTGRES_PORT ?=
+POSTGRES_DB_NAME ?= auth_db
+POSTGRES_DB_USER ?= user
+POSTGRES_DB_PASSWORD ?= password
+POSTGRES_SSLMODE ?= disable
+PG_URI ?=
+GOOSE ?= $(shell if command -v goose >/dev/null 2>&1; then command -v goose; elif [ -x "$$(go env GOPATH)/bin/goose" ]; then echo "$$(go env GOPATH)/bin/goose"; else echo goose; fi)
 
 # -----------------------------------------------------------------------------
 # PostgreSQL
@@ -64,12 +79,14 @@ POSTGRES_DB_PASSWORD := password
 
 db-postgres-init: ## initialize new PostgreSQL migration
 	@mkdir -p ${POSTGRES_SQL_PATH}
-	goose create init sql -dir ${POSTGRES_SQL_PATH}
+	$(GOOSE) -dir ${POSTGRES_SQL_PATH} create init sql
 
 db-postgres-seeders-init: ## initialize new PostgreSQL seeder
 	@mkdir -p ${POSTGRES_SEEDERS_SQL_PATH}
 	@( \
-		printf "Enter seeder name: "; read -r SEEDER_NAME && \
+		SEEDER_NAME="$(NAME)"; \
+		if [ -z "$${SEEDER_NAME}" ]; then printf "Enter seeder name: "; read -r SEEDER_NAME; fi; \
+		if [ -z "$${SEEDER_NAME}" ]; then echo "NAME is required"; exit 1; fi; \
 		touch ${POSTGRES_SEEDERS_SQL_PATH}/$(SQL_FILE_TIMESTAMP)_$${SEEDER_NAME}.up.sql && \
 		touch ${POSTGRES_SEEDERS_SQL_PATH}/$(SQL_FILE_TIMESTAMP)_$${SEEDER_NAME}.down.sql \
 	)
@@ -77,38 +94,48 @@ db-postgres-seeders-init: ## initialize new PostgreSQL seeder
 db-postgres-create: ## create new PostgreSQL migration
 	@mkdir -p ${POSTGRES_SQL_PATH}
 	@( \
-		printf "Enter migration name: "; read -r MIGRATE_NAME && \
-		goose create $${MIGRATE_NAME} sql -dir ${POSTGRES_SQL_PATH} \
+		MIGRATE_NAME="$(NAME)"; \
+		if [ -z "$${MIGRATE_NAME}" ]; then printf "Enter migration name: "; read -r MIGRATE_NAME; fi; \
+		if [ -z "$${MIGRATE_NAME}" ]; then echo "NAME is required"; exit 1; fi; \
+		$(GOOSE) -dir ${POSTGRES_SQL_PATH} create "$${MIGRATE_NAME}" sql \
 	)
 
-define goose_migrate_command
-	PG_URI="postgres://${POSTGRES_DB_USER}:${POSTGRES_DB_PASSWORD}@localhost:${PG_PORT}/${POSTGRES_DB_NAME}?sslmode=disable"
-	goose postgres -dir $(1) $(2) $${PG_URI}
+define postgres_uri_command
+	PG_URI_VALUE="$(PG_URI)"; \
+	if [ -z "$${PG_URI_VALUE}" ]; then \
+		PG_PORT_VALUE="$(POSTGRES_PORT)"; \
+		if [ -z "$${PG_PORT_VALUE}" ]; then printf "Enter port(5432...): "; read -r PG_PORT_VALUE; fi; \
+		PG_PORT_VALUE=$${PG_PORT_VALUE:-5432}; \
+		PG_URI_VALUE="postgres://${POSTGRES_DB_USER}:${POSTGRES_DB_PASSWORD}@${POSTGRES_HOST}:$${PG_PORT_VALUE}/${POSTGRES_DB_NAME}?sslmode=${POSTGRES_SSLMODE}"; \
+	fi
 endef
 
 db-postgres-up: ## apply all PostgreSQL migrations
 	@( \
-		printf "Enter port(5432...): "; read -r PG_PORT && \
-		PG_PORT=$${PG_PORT:-5432} && \
-		PG_URI="postgres://${POSTGRES_DB_USER}:${POSTGRES_DB_PASSWORD}@localhost:${PG_PORT}/${POSTGRES_DB_NAME}?sslmode=disable" && \
-		goose postgres "$${PG_URI}" -dir ${POSTGRES_SQL_PATH} up \
+		$(postgres_uri_command); \
+		$(GOOSE) -dir ${POSTGRES_SQL_PATH} postgres "$${PG_URI_VALUE}" up \
 	)
 
 db-postgres-down: ## revert all PostgreSQL migrations
 	@( \
-		printf "Enter port(5432...): "; read -r PG_PORT && \
-		PG_PORT=$${PG_PORT:-5432} && \
-		PG_URI="postgres://${POSTGRES_DB_USER}:${POSTGRES_DB_PASSWORD}@localhost:${PG_PORT}/${POSTGRES_DB_NAME}?sslmode=disable" && \
-		goose postgres "$${PG_URI}" -dir ${POSTGRES_SQL_PATH} down \
+		$(postgres_uri_command); \
+		$(GOOSE) -dir ${POSTGRES_SQL_PATH} postgres "$${PG_URI_VALUE}" down \
 	)
 
 db-postgres-down-all: ## revert PostgreSQL migrations down to version 0 (drops all applied migrations)
 	@( \
-		printf "Enter port(5432...): "; read -r PG_PORT && \
-		PG_PORT=$${PG_PORT:-5432} && \
-		PG_URI="postgres://${POSTGRES_DB_USER}:${POSTGRES_DB_PASSWORD}@localhost:${PG_PORT}/${POSTGRES_DB_NAME}?sslmode=disable" && \
-		goose postgres "$${PG_URI}" -dir ${POSTGRES_SQL_PATH} down-to 0 \
+		$(postgres_uri_command); \
+		$(GOOSE) -dir ${POSTGRES_SQL_PATH} postgres "$${PG_URI_VALUE}" down-to 0 \
 	)
+
+db-postgres-status: ## show PostgreSQL migration status
+	@( \
+		$(postgres_uri_command); \
+		$(GOOSE) -dir ${POSTGRES_SQL_PATH} postgres "$${PG_URI_VALUE}" status \
+	)
+
+db-postgres-install-goose: ## install goose CLI
+	go install github.com/pressly/goose/v3/cmd/goose@latest
 
 db-postgres-test-replication: ## test replication
 	@echo "Testing replication with SCRAM-SHA-256 authentication..."
@@ -165,6 +192,16 @@ docker-logs: ## show logs from PostgreSQL services
 
 docker-clean: ## remove all containers, networks, and volumes
 	docker-compose down -v --remove-orphans
+
+k6-full: ## run k6 functional API verification with local k6
+	BASE_URL="$(K6_BASE_URL)" \
+	RUN_ID="$(K6_RUN_ID)" \
+	K6_TEST_PASSWORD="$(K6_TEST_PASSWORD)" \
+	FULL_VUS="$(FULL_VUS)" \
+	FULL_ITERATIONS="$(FULL_ITERATIONS)" \
+	FULL_MAX_DURATION="$(FULL_MAX_DURATION)" \
+	FULL_SLEEP_SECONDS="$(FULL_SLEEP_SECONDS)" \
+	$(K6) run k6/full.js
 
 #############
 #  Routing  #

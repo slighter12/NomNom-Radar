@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
@@ -55,7 +56,7 @@ func (repo *userRepository) FindByID(ctx context.Context, id uuid.UUID) (*entity
 func (repo *userRepository) AcquireSessionMutex(ctx context.Context, id uuid.UUID) error {
 	_, err := repo.q.UserModel.WithContext(ctx).
 		Select(repo.q.UserModel.ID).
-		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Clauses(clause.Locking{Strength: rowLockStrengthUpdate}).
 		Where(repo.q.UserModel.ID.Eq(id)).
 		First()
 	if err != nil {
@@ -98,6 +99,10 @@ func (repo *userRepository) Create(ctx context.Context, user *entity.User) error
 	// Execute the creation using the database connection.
 	if err := repo.q.UserModel.WithContext(ctx).Create(userM); err != nil {
 		if isUniqueConstraintViolation(err) {
+			if isBusinessLicenseUniqueConstraint(err) {
+				return domainerrors.ErrBusinessLicenseExists
+			}
+
 			return domainerrors.ErrUserAlreadyExists
 		}
 		if isNotNullConstraintViolation(err) {
@@ -137,6 +142,10 @@ func (repo *userRepository) Update(ctx context.Context, user *entity.User) error
 	// Use Session with FullSaveAssociations to update nested associations
 	if err := repo.q.UserModel.WithContext(ctx).Session(&gorm.Session{FullSaveAssociations: true}).Save(userM); err != nil {
 		if isUniqueConstraintViolation(err) {
+			if isBusinessLicenseUniqueConstraint(err) {
+				return domainerrors.ErrBusinessLicenseExists
+			}
+
 			return domainerrors.ErrUserAlreadyExists
 		}
 		if isNotNullConstraintViolation(err) {
@@ -318,12 +327,14 @@ func toMerchantProfileDomain(data *model.MerchantProfileModel) *entity.MerchantP
 	}
 
 	return &entity.MerchantProfile{
-		UserID:           data.UserID,
-		StoreName:        data.StoreName,
-		StoreDescription: data.StoreDescription,
-		BusinessLicense:  data.BusinessLicense,
-		Addresses:        addresses,
-		UpdatedAt:        data.UpdatedAt,
+		UserID:                    data.UserID,
+		StoreName:                 data.StoreName,
+		StoreDescription:          data.StoreDescription,
+		BusinessLicense:           stringFromPtr(data.BusinessLicense),
+		VerificationStatus:        merchantVerificationStatusFromString(data.VerificationStatus),
+		BusinessLicenseVerifiedAt: data.BusinessLicenseVerifiedAt,
+		Addresses:                 addresses,
+		UpdatedAt:                 data.UpdatedAt,
 	}
 }
 
@@ -363,11 +374,48 @@ func fromMerchantProfileDomain(data *entity.MerchantProfile) *model.MerchantProf
 	}
 
 	return &model.MerchantProfileModel{
-		UserID:           data.UserID,
-		StoreName:        data.StoreName,
-		StoreDescription: data.StoreDescription,
-		BusinessLicense:  data.BusinessLicense,
-		Addresses:        addresses,
-		UpdatedAt:        data.UpdatedAt,
+		UserID:                    data.UserID,
+		StoreName:                 data.StoreName,
+		StoreDescription:          data.StoreDescription,
+		BusinessLicense:           stringPtrFromNonBlank(data.BusinessLicense),
+		VerificationStatus:        merchantVerificationStatusString(data.VerificationStatus),
+		BusinessLicenseVerifiedAt: data.BusinessLicenseVerifiedAt,
+		Addresses:                 addresses,
+		UpdatedAt:                 data.UpdatedAt,
+	}
+}
+
+func stringFromPtr(value *string) string {
+	if value == nil {
+		return ""
+	}
+
+	return *value
+}
+
+func stringPtrFromNonBlank(value string) *string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+
+	return &trimmed
+}
+
+func merchantVerificationStatusFromString(value string) entity.MerchantVerificationStatus {
+	switch entity.MerchantVerificationStatus(value) {
+	case entity.MerchantVerificationStatusVerified:
+		return entity.MerchantVerificationStatusVerified
+	default:
+		return entity.MerchantVerificationStatusUnverified
+	}
+}
+
+func merchantVerificationStatusString(value entity.MerchantVerificationStatus) string {
+	switch value {
+	case entity.MerchantVerificationStatusVerified:
+		return string(entity.MerchantVerificationStatusVerified)
+	default:
+		return string(entity.MerchantVerificationStatusUnverified)
 	}
 }

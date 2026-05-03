@@ -154,7 +154,6 @@ func (repo *menuRepository) UpdateMenuItem(ctx context.Context, item *entity.Men
 		menuItem.IsPopular.Value(item.IsPopular),
 		nullableStringAssign(&menuItem.ImageURL, item.ImageURL),
 		nullableStringAssign(&menuItem.ExternalURL, item.ExternalURL),
-		menuItem.UpdatedAt.Value(item.UpdatedAt),
 	}
 
 	result, err := menuItemQuery.
@@ -200,7 +199,7 @@ func (repo *menuRepository) DeleteMenuItem(ctx context.Context, merchantID, menu
 		menuItem := transactionQuery.MenuItemModel
 		menuItemQuery := menuItem.WithContext(ctx)
 		itemM, err := menuItemQuery.
-			Clauses(clause.Locking{Strength: "UPDATE"}).
+			Clauses(clause.Locking{Strength: rowLockStrengthUpdate}).
 			Where(
 				menuItem.ID.Eq(menuItemID),
 				menuItem.MerchantID.Eq(merchantID),
@@ -262,7 +261,7 @@ func (repo *menuRepository) lockMerchantProfileForMenuWrite(ctx context.Context,
 	merchantProfileQuery := merchantProfile.WithContext(ctx)
 	_, err := merchantProfileQuery.
 		Select(merchantProfile.UserID).
-		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Clauses(clause.Locking{Strength: rowLockStrengthUpdate}).
 		Where(merchantProfile.UserID.Eq(merchantID)).
 		Take()
 	if err != nil {
@@ -351,7 +350,7 @@ func (repo *menuRepository) listScopedMenuItemIDs(ctx context.Context, transacti
 	menuItem := transactionQuery.MenuItemModel
 	menuItemQuery := menuItem.WithContext(ctx)
 	scopedItems, err := menuItemQuery.
-		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Clauses(clause.Locking{Strength: rowLockStrengthUpdate}).
 		Select(menuItem.ID).
 		Where(menuItem.MerchantID.Eq(merchantID)).
 		Order(menuItem.DisplayOrder.Asc()).
@@ -409,7 +408,7 @@ func (repo *menuRepository) listProvidedMenuItems(ctx context.Context, transacti
 
 	var providedItems []menuItemMerchantRecord
 	if err := menuItemQuery.
-		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Clauses(clause.Locking{Strength: rowLockStrengthUpdate}).
 		Select(menuItem.MerchantID).
 		Where(menuItem.ID.In(ids...)).
 		Scan(&providedItems); err != nil {

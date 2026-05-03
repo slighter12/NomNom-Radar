@@ -4,6 +4,7 @@ import "net/http"
 
 var (
 	ErrMerchantAlreadyExists     = NewBaseError(http.StatusConflict, "MERCHANT_ALREADY_EXISTS", "此電子郵件已被註冊為商家", "")
+	ErrBusinessLicenseExists     = NewBaseError(http.StatusConflict, "BUSINESS_LICENSE_ALREADY_EXISTS", "此營業登記已被註冊", "")
 	ErrMerchantNotFound          = NewBaseError(http.StatusNotFound, "MERCHANT_NOT_FOUND", "找不到該商家", "")
 	ErrMenuItemNotFound          = NewBaseError(http.StatusNotFound, "MENU_ITEM_NOT_FOUND", "找不到該菜單品項", "")
 	ErrMenuItemCreateFailed      = NewBaseError(http.StatusInternalServerError, "MENU_ITEM_CREATE_FAILED", "建立菜單品項失敗", "")

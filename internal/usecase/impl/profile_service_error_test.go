@@ -252,8 +252,7 @@ func TestProfileService_SwitchToMerchant_NotFound(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 	input := &usecase.SwitchToMerchantInput{
-		StoreName:       "Test Store",
-		BusinessLicense: "BL-123",
+		StoreName: "Test Store",
 	}
 
 	fx.onExecute(ctx, domainerrors.ErrNotFound, func(factory *mockRepo.MockRepositoryFactory) {
@@ -274,8 +273,7 @@ func TestProfileService_SwitchToMerchant_FindError(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 	input := &usecase.SwitchToMerchantInput{
-		StoreName:       "Test Store",
-		BusinessLicense: "BL-123",
+		StoreName: "Test Store",
 	}
 
 	expectedErr := errors.New("db error")
@@ -297,8 +295,7 @@ func TestProfileService_SwitchToMerchant_AlreadyMerchant(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 	input := &usecase.SwitchToMerchantInput{
-		StoreName:       "Test Store",
-		BusinessLicense: "BL-123",
+		StoreName: "Test Store",
 	}
 
 	existingUser := &entity.User{
@@ -327,8 +324,7 @@ func TestProfileService_SwitchToMerchant_UpdateError(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 	input := &usecase.SwitchToMerchantInput{
-		StoreName:       "Test Store",
-		BusinessLicense: "BL-123",
+		StoreName: "Test Store",
 	}
 
 	existingUser := &entity.User{

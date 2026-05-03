@@ -512,7 +512,7 @@ Extend the existing JWT token pattern (same approach as onboarding token):
   - `Provider` — the OAuth provider (e.g., `"google"`).
   - `ProviderUserID` — the OAuth provider's unique user ID (`sub`).
 - **Signing**: Use `secretKey.linking` when configured. If omitted, derive a dedicated linking secret from the access secret using the token type, matching the onboarding token fallback strategy.
-- Add `GenerateLinkingToken(userID, provider, providerUserID, requestedRole, storeName, businessLicense)` to `TokenService` interface and `jwtService`.
+- Add `GenerateLinkingToken(userID, provider, providerUserID, requestedRole, storeName)` to `TokenService` interface and `jwtService`.
 
 #### 5.4 New Endpoint
 

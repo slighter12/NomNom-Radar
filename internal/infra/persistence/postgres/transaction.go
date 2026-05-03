@@ -86,7 +86,7 @@ func (tm *gormTransactionManager) Execute(ctx context.Context, fn func(repoFacto
 		// If the business logic returns an error, roll back the transaction.
 		if rbErr := tx.Rollback().Error; rbErr != nil {
 			// Log the rollback error, but return the original, more meaningful business error.
-			tm.logger.Error("transaction rollback failed", slog.Any("error", rbErr))
+			tm.logger.Error("transaction rollback failed", slog.String("error", rbErr.Error()))
 		}
 
 		return err //nolint:wrapcheck // preserve the original business error without adding a redundant wrapper

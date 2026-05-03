@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"slices"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 )
 
 const defaultGormSlowThreshold = 200 * time.Millisecond
+
+var sqlStringLiteralPattern = regexp.MustCompile(`'([^']|'')*'`)
 
 type gormSlogLogger struct {
 	logger                     *slog.Logger
@@ -84,7 +87,7 @@ func (l *gormSlogLogger) Trace(ctx context.Context, begin time.Time, sqlAndRowsF
 	if l.shouldLogError(err) {
 		baseAttrs := l.buildQueryAttrs(sqlAndRowsFn, elapsed)
 		attrs := slices.Clone(baseAttrs)
-		attrs = append(attrs, slog.String("error", err.Error()))
+		attrs = append(attrs, slog.String("error", sanitizeSQLLogString(err.Error())))
 		l.logger.LogAttrs(ctx, slog.LevelError, "GORM query failed", attrs...)
 
 		return
@@ -111,8 +114,12 @@ func (l *gormSlogLogger) buildQueryAttrs(sqlAndRowsFn func() (string, int64), el
 	return []slog.Attr{
 		slog.Duration("elapsed", elapsed),
 		slog.Int64("rows", rows),
-		slog.String("sql", sql),
+		slog.String("sql", sanitizeSQLLogString(sql)),
 	}
+}
+
+func sanitizeSQLLogString(value string) string {
+	return sqlStringLiteralPattern.ReplaceAllString(value, "'?'")
 }
 
 func (l *gormSlogLogger) shouldLogError(err error) bool {

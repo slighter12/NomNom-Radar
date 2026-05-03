@@ -54,23 +54,29 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 	requestIDMiddleware := middleware.NewRequestIDMiddleware(params.Logger)
 	echoServer.Use(requestIDMiddleware.Process)
 
-	// 3. Logger middleware
-	loggerMiddleware := middleware.NewLoggerMiddleware(params.Logger, params.Cfg)
-	echoServer.Use(loggerMiddleware.Handle)
-
-	// 4. Domain guard middleware
-	domainGuard := apimiddleware.NewDomainGuardMiddleware(params.Cfg)
-	echoServer.Use(domainGuard.ValidateHost)
-
-	// 5. CORS middleware
-	echoServer.Use(echomiddleware.CORS())
-
-	// 6. Request body size limit
-	echoServer.Use(echomiddleware.BodyLimit(params.Cfg.HTTP.MaxRequestBodySize))
-
 	// Set up centralized error handler
 	errorMiddleware := apimiddleware.NewErrorMiddleware(params.Logger)
 	echoServer.HTTPErrorHandler = errorMiddleware.HandleHTTPError
+
+	// 3. Request lifecycle logger
+	requestLogger := apimiddleware.NewRequestLoggerMiddleware(params.Logger, params.Cfg)
+	echoServer.Use(requestLogger.Log)
+
+	// 4. Convert returned errors into HTTP responses inside the middleware chain.
+	echoServer.Use(errorMiddleware.HandleErrors)
+
+	// 5. Domain guard middleware
+	domainGuard := apimiddleware.NewDomainGuardMiddleware(params.Cfg)
+	echoServer.Use(domainGuard.ValidateHost)
+
+	// 6. CORS middleware
+	echoServer.Use(echomiddleware.CORS())
+
+	// 7. Request body size limit
+	echoServer.Use(echomiddleware.BodyLimit(params.Cfg.HTTP.MaxRequestBodySize))
+
+	// 8. Keep a bounded JSON body copy for sanitized error-only request logging.
+	echoServer.Use(apimiddleware.CaptureRequestBodyForErrorLog)
 
 	// Set up validator
 	echoServer.Validator = validator.New()

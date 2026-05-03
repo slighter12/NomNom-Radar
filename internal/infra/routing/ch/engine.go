@@ -117,11 +117,11 @@ func (e *Engine) LoadData(dataDir string) error {
 	// Load metadata
 	metadata, err := loader.LoadMetadata(dataDir)
 	if err != nil {
-		e.logger.Warn("Failed to load routing metadata", slog.Any("error", err))
+		e.logger.Warn("Failed to load routing metadata", slog.String("error", err.Error()))
 		// Continue without metadata - it's not strictly required
 	} else {
 		if err := metadata.Validate(); err != nil {
-			e.logger.Warn("Routing metadata validation failed", slog.Any("error", err))
+			e.logger.Warn("Routing metadata validation failed", slog.String("error", err.Error()))
 		}
 		e.metadata = metadata
 	}

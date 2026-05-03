@@ -32,17 +32,17 @@ func (h *TestHandler) TestAuthMiddleware(c echo.Context) error {
 	}
 
 	return response.Success(c, http.StatusOK, map[string]any{
-		"message": "Authentication middleware test successful",
-		"userID":  userID,
-		"roles":   roles,
-		"status":  "authenticated",
+		responseKeyMessage: "Authentication middleware test successful",
+		"userID":           userID,
+		"roles":            roles,
+		responseKeyStatus:  "authenticated",
 	})
 }
 
 // TestPublicEndpoint tests a public endpoint (no authentication required)
 func (h *TestHandler) TestPublicEndpoint(c echo.Context) error {
 	return response.Success(c, http.StatusOK, map[string]any{
-		"message": "Public endpoint test successful",
-		"status":  "public",
+		responseKeyMessage: "Public endpoint test successful",
+		responseKeyStatus:  "public",
 	})
 }

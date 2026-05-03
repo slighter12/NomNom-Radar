@@ -48,7 +48,7 @@ func (s *OAuthService) VerifyIDToken(ctx context.Context, idToken string) (*serv
 	// and checking the issuer and expiration time.
 	payload, err := idtoken.Validate(ctx, idToken, s.clientID)
 	if err != nil {
-		s.log(ctx).Error("Google token validation failed", slog.Any("error", err))
+		s.log(ctx).Error("Google token validation failed", slog.String("error", err.Error()))
 
 		return nil, fmt.Errorf("validate Google ID token: %w", err)
 	}

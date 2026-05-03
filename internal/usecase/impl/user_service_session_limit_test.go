@@ -316,7 +316,7 @@ func (s *sessionLimitTestTokenService) GenerateOnboardingToken(_ uuid.UUID) (str
 	panic("not implemented")
 }
 
-func (s *sessionLimitTestTokenService) GenerateLinkingToken(_ uuid.UUID, _, _, _, _, _ string) (string, error) {
+func (s *sessionLimitTestTokenService) GenerateLinkingToken(_ uuid.UUID, _, _, _, _ string) (string, error) {
 	panic("not implemented")
 }
 

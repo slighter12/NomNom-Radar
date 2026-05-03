@@ -131,7 +131,7 @@ func (s *notificationService) publishAsync(
 		// Startup is strict about configuration, but runtime pre-filter failures are
 		// treated as a degraded-mode event so delivery can still proceed via direct Firebase.
 		s.log(ctx).Warn("Failed to pre-filter subscribers, falling back to sync",
-			slog.Any("error", err),
+			slog.String("error", err.Error()),
 		)
 
 		return s.publishSync(ctx, notification, merchantID, latitude, longitude, locationName, fullAddress, hintMessage)
@@ -172,7 +172,7 @@ func (s *notificationService) publishAsync(
 		// Keep a runtime fallback here so transient Pub/Sub outages do not turn into
 		// notification loss after the notification record has already been created.
 		s.log(ctx).Warn("Failed to publish async event, falling back to sync",
-			slog.Any("error", err),
+			slog.String("error", err.Error()),
 		)
 
 		return s.publishSync(ctx, notification, merchantID, latitude, longitude, locationName, fullAddress, hintMessage)
@@ -352,7 +352,7 @@ func (s *notificationService) handleInvalidTokens(ctx context.Context, invalidTo
 		if device, ok := deviceMap[token]; ok {
 			if err := s.deviceRepo.DeleteDevice(ctx, device.ID); err != nil {
 				// Log error but continue
-				s.log(ctx).Warn("failed to delete unregistered device", slog.String("device_id", device.ID.String()), slog.Any("error", err))
+				s.log(ctx).Warn("failed to delete unregistered device", slog.String("device_id", device.ID.String()), slog.String("error", err.Error()))
 			}
 		}
 	}
@@ -484,7 +484,7 @@ func (s *notificationService) sendAndProcessNotifications(
 	if len(notificationLogs) > 0 {
 		if err := s.notificationRepo.BatchCreateNotificationLogs(ctx, notificationLogs); err != nil {
 			// Log error but don't fail the entire operation
-			s.log(ctx).Error("failed to create notification logs", slog.Any("error", err))
+			s.log(ctx).Error("failed to create notification logs", slog.String("error", err.Error()))
 		}
 	}
 

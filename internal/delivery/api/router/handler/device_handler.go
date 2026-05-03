@@ -124,7 +124,7 @@ func (h *DeviceHandler) UpdateFCMToken(c echo.Context) error {
 		return err
 	}
 
-	return response.Success(c, http.StatusOK, map[string]string{"message": "FCM token updated successfully"})
+	return response.Success(c, http.StatusOK, map[string]string{responseKeyMessage: "FCM token updated successfully"})
 }
 
 // DeactivateDevice handles deactivating a device
@@ -143,7 +143,7 @@ func (h *DeviceHandler) DeactivateDevice(c echo.Context) error {
 		return err
 	}
 
-	return response.Success(c, http.StatusOK, map[string]string{"message": "Device deactivated successfully"})
+	return response.Success(c, http.StatusOK, map[string]string{responseKeyMessage: "Device deactivated successfully"})
 }
 
 func (h *DeviceHandler) parseDeviceID(c echo.Context) (uuid.UUID, error) {

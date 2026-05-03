@@ -662,63 +662,6 @@ func (_c *MockRefreshTokenRepository_FindRefreshTokensByUserID_Call) RunAndRetur
 	return _c
 }
 
-// RevokeTokenFamily provides a mock function for the type MockRefreshTokenRepository
-func (_mock *MockRefreshTokenRepository) RevokeTokenFamily(ctx context.Context, familyID uuid.UUID) error {
-	ret := _mock.Called(ctx, familyID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for RevokeTokenFamily")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) error); ok {
-		r0 = returnFunc(ctx, familyID)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// MockRefreshTokenRepository_RevokeTokenFamily_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RevokeTokenFamily'
-type MockRefreshTokenRepository_RevokeTokenFamily_Call struct {
-	*mock.Call
-}
-
-// RevokeTokenFamily is a helper method to define mock.On call
-//   - ctx context.Context
-//   - familyID uuid.UUID
-func (_e *MockRefreshTokenRepository_Expecter) RevokeTokenFamily(ctx interface{}, familyID interface{}) *MockRefreshTokenRepository_RevokeTokenFamily_Call {
-	return &MockRefreshTokenRepository_RevokeTokenFamily_Call{Call: _e.mock.On("RevokeTokenFamily", ctx, familyID)}
-}
-
-func (_c *MockRefreshTokenRepository_RevokeTokenFamily_Call) Run(run func(ctx context.Context, familyID uuid.UUID)) *MockRefreshTokenRepository_RevokeTokenFamily_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 uuid.UUID
-		if args[1] != nil {
-			arg1 = args[1].(uuid.UUID)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *MockRefreshTokenRepository_RevokeTokenFamily_Call) Return(err error) *MockRefreshTokenRepository_RevokeTokenFamily_Call {
-	_c.Call.Return(err)
-	return _c
-}
-
-func (_c *MockRefreshTokenRepository_RevokeTokenFamily_Call) RunAndReturn(run func(ctx context.Context, familyID uuid.UUID) error) *MockRefreshTokenRepository_RevokeTokenFamily_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // RevokeTokenFamiliesByUserID provides a mock function for the type MockRefreshTokenRepository
 func (_mock *MockRefreshTokenRepository) RevokeTokenFamiliesByUserID(ctx context.Context, userID uuid.UUID) error {
 	ret := _mock.Called(ctx, userID)
@@ -772,6 +715,63 @@ func (_c *MockRefreshTokenRepository_RevokeTokenFamiliesByUserID_Call) Return(er
 }
 
 func (_c *MockRefreshTokenRepository_RevokeTokenFamiliesByUserID_Call) RunAndReturn(run func(ctx context.Context, userID uuid.UUID) error) *MockRefreshTokenRepository_RevokeTokenFamiliesByUserID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RevokeTokenFamily provides a mock function for the type MockRefreshTokenRepository
+func (_mock *MockRefreshTokenRepository) RevokeTokenFamily(ctx context.Context, familyID uuid.UUID) error {
+	ret := _mock.Called(ctx, familyID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RevokeTokenFamily")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) error); ok {
+		r0 = returnFunc(ctx, familyID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockRefreshTokenRepository_RevokeTokenFamily_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RevokeTokenFamily'
+type MockRefreshTokenRepository_RevokeTokenFamily_Call struct {
+	*mock.Call
+}
+
+// RevokeTokenFamily is a helper method to define mock.On call
+//   - ctx context.Context
+//   - familyID uuid.UUID
+func (_e *MockRefreshTokenRepository_Expecter) RevokeTokenFamily(ctx interface{}, familyID interface{}) *MockRefreshTokenRepository_RevokeTokenFamily_Call {
+	return &MockRefreshTokenRepository_RevokeTokenFamily_Call{Call: _e.mock.On("RevokeTokenFamily", ctx, familyID)}
+}
+
+func (_c *MockRefreshTokenRepository_RevokeTokenFamily_Call) Run(run func(ctx context.Context, familyID uuid.UUID)) *MockRefreshTokenRepository_RevokeTokenFamily_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockRefreshTokenRepository_RevokeTokenFamily_Call) Return(err error) *MockRefreshTokenRepository_RevokeTokenFamily_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockRefreshTokenRepository_RevokeTokenFamily_Call) RunAndReturn(run func(ctx context.Context, familyID uuid.UUID) error) *MockRefreshTokenRepository_RevokeTokenFamily_Call {
 	_c.Call.Return(run)
 	return _c
 }

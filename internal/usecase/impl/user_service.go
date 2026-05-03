@@ -145,7 +145,7 @@ func (srv *userService) syncExistingAccountProfile(
 ) error {
 	if cfg.HasProfile(existingUser) {
 		if failIfProfileExists {
-			srv.log(ctx).Warn("Profile already exists for account", slog.Any("role", cfg.Role), slog.Any("user_id", existingUser.ID))
+			srv.log(ctx).Warn("Profile already exists for account", slog.String("role", cfg.Role.String()), slog.String("user_id", existingUser.ID.String()))
 
 			return cfg.ProfileExistsError()
 		}
@@ -177,8 +177,7 @@ func buildNewUserEntity(name, email string) *entity.User {
 }
 
 type merchantProfileSeed struct {
-	StoreName       string
-	BusinessLicense string
+	StoreName string
 }
 
 func attachUserProfile(user *entity.User) {
@@ -187,8 +186,7 @@ func attachUserProfile(user *entity.User) {
 
 func buildNewMerchantEntity(input *usecase.RegisterMerchantInput) (*entity.User, error) {
 	return buildNewMerchantEntityFromSeed(input.Name, input.Email, merchantProfileSeed{
-		StoreName:       input.StoreName,
-		BusinessLicense: input.BusinessLicense,
+		StoreName: input.StoreName,
 	})
 }
 
@@ -207,8 +205,7 @@ func buildNewMerchantEntityFromSeed(name, email string, seed merchantProfileSeed
 
 func attachMerchantProfile(input *usecase.RegisterMerchantInput) func(*entity.User) error {
 	return attachMerchantProfileFromSeed(merchantProfileSeed{
-		StoreName:       input.StoreName,
-		BusinessLicense: input.BusinessLicense,
+		StoreName: input.StoreName,
 	})
 }
 
@@ -257,8 +254,7 @@ func (srv *userService) RegisterMerchant(ctx context.Context, input *usecase.Reg
 		Email:         input.Email,
 		Password:      input.Password,
 		MerchantSeed: &merchantProfileSeed{
-			StoreName:       input.StoreName,
-			BusinessLicense: input.BusinessLicense,
+			StoreName: input.StoreName,
 		},
 	})
 }
@@ -336,7 +332,7 @@ func (srv *userService) RefreshToken(ctx context.Context, input *usecase.Refresh
 
 	if err != nil {
 		if _, ok := errors.AsType[domainerrors.AppError](err); !ok {
-			srv.log(ctx).Error("Failed to execute refresh token transaction", slog.Any("error", err))
+			srv.log(ctx).Error("Failed to execute refresh token transaction", slog.String("error", err.Error()))
 		}
 
 		return nil, err
@@ -560,7 +556,7 @@ func (srv *userService) Logout(ctx context.Context, input *usecase.LogoutInput) 
 	_, err := srv.tokenService.ValidateToken(input.RefreshToken)
 	if err != nil {
 		// Even if the token is invalid, we can proceed to delete it from the database.
-		srv.log(ctx).Warn("Logout with invalid token", slog.Any("error", err))
+		srv.log(ctx).Warn("Logout with invalid token", slog.String("error", err.Error()))
 	}
 
 	tokenHash := srv.tokenService.HashToken(input.RefreshToken)
@@ -584,7 +580,7 @@ func (srv *userService) Logout(ctx context.Context, input *usecase.LogoutInput) 
 
 		return refreshRepo.RevokeTokenFamily(ctx, token.FamilyID)
 	}); err != nil {
-		srv.log(ctx).Error("Failed to revoke refresh token family during logout", slog.Any("error", err))
+		srv.log(ctx).Error("Failed to revoke refresh token family during logout", slog.String("error", err.Error()))
 
 		return domainerrors.ErrInternalError
 	}
@@ -598,10 +594,9 @@ func (srv *userService) GoogleCallback(ctx context.Context, input *usecase.Googl
 	requestedRole := normalizeRequestedRole(input.RequestedRole, input.State)
 
 	var merchantSeed *merchantProfileSeed
-	if strings.TrimSpace(input.StoreName) != "" || strings.TrimSpace(input.BusinessLicense) != "" {
+	if strings.TrimSpace(input.StoreName) != "" {
 		merchantSeed = &merchantProfileSeed{
-			StoreName:       input.StoreName,
-			BusinessLicense: input.BusinessLicense,
+			StoreName: input.StoreName,
 		}
 	}
 
@@ -792,11 +787,9 @@ func buildAuthRequestFromLinkingClaims(claims *service.Claims) *authRequest {
 	}
 
 	storeName := strings.TrimSpace(claims.StoreName)
-	businessLicense := strings.TrimSpace(claims.BusinessLicense)
-	if storeName != "" || businessLicense != "" {
+	if storeName != "" {
 		req.MerchantSeed = &merchantProfileSeed{
-			StoreName:       storeName,
-			BusinessLicense: businessLicense,
+			StoreName: storeName,
 		}
 	}
 
@@ -871,14 +864,9 @@ func buildMerchantProfile(seed merchantProfileSeed, userID uuid.UUID) (*entity.M
 		return nil, domainerrors.ErrValidationFailed.WithDetails("store_name is required for merchant sign-in")
 	}
 
-	businessLicense := strings.TrimSpace(seed.BusinessLicense)
-	if businessLicense == "" {
-		return nil, domainerrors.ErrValidationFailed.WithDetails("business_license is required for merchant sign-in")
-	}
-
 	profile := &entity.MerchantProfile{
-		StoreName:       storeName,
-		BusinessLicense: businessLicense,
+		StoreName:          storeName,
+		VerificationStatus: entity.MerchantVerificationStatusUnverified,
 	}
 	if userID != uuid.Nil {
 		profile.UserID = userID
@@ -980,27 +968,27 @@ func (srv *userService) storeRefreshTokenWithRepo(
 
 // LogoutAllDevices handles the process of invalidating all user sessions by revoking all refresh token families.
 func (srv *userService) LogoutAllDevices(ctx context.Context, userID uuid.UUID) error {
-	srv.log(ctx).Info("Attempting to log out from all devices", slog.Any("user_id", userID))
+	srv.log(ctx).Info("Attempting to log out from all devices", slog.String("user_id", userID.String()))
 
 	// Single operation - use direct repository instance
 	if err := srv.refreshTokenRepo.RevokeTokenFamiliesByUserID(ctx, userID); err != nil {
-		srv.log(ctx).Error("Failed to revoke all refresh token families", slog.Any("error", err), slog.Any("user_id", userID))
+		srv.log(ctx).Error("Failed to revoke all refresh token families", slog.String("error", err.Error()), slog.String("user_id", userID.String()))
 
 		return err
 	}
-	srv.log(ctx).Info("Successfully logged out from all devices", slog.Any("user_id", userID))
+	srv.log(ctx).Info("Successfully logged out from all devices", slog.String("user_id", userID.String()))
 
 	return nil
 }
 
 // GetActiveSessions retrieves all active sessions for a user.
 func (srv *userService) GetActiveSessions(ctx context.Context, userID uuid.UUID) ([]*entity.RefreshToken, error) {
-	srv.log(ctx).Debug("Getting active sessions", slog.Any("user_id", userID))
+	srv.log(ctx).Debug("Getting active sessions", slog.String("user_id", userID.String()))
 
 	// Single query operation - use direct repository instance
 	sessions, err := srv.refreshTokenRepo.FindRefreshTokensByUserID(ctx, userID)
 	if err != nil {
-		srv.log(ctx).Error("Failed to get active sessions", slog.Any("error", err), slog.Any("user_id", userID))
+		srv.log(ctx).Error("Failed to get active sessions", slog.String("error", err.Error()), slog.String("user_id", userID.String()))
 
 		return nil, err
 	}
@@ -1010,7 +998,7 @@ func (srv *userService) GetActiveSessions(ctx context.Context, userID uuid.UUID)
 
 // RevokeSession revokes a specific token family by refresh token ID.
 func (srv *userService) RevokeSession(ctx context.Context, userID, tokenID uuid.UUID) error {
-	srv.log(ctx).Info("Attempting to revoke session", slog.Any("user_id", userID), slog.Any("token_id", tokenID))
+	srv.log(ctx).Info("Attempting to revoke session", slog.String("user_id", userID.String()), slog.String("token_id", tokenID.String()))
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
 		refreshRepo := repoFactory.RefreshTokenRepo()
@@ -1038,18 +1026,18 @@ func (srv *userService) RevokeSession(ctx context.Context, userID, tokenID uuid.
 	})
 
 	if err != nil {
-		srv.log(ctx).Error("Failed to revoke session", slog.Any("error", err), slog.Any("user_id", userID), slog.Any("token_id", tokenID))
+		srv.log(ctx).Error("Failed to revoke session", slog.String("error", err.Error()), slog.String("user_id", userID.String()), slog.String("token_id", tokenID.String()))
 
 		return err
 	}
-	srv.log(ctx).Info("Successfully revoked session", slog.Any("user_id", userID), slog.Any("token_id", tokenID))
+	srv.log(ctx).Info("Successfully revoked session", slog.String("user_id", userID.String()), slog.String("token_id", tokenID.String()))
 
 	return nil
 }
 
 // LinkGoogleAccount links a Google account to an existing user account.
 func (srv *userService) LinkGoogleAccount(ctx context.Context, userID uuid.UUID, idToken string) error {
-	srv.log(ctx).Info("Linking Google account to existing user", slog.Any("user_id", userID))
+	srv.log(ctx).Info("Linking Google account to existing user", slog.String("user_id", userID.String()))
 
 	// 1. Verify the Google ID token
 	oauthUser, err := srv.googleAuthService.VerifyIDToken(ctx, idToken)
@@ -1062,11 +1050,11 @@ func (srv *userService) LinkGoogleAccount(ctx context.Context, userID uuid.UUID,
 	})
 
 	if err != nil {
-		srv.log(ctx).Error("Failed to link Google account", slog.Any("error", err), slog.Any("user_id", userID))
+		srv.log(ctx).Error("Failed to link Google account", slog.String("error", err.Error()), slog.String("user_id", userID.String()))
 
 		return fmt.Errorf("failed to link Google account: %w", err)
 	}
-	srv.log(ctx).Info("Successfully linked Google account", slog.Any("user_id", userID))
+	srv.log(ctx).Info("Successfully linked Google account", slog.String("user_id", userID.String()))
 
 	return nil
 }
@@ -1096,7 +1084,7 @@ func (srv *userService) performGoogleAccountLinking(ctx context.Context, repoFac
 	// or ask the user to confirm this change
 	if user.Email != oauthUser.Email {
 		srv.log(ctx).Info("Google email differs from user email",
-			slog.Any("user_id", userID),
+			slog.String("user_id", userID.String()),
 			slog.String("user_email", user.Email),
 			slog.String("google_email", oauthUser.Email))
 	}
@@ -1153,7 +1141,7 @@ func (srv *userService) createOrUpdateGoogleAuth(ctx context.Context, authRepo r
 
 // UnlinkGoogleAccount removes the Google authentication method from a user account.
 func (srv *userService) UnlinkGoogleAccount(ctx context.Context, userID uuid.UUID) error {
-	srv.log(ctx).Info("Unlinking Google account from user", slog.Any("user_id", userID))
+	srv.log(ctx).Info("Unlinking Google account from user", slog.String("user_id", userID.String()))
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
 		authRepo := repoFactory.AuthRepo()
@@ -1187,11 +1175,11 @@ func (srv *userService) UnlinkGoogleAccount(ctx context.Context, userID uuid.UUI
 	})
 
 	if err != nil {
-		srv.log(ctx).Error("Failed to unlink Google account", slog.Any("error", err), slog.Any("user_id", userID))
+		srv.log(ctx).Error("Failed to unlink Google account", slog.String("error", err.Error()), slog.String("user_id", userID.String()))
 
 		return err
 	}
-	srv.log(ctx).Info("Successfully unlinked Google account", slog.Any("user_id", userID))
+	srv.log(ctx).Info("Successfully unlinked Google account", slog.String("user_id", userID.String()))
 
 	return nil
 }
