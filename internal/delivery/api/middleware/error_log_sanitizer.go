@@ -14,12 +14,13 @@ import (
 )
 
 const (
-	capturedRequestBodyKey = "captured_request_body_for_error_log"
-	maxLoggedBodyBytes     = 16 * 1024
-	maxLoggedStringLength  = 512
-	redactedLogValue       = "[REDACTED]"
-	binaryRedactedLogValue = "[BINARY_REDACTED]"
-	truncatedLogSuffix     = "...[TRUNCATED]"
+	capturedRequestBodyKey      = "captured_request_body_for_error_log"
+	maxLoggedBodyBytes          = 16 * 1024
+	maxLoggedStringLength       = 512
+	redactedLogValue            = "[REDACTED]"
+	binaryRedactedLogValue      = "[BINARY_REDACTED]"
+	invalidJSONRedactedLogValue = "[INVALID_JSON_REDACTED]"
+	truncatedLogSuffix          = "...[TRUNCATED]"
 )
 
 // CaptureRequestBodyForErrorLog keeps a bounded copy of JSON request bodies so
@@ -89,7 +90,7 @@ func sanitizedBody(c echo.Context) (any, bool) {
 
 	var parsed any
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return sanitizeString(string(raw)), truncated
+		return invalidJSONRedactedLogValue, truncated
 	}
 
 	return sanitizeLogValue(parsed, ""), truncated

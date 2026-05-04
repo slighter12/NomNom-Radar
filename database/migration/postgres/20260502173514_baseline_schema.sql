@@ -411,6 +411,9 @@ CREATE INDEX idx_notification_logs_user_id
 CREATE INDEX idx_notification_logs_device_id
     ON notification_logs(device_id);
 
+CREATE INDEX idx_notification_logs_sent_at
+    ON notification_logs(sent_at DESC);
+
 -- +goose StatementBegin
 CREATE OR REPLACE FUNCTION sync_user_soft_delete_dependents()
 RETURNS TRIGGER AS $$

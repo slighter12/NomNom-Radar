@@ -137,6 +137,34 @@ func TestErrorMiddleware_HandleHTTPError_RedactsTokenLikeRequestFields(t *testin
 	assert.NotContains(t, logOutput, "nested-secret")
 }
 
+func TestErrorMiddleware_HandleHTTPError_RedactsInvalidJSONBody(t *testing.T) {
+	e := echo.New()
+	body := strings.NewReader(`{"email":"owner@example.com","password":"Password123!","token":"secret-token"`)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/auth/login", body)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
+	errorMiddleware := NewErrorMiddleware(logger)
+	handler := requestLogger.Log(errorMiddleware.HandleErrors(CaptureRequestBodyForErrorLog(func(c echo.Context) error {
+		return domainerrors.ErrValidationFailed
+	})))
+
+	err := handler(c)
+	require.NoError(t, err)
+
+	logOutput := logs.String()
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, logOutput, invalidJSONRedactedLogValue)
+	assert.NotContains(t, logOutput, "owner@example.com")
+	assert.NotContains(t, logOutput, "Password123")
+	assert.NotContains(t, logOutput, "secret-token")
+}
+
 func TestErrorMiddleware_HandleHTTPError_LogsStackForInternalError(t *testing.T) {
 	e := echo.New()
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/broken", nil)

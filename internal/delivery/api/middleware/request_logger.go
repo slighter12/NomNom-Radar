@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -81,7 +80,7 @@ func (m *RequestLoggerMiddleware) logRequest(c echo.Context, start time.Time) {
 		attrs = append(attrs, slog.String("stack", string(debug.Stack())))
 	}
 
-	m.logger.LogAttrs(context.Background(), level, "HTTP request", attrs...)
+	m.logger.LogAttrs(c.Request().Context(), level, "HTTP request", attrs...)
 }
 
 func setSourceErrorLog(c echo.Context, err error) {
