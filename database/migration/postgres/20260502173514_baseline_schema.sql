@@ -14,6 +14,7 @@ END;
 $$ LANGUAGE plpgsql;
 -- +goose StatementEnd
 
+-- Requires PostgreSQL 18+ for the built-in uuidv7() function.
 -- +goose StatementBegin
 CREATE OR REPLACE FUNCTION uuid_generate_v7()
 RETURNS UUID AS $$

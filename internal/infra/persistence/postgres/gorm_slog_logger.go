@@ -5,19 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"radar/config"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
 const defaultGormSlowThreshold = 200 * time.Millisecond
-
-var sqlStringLiteralPattern = regexp.MustCompile(`'([^']|'')*'`)
 
 type gormSlogLogger struct {
 	logger                     *slog.Logger
@@ -87,7 +86,7 @@ func (l *gormSlogLogger) Trace(ctx context.Context, begin time.Time, sqlAndRowsF
 	if l.shouldLogError(err) {
 		baseAttrs := l.buildQueryAttrs(sqlAndRowsFn, elapsed)
 		attrs := slices.Clone(baseAttrs)
-		attrs = append(attrs, slog.String("error", sanitizeSQLLogString(err.Error())))
+		attrs = append(attrs, safeGormErrorAttrs(err)...)
 		l.logger.LogAttrs(ctx, slog.LevelError, "GORM query failed", attrs...)
 
 		return
@@ -119,7 +118,52 @@ func (l *gormSlogLogger) buildQueryAttrs(sqlAndRowsFn func() (string, int64), el
 }
 
 func sanitizeSQLLogString(value string) string {
-	return sqlStringLiteralPattern.ReplaceAllString(value, "'?'")
+	if !strings.Contains(value, "'") {
+		return value
+	}
+
+	var builder strings.Builder
+	builder.Grow(len(value))
+	for i := 0; i < len(value); i++ {
+		if value[i] != '\'' {
+			builder.WriteByte(value[i])
+
+			continue
+		}
+
+		builder.WriteString("'?'")
+		i++
+		for i < len(value) {
+			if value[i] == '\'' {
+				if i+1 < len(value) && value[i+1] == '\'' {
+					i += 2
+
+					continue
+				}
+
+				break
+			}
+			i++
+		}
+	}
+
+	return builder.String()
+}
+
+func safeGormErrorAttrs(err error) []slog.Attr {
+	attrs := []slog.Attr{
+		slog.String("error_type", fmt.Sprintf("%T", err)),
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		attrs = append(attrs, slog.String("error_code", pgErr.Code))
+		if pgErr.ConstraintName != "" {
+			attrs = append(attrs, slog.String("constraint", pgErr.ConstraintName))
+		}
+	}
+
+	return attrs
 }
 
 func (l *gormSlogLogger) shouldLogError(err error) bool {
