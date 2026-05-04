@@ -3,12 +3,15 @@ package middleware
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"radar/config"
 	"radar/internal/delivery"
@@ -19,6 +22,21 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type closeTrackingBody struct {
+	reader *strings.Reader
+	closed bool
+}
+
+func (b *closeTrackingBody) Read(p []byte) (int, error) {
+	return b.reader.Read(p)
+}
+
+func (b *closeTrackingBody) Close() error {
+	b.closed = true
+
+	return nil
+}
 
 func TestErrorMiddleware_HandleHTTPError_SkipsCommittedResponse(t *testing.T) {
 	e := echo.New()
@@ -188,9 +206,13 @@ func TestErrorMiddleware_HandleHTTPError_LogsStackForInternalError(t *testing.T)
 	assert.Equal(t, 1, strings.Count(logOutput, "\n"))
 	assert.Contains(t, logOutput, "INTERNAL_ERROR")
 	assert.Contains(t, logOutput, "source_error_type")
+	assert.Contains(t, logOutput, "source_error_message")
+	assert.Contains(t, logOutput, "database failed")
+	assert.Contains(t, logOutput, redactedLogValue)
 	assert.Contains(t, logOutput, "stack")
 	assert.NotContains(t, logOutput, "owner@example.com")
 	assert.NotContains(t, logOutput, "secret-token")
+	assert.NotContains(t, logOutput, "authorization=Bearer")
 }
 
 func TestRequestLoggerMiddleware_LogsDirectSanitizedErrorResponse(t *testing.T) {
@@ -300,4 +322,89 @@ func TestRequestLoggerMiddleware_LogsSuccessfulRequestInDebug(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(logOutput, "\n"))
 	assert.Contains(t, logOutput, "HTTP request")
 	assert.Contains(t, logOutput, `"status":200`)
+}
+
+func TestCaptureRequestBodyForErrorLog_ClosesOriginalBodyAndRestoresReadableBody(t *testing.T) {
+	e := echo.New()
+	originalBody := &closeTrackingBody{reader: strings.NewReader(`{"debug":"visible"}`)}
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/auth/login", nil)
+	req.Body = originalBody
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	handler := CaptureRequestBodyForErrorLog(func(c echo.Context) error {
+		body, err := io.ReadAll(c.Request().Body)
+		require.NoError(t, err)
+		assert.Equal(t, `{"debug":"visible"}`, string(body))
+
+		return c.NoContent(http.StatusNoContent)
+	})
+
+	err := handler(c)
+	require.NoError(t, err)
+
+	assert.True(t, originalBody.closed)
+	assert.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestRequestLoggerMiddleware_LogsNestedFieldsWithSnakeCase(t *testing.T) {
+	e := echo.New()
+	body := strings.NewReader(`{"debug":"visible"}`)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/auth/login", body)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
+	errorMiddleware := NewErrorMiddleware(logger)
+	handler := requestLogger.Log(errorMiddleware.HandleErrors(CaptureRequestBodyForErrorLog(func(c echo.Context) error {
+		return domainerrors.ErrValidationFailed
+	})))
+
+	err := handler(c)
+	require.NoError(t, err)
+
+	record := decodeLogRecord(t, logs.String())
+	requestLog, ok := record["request"].(map[string]any)
+	require.True(t, ok)
+	responseError, ok := record["response_error"].(map[string]any)
+	require.True(t, ok)
+
+	assert.Contains(t, requestLog, "method")
+	assert.Contains(t, requestLog, "path")
+	assert.Contains(t, requestLog, "headers")
+	assert.Contains(t, requestLog, "body")
+	assert.Contains(t, responseError, "status")
+	assert.Contains(t, responseError, "code")
+	assert.Contains(t, responseError, "message")
+
+	logOutput := logs.String()
+	assert.NotContains(t, logOutput, `"Method"`)
+	assert.NotContains(t, logOutput, `"Path"`)
+	assert.NotContains(t, logOutput, `"BodyTruncated"`)
+	assert.NotContains(t, logOutput, `"Status"`)
+	assert.NotContains(t, logOutput, `"Code"`)
+	assert.NotContains(t, logOutput, `"Message"`)
+}
+
+func TestSanitizeString_TruncatesWithoutBreakingUTF8(t *testing.T) {
+	value := strings.Repeat("界", 200)
+
+	sanitized := sanitizeString(value)
+
+	assert.True(t, strings.HasSuffix(sanitized, truncatedLogSuffix))
+	assert.True(t, utf8.ValidString(sanitized))
+	assert.LessOrEqual(t, len(strings.TrimSuffix(sanitized, truncatedLogSuffix)), maxLoggedStringLength)
+}
+
+func decodeLogRecord(t *testing.T, output string) map[string]any {
+	t.Helper()
+
+	var record map[string]any
+	require.NoError(t, json.Unmarshal([]byte(output), &record))
+
+	return record
 }

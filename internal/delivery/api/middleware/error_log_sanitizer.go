@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"strings"
@@ -32,7 +33,9 @@ func CaptureRequestBodyForErrorLog(next echo.HandlerFunc) echo.HandlerFunc {
 			return next(c)
 		}
 
-		body, err := io.ReadAll(req.Body)
+		originalBody := req.Body
+		body, err := io.ReadAll(originalBody)
+		_ = originalBody.Close()
 		if err != nil {
 			return fmt.Errorf("read request body for error log: %w", err)
 		}
@@ -60,6 +63,40 @@ type responseErrorLog struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 	Details any    `json:"details,omitempty"`
+}
+
+func (log sanitizedRequestLog) LogValue() slog.Value {
+	attrs := []slog.Attr{
+		slog.String("method", log.Method),
+		slog.String("path", log.Path),
+	}
+	if len(log.Query) > 0 {
+		attrs = append(attrs, slog.Any("query", log.Query))
+	}
+	if len(log.Headers) > 0 {
+		attrs = append(attrs, slog.Any("headers", log.Headers))
+	}
+	if log.Body != nil {
+		attrs = append(attrs, slog.Any("body", log.Body))
+	}
+	if log.BodyTruncated {
+		attrs = append(attrs, slog.Bool("body_truncated", log.BodyTruncated))
+	}
+
+	return slog.GroupValue(attrs...)
+}
+
+func (log responseErrorLog) LogValue() slog.Value {
+	attrs := []slog.Attr{
+		slog.Int("status", log.Status),
+		slog.String("code", log.Code),
+		slog.String("message", log.Message),
+	}
+	if log.Details != nil {
+		attrs = append(attrs, slog.Any("details", log.Details))
+	}
+
+	return slog.GroupValue(attrs...)
 }
 
 func buildSanitizedRequestLog(c echo.Context) sanitizedRequestLog {
@@ -194,10 +231,111 @@ func sanitizeString(value string) string {
 		return binaryRedactedLogValue
 	}
 	if len(value) > maxLoggedStringLength {
-		return value[:maxLoggedStringLength] + truncatedLogSuffix
+		i := maxLoggedStringLength
+		for i > 0 && !utf8.RuneStart(value[i]) {
+			i--
+		}
+
+		return value[:i] + truncatedLogSuffix
 	}
 
 	return value
+}
+
+func sanitizeFreeTextLogValue(value string) string {
+	fields := strings.Fields(value)
+	if len(fields) == 0 {
+		return sanitizeString(value)
+	}
+
+	sanitizedFields := make([]string, 0, len(fields))
+	redactNext := false
+	for _, field := range fields {
+		if redactNext {
+			sanitizedFields = append(sanitizedFields, replaceTokenCore(field, redactedLogValue))
+			redactNext = false
+
+			continue
+		}
+
+		prefix, core, suffix := splitTokenPunctuation(field)
+		if strings.EqualFold(core, "Bearer") {
+			sanitizedFields = append(sanitizedFields, prefix+"Bearer "+redactedLogValue+suffix)
+			redactNext = true
+
+			continue
+		}
+
+		if key, separator, val, ok := splitAssignment(core); ok && isSensitiveKey(key) {
+			sanitizedFields = append(sanitizedFields, prefix+key+separator+redactedLogValue+suffix)
+			if strings.EqualFold(stripQuotes(val), "Bearer") {
+				redactNext = true
+			}
+
+			continue
+		}
+
+		if looksLikeEmail(core) {
+			sanitizedFields = append(sanitizedFields, prefix+redactedLogValue+suffix)
+
+			continue
+		}
+
+		sanitizedFields = append(sanitizedFields, field)
+	}
+
+	sanitized := strings.Join(sanitizedFields, " ")
+
+	return sanitizeString(sanitized)
+}
+
+func splitTokenPunctuation(value string) (string, string, string) {
+	start := 0
+	for start < len(value) && isTokenPunctuation(value[start]) {
+		start++
+	}
+
+	end := len(value)
+	for end > start && isTokenPunctuation(value[end-1]) {
+		end--
+	}
+
+	return value[:start], value[start:end], value[end:]
+}
+
+func replaceTokenCore(value string, replacement string) string {
+	prefix, _, suffix := splitTokenPunctuation(value)
+
+	return prefix + replacement + suffix
+}
+
+func isTokenPunctuation(ch byte) bool {
+	return strings.ContainsRune(`"'()[]{}<>,;.`, rune(ch))
+}
+
+func splitAssignment(value string) (string, string, string, bool) {
+	index := strings.IndexAny(value, "=:")
+	if index <= 0 || index == len(value)-1 {
+		return "", "", "", false
+	}
+
+	return value[:index], value[index : index+1], value[index+1:], true
+}
+
+func stripQuotes(value string) string {
+	return strings.Trim(value, `"'`)
+}
+
+func looksLikeEmail(value string) bool {
+	at := strings.IndexByte(value, '@')
+	if at <= 0 || at != strings.LastIndexByte(value, '@') || at == len(value)-1 {
+		return false
+	}
+
+	domain := value[at+1:]
+	dot := strings.LastIndexByte(domain, '.')
+
+	return dot > 0 && dot < len(domain)-1
 }
 
 func isSensitiveKey(key string) bool {

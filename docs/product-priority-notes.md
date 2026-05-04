@@ -45,6 +45,7 @@ Tier 1 post-implementation follow-ups:
 - Linking token payload exposure: linking JWT claims currently include onboarding draft fields such as `storeName`. This is acceptable for the short-lived signed-token flow, but move to server-side pending-link state if those fields are later treated as sensitive or compliance-restricted data.
 - Logout idempotency audit: logout with an already revoked refresh token may revoke the same token family again. This has no additional security impact, but audit logging can be added later if session incident investigation needs it.
 - Stale-device soft delete implementation: `SoftDeleteStaleDevices` uses a bulk `deleted_at` update instead of the single-row GORM `Delete` path used by `DeleteDevice`. Keep the bulk update for the cleanup job; add a short code comment or test if the difference becomes confusing during maintenance.
+- Request logging stack source: `debug.Stack()` is currently captured in the request logger's deferred logging path, so the stack mostly identifies the middleware/logging boundary rather than the original handler, use case, or infrastructure failure site. After this PR, design error-source stack capture or safe error metadata propagation so 500 logs identify the original failure point while still logging only once at the delivery boundary. Do not log raw error objects or unsanitized error messages, because source errors may contain PII, tokens, SQL details, or internal paths.
 
 ### Tier 2 — Merchant Operational Experience
 

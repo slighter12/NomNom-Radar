@@ -17,7 +17,8 @@ import (
 const sourceErrorLogContextKey = "source_error_for_log"
 
 type sourceErrorLog struct {
-	Type string
+	Type    string
+	Message string
 }
 
 // RequestLoggerMiddleware logs one request lifecycle entry after the response is finalized.
@@ -73,6 +74,9 @@ func (m *RequestLoggerMiddleware) logRequest(c echo.Context, start time.Time) {
 		)
 		if sourceErr, ok := c.Get(sourceErrorLogContextKey).(sourceErrorLog); ok {
 			attrs = append(attrs, slog.String("source_error_type", sourceErr.Type))
+			if sourceErr.Message != "" {
+				attrs = append(attrs, slog.String("source_error_message", sourceErr.Message))
+			}
 		}
 	}
 	if status >= http.StatusInternalServerError {
@@ -85,7 +89,8 @@ func (m *RequestLoggerMiddleware) logRequest(c echo.Context, start time.Time) {
 
 func setSourceErrorLog(c echo.Context, err error) {
 	c.Set(sourceErrorLogContextKey, sourceErrorLog{
-		Type: fmt.Sprintf("%T", err),
+		Type:    fmt.Sprintf("%T", err),
+		Message: sanitizeFreeTextLogValue(err.Error()),
 	})
 }
 
