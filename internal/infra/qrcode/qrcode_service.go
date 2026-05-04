@@ -19,8 +19,9 @@ type qrcodeService struct {
 }
 
 const (
-	qrBlockWidth     = 20
-	quietZoneModules = 4
+	qrBlockWidth       = 20
+	quietZoneModules   = 4
+	qrTypeSubscription = "subscription"
 )
 
 // QRCodeData represents the QR code data structure
@@ -57,7 +58,7 @@ func (s *qrcodeService) GenerateSubscriptionQR(merchantID uuid.UUID) ([]byte, er
 	// Create QR code data
 	data := QRCodeData{
 		MerchantID: merchantID.String(),
-		Type:       "subscription",
+		Type:       qrTypeSubscription,
 	}
 
 	// Convert to JSON
@@ -96,7 +97,7 @@ func (s *qrcodeService) ParseSubscriptionQR(qrData string) (uuid.UUID, error) {
 	}
 
 	// Validate type
-	if data.Type != "subscription" {
+	if data.Type != qrTypeSubscription {
 		return uuid.Nil, fmt.Errorf("invalid QR code type: %s", data.Type)
 	}
 

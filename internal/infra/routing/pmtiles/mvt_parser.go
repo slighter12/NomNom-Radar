@@ -10,6 +10,14 @@ import (
 	"github.com/paulmach/orb/maptile"
 )
 
+const (
+	boolStringYes       = "yes"
+	roadTypePrimary     = "primary"
+	roadTypeSecondary   = "secondary"
+	roadTypeResidential = "residential"
+	roadTypeRoad        = "road"
+)
+
 // RoadSegment represents a road segment extracted from MVT data
 type RoadSegment struct {
 	Points    []orb.Point
@@ -190,7 +198,7 @@ func (p *MVTParser) getBoolProperty(feature *geojson.Feature, key string) bool {
 		case float64:
 			return value != 0
 		case string:
-			return value == "yes" || value == "true" || value == "1"
+			return value == boolStringYes || value == "true" || value == "1"
 		}
 	}
 
@@ -200,21 +208,21 @@ func (p *MVTParser) getBoolProperty(feature *geojson.Feature, key string) bool {
 // getSpeedForRoadType returns default speed in km/h based on road type
 func (p *MVTParser) getSpeedForRoadType(highway string) float64 {
 	speeds := map[string]float64{
-		"motorway":       110.0,
-		"motorway_link":  80.0,
-		"trunk":          80.0,
-		"trunk_link":     60.0,
-		"primary":        60.0,
-		"primary_link":   50.0,
-		"secondary":      50.0,
-		"secondary_link": 40.0,
-		"tertiary":       40.0,
-		"tertiary_link":  30.0,
-		"residential":    30.0,
-		"living_street":  20.0,
-		"service":        20.0,
-		"unclassified":   30.0,
-		"road":           30.0,
+		"motorway":          110.0,
+		"motorway_link":     80.0,
+		"trunk":             80.0,
+		"trunk_link":        60.0,
+		roadTypePrimary:     60.0,
+		"primary_link":      50.0,
+		roadTypeSecondary:   50.0,
+		"secondary_link":    40.0,
+		"tertiary":          40.0,
+		"tertiary_link":     30.0,
+		roadTypeResidential: 30.0,
+		"living_street":     20.0,
+		"service":           20.0,
+		"unclassified":      30.0,
+		roadTypeRoad:        30.0,
 	}
 
 	if speed, ok := speeds[highway]; ok {

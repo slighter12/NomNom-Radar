@@ -13,6 +13,12 @@ import (
 	"radar/internal/util"
 )
 
+const (
+	routingVerticesCSV  = "vertices.csv"
+	routingEdgesCSV     = "edges.csv"
+	routingShortcutsCSV = "shortcuts.csv"
+)
+
 // RoutingMetadata represents the metadata for routing data
 type RoutingMetadata struct {
 	Version    string             `json:"version"`
@@ -126,7 +132,7 @@ func getOutputMetadata(outputDir string) (*OutputMetadata, error) {
 		Files: make(map[string]FileMetadata),
 	}
 
-	expectedFiles := []string{"vertices.csv", "edges.csv", "shortcuts.csv"}
+	expectedFiles := [...]string{routingVerticesCSV, routingEdgesCSV, routingShortcutsCSV}
 
 	for _, filename := range expectedFiles {
 		filePath := filepath.Join(outputDir, filename)
@@ -161,11 +167,11 @@ func getOutputMetadata(outputDir string) (*OutputMetadata, error) {
 			fmt.Printf("Warning: Failed to estimate line count for %s: %v\n", filename, err)
 		} else {
 			switch filename {
-			case "vertices.csv":
+			case routingVerticesCSV:
 				output.VerticesCount = count
-			case "edges.csv":
+			case routingEdgesCSV:
 				output.EdgesCount = count
-			case "shortcuts.csv":
+			case routingShortcutsCSV:
 				output.ShortcutsCount = count
 			}
 		}

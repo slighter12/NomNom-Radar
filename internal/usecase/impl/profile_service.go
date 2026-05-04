@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
+	"time"
 
 	deliverycontext "radar/internal/delivery/context"
 	"radar/internal/domain/entity"
@@ -41,7 +43,7 @@ func (srv *profileService) log(ctx context.Context) *slog.Logger {
 
 // GetProfile retrieves the complete user profile including role-specific data.
 func (srv *profileService) GetProfile(ctx context.Context, userID uuid.UUID) (*entity.User, error) {
-	srv.log(ctx).Debug("Getting user profile", slog.Any("user_id", userID))
+	srv.log(ctx).Debug("Getting user profile", slog.String("user_id", userID.String()))
 
 	var user *entity.User
 
@@ -70,7 +72,7 @@ func (srv *profileService) GetProfile(ctx context.Context, userID uuid.UUID) (*e
 
 // UpdateUserProfile updates the user profile data.
 func (srv *profileService) UpdateUserProfile(ctx context.Context, userID uuid.UUID, input *usecase.UpdateUserProfileInput) error {
-	srv.log(ctx).Info("Updating user profile", slog.Any("user_id", userID))
+	srv.log(ctx).Info("Updating user profile", slog.String("user_id", userID.String()))
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
 		userRepo := repoFactory.UserRepo()
@@ -112,7 +114,7 @@ func (srv *profileService) UpdateUserProfile(ctx context.Context, userID uuid.UU
 
 // UpdateMerchantProfile updates the merchant profile data.
 func (srv *profileService) UpdateMerchantProfile(ctx context.Context, userID uuid.UUID, input *usecase.UpdateMerchantProfileInput) error {
-	srv.log(ctx).Info("Updating merchant profile", slog.Any("user_id", userID))
+	srv.log(ctx).Info("Updating merchant profile", slog.String("user_id", userID.String()))
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
 		userRepo := repoFactory.UserRepo()
@@ -139,10 +141,6 @@ func (srv *profileService) UpdateMerchantProfile(ctx context.Context, userID uui
 		if input.StoreDescription != nil {
 			user.MerchantProfile.StoreDescription = *input.StoreDescription
 		}
-		if input.BusinessLicense != nil {
-			user.MerchantProfile.BusinessLicense = *input.BusinessLicense
-		}
-
 		// 4. Save the updated user
 		if err := userRepo.Update(ctx, user); err != nil {
 			return err
@@ -158,9 +156,60 @@ func (srv *profileService) UpdateMerchantProfile(ctx context.Context, userID uui
 	return nil
 }
 
+func (srv *profileService) SubmitMerchantVerification(ctx context.Context, userID uuid.UUID, input *usecase.SubmitMerchantVerificationInput) error {
+	srv.log(ctx).Info("Submitting merchant verification", slog.String("user_id", userID.String()))
+
+	businessLicense := strings.TrimSpace(input.BusinessLicense)
+	if businessLicense == "" {
+		return domainerrors.ErrValidationFailed.WithDetails("business_license is required")
+	}
+
+	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
+		userRepo := repoFactory.UserRepo()
+
+		user, err := userRepo.FindByID(ctx, userID)
+		if err != nil {
+			if errors.Is(err, domainerrors.ErrUserNotFound) {
+				return domainerrors.ErrNotFound
+			}
+
+			return err
+		}
+
+		if user.MerchantProfile == nil {
+			return domainerrors.ErrValidationFailed.WithDetails("user does not have a merchant profile")
+		}
+
+		currentBusinessLicense := strings.TrimSpace(user.MerchantProfile.BusinessLicense)
+		if user.MerchantProfile.VerificationStatus == entity.MerchantVerificationStatusVerified {
+			if currentBusinessLicense == businessLicense {
+				return nil
+			}
+
+			return domainerrors.ErrConflict.WithDetails("merchant business license has already been verified")
+		}
+
+		now := time.Now()
+		user.MerchantProfile.BusinessLicense = businessLicense
+		user.MerchantProfile.VerificationStatus = entity.MerchantVerificationStatusVerified
+		user.MerchantProfile.BusinessLicenseVerifiedAt = &now
+
+		if err := userRepo.Update(ctx, user); err != nil {
+			return err
+		}
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // SwitchToMerchant converts a regular user to a merchant by creating a merchant profile.
 func (srv *profileService) SwitchToMerchant(ctx context.Context, userID uuid.UUID, input *usecase.SwitchToMerchantInput) error {
-	srv.log(ctx).Info("Switching user to merchant", slog.Any("user_id", userID))
+	srv.log(ctx).Info("Switching user to merchant", slog.String("user_id", userID.String()))
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
 		userRepo := repoFactory.UserRepo()
@@ -182,8 +231,8 @@ func (srv *profileService) SwitchToMerchant(ctx context.Context, userID uuid.UUI
 
 		// 3. Create merchant profile
 		user.MerchantProfile = &entity.MerchantProfile{
-			StoreName:       input.StoreName,
-			BusinessLicense: input.BusinessLicense,
+			StoreName:          input.StoreName,
+			VerificationStatus: entity.MerchantVerificationStatusUnverified,
 		}
 
 		// 4. Save the updated user
@@ -195,18 +244,18 @@ func (srv *profileService) SwitchToMerchant(ctx context.Context, userID uuid.UUI
 	})
 
 	if err != nil {
-		srv.log(ctx).Error("failed to switch user to merchant", slog.Any("error", err))
+		srv.log(ctx).Error("failed to switch user to merchant", slog.String("error", err.Error()))
 
 		return err
 	}
-	srv.log(ctx).Debug("user switched to merchant", slog.Any("user_id", userID))
+	srv.log(ctx).Debug("user switched to merchant", slog.String("user_id", userID.String()))
 
 	return nil
 }
 
 // GetUserRole returns the roles associated with a user.
 func (srv *profileService) GetUserRole(ctx context.Context, userID uuid.UUID) ([]string, error) {
-	srv.log(ctx).Debug("Getting user roles", slog.Any("user_id", userID))
+	srv.log(ctx).Debug("Getting user roles", slog.String("user_id", userID.String()))
 
 	var roles entity.Roles
 
@@ -234,7 +283,7 @@ func (srv *profileService) GetUserRole(ctx context.Context, userID uuid.UUID) ([
 	})
 
 	if err != nil {
-		srv.log(ctx).Error("failed to get user roles", slog.Any("error", err))
+		srv.log(ctx).Error("failed to get user roles", slog.String("error", err.Error()))
 
 		return nil, err
 	}

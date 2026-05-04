@@ -24,6 +24,11 @@ type LimitOffsetQueryParams struct {
 	Offset int `query:"offset" validate:"gte=0"`
 }
 
+const (
+	responseKeyMessage = "message"
+	responseKeyStatus  = "status"
+)
+
 func NewPaginationQueryParams(defaultPage, defaultPageSize int) PaginationQueryParams {
 	return PaginationQueryParams{
 		Page:     defaultPage,

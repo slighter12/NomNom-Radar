@@ -45,39 +45,43 @@ Optional tuning:
 
 When backend session limit is enabled (reject policy), keep `SMOKE_DO_LOGOUT=true` to avoid hitting the limit during smoke traffic.
 
-## 2) Full Test
+## 2) Full Functional Test
 
-Runs complete flow:
+Runs a deterministic functional flow. By default it uses one VU and one
+iteration so it is suitable for local verification before reporting a change as
+working.
 
 1. Setup merchant account (register or reuse + login).
-2. Register/login user.
-3. `GET /user/profile`.
-4. User location create/update/delete.
-5. Device register/get/update/deactivate.
-6. Subscription subscribe/list/unsubscribe.
-7. Merchant location create/delete.
-8. Merchant notification publish/history.
-9. Logout user + merchant session.
+2. Check `/health` and `/test/public`.
+3. Register/login/refresh user.
+4. `GET /user/profile` and `/test/auth`.
+5. User location create/list/update/delete.
+6. Device register/list/health/update/deactivate.
+7. Subscription subscribe/list/unsubscribe.
+8. Merchant profile/verification.
+9. Merchant location create/list/update/delete.
+10. Menu create/list/update/reorder/public-menu/delete.
+11. Merchant QR generation.
+12. Merchant notification publish/history.
+13. Logout user + merchant session.
 
 Example:
 
 ```bash
-k6 run k6/full.js \
-  -e BASE_URL=http://localhost:4433 \
-  -e RUN_ID=$(date +%s) \
-  -e K6_TEST_PASSWORD='K6pass!1234'
+make k6-full
 ```
 
 Optional tuning:
 
-- `FULL_START_VUS` (default: `1`)
-- `FULL_TARGET_VUS` (default: `8`)
-- `FULL_RAMP_UP` (default: `1m`)
-- `FULL_STEADY` (default: `3m`)
-- `FULL_RAMP_DOWN` (default: `1m`)
-- `FULL_SLEEP_SECONDS` (default: `0.2`)
+- `K6_BASE_URL` (default: `http://localhost:4433`)
+- `K6_RUN_ID` (default: current timestamp)
+- `K6_TEST_PASSWORD` (default: `K6pass!1234`)
+- `FULL_VUS` (default: `1`)
+- `FULL_ITERATIONS` (default: `1`)
+- `FULL_MAX_DURATION` (default: `5m`)
+- `FULL_SLEEP_SECONDS` (default: `0`)
 - `FULL_MERCHANT_EMAIL` (optional fixed merchant account)
-- `FULL_MERCHANT_NAME`, `FULL_STORE_NAME`, `FULL_BUSINESS_LICENSE` (optional setup identity fields)
+- `FULL_MERCHANT_NAME`, `FULL_STORE_NAME` (optional setup identity fields)
 
 ## Recommended Environment/Data Workflow
 

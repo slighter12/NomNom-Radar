@@ -187,7 +187,6 @@ func (repo *deviceRepository) UpdateFCMToken(ctx context.Context, deviceID uuid.
 		UpdateSimple(
 			repo.q.UserDeviceModel.FCMToken.Value(fcmToken),
 			repo.q.UserDeviceModel.TokenRefreshedAt.Value(now),
-			repo.q.UserDeviceModel.UpdatedAt.Value(now),
 		)
 
 	if err != nil {
@@ -236,7 +235,6 @@ func (repo *deviceRepository) RestoreAndUpdateDevice(ctx context.Context, userID
 			repo.q.UserDeviceModel.FCMToken.Value(fcmToken),
 			repo.q.UserDeviceModel.TokenRefreshedAt.Value(now),
 			repo.q.UserDeviceModel.IsActive.Value(true),
-			repo.q.UserDeviceModel.UpdatedAt.Value(now),
 		)
 	if err != nil {
 		if isUniqueConstraintViolation(err) {
@@ -265,7 +263,6 @@ func (repo *deviceRepository) SoftDeleteStaleDevices(ctx context.Context, staleD
 		).
 		UpdateSimple(
 			repo.q.UserDeviceModel.DeletedAt.Value(sql.NullTime{Time: now, Valid: true}),
-			repo.q.UserDeviceModel.UpdatedAt.Value(now),
 		)
 	if err != nil {
 		return 0, domainerrors.ErrPersistenceFailed

@@ -265,7 +265,7 @@ func (h *MenuHandler) DeleteMenuItem(c echo.Context) error {
 		return err
 	}
 
-	return response.Success(c, http.StatusOK, map[string]string{"message": "Menu item deleted"})
+	return response.Success(c, http.StatusOK, map[string]string{responseKeyMessage: "Menu item deleted"})
 }
 
 func (h *MenuHandler) parseMenuItemID(c echo.Context) (uuid.UUID, error) {

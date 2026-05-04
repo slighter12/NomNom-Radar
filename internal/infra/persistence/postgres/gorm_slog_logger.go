@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 	"time"
 
 	"radar/config"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -84,7 +86,7 @@ func (l *gormSlogLogger) Trace(ctx context.Context, begin time.Time, sqlAndRowsF
 	if l.shouldLogError(err) {
 		baseAttrs := l.buildQueryAttrs(sqlAndRowsFn, elapsed)
 		attrs := slices.Clone(baseAttrs)
-		attrs = append(attrs, slog.String("error", err.Error()))
+		attrs = append(attrs, safeGormErrorAttrs(err)...)
 		l.logger.LogAttrs(ctx, slog.LevelError, "GORM query failed", attrs...)
 
 		return
@@ -111,8 +113,66 @@ func (l *gormSlogLogger) buildQueryAttrs(sqlAndRowsFn func() (string, int64), el
 	return []slog.Attr{
 		slog.Duration("elapsed", elapsed),
 		slog.Int64("rows", rows),
-		slog.String("sql", sql),
+		slog.String("sql", sanitizeSQLLogString(sql)),
 	}
+}
+
+func sanitizeSQLLogString(value string) string {
+	if !strings.Contains(value, "'") {
+		return value
+	}
+
+	var builder strings.Builder
+	builder.Grow(len(value))
+	inLiteral := false
+	possibleLiteralEnd := false
+	for _, char := range value {
+		if inLiteral {
+			if possibleLiteralEnd {
+				if char == '\'' {
+					possibleLiteralEnd = false
+
+					continue
+				}
+
+				inLiteral = false
+				possibleLiteralEnd = false
+			} else if char == '\'' {
+				possibleLiteralEnd = true
+
+				continue
+			} else {
+				continue
+			}
+		}
+
+		if char == '\'' {
+			builder.WriteString("'?'")
+			inLiteral = true
+
+			continue
+		}
+
+		builder.WriteRune(char)
+	}
+
+	return builder.String()
+}
+
+func safeGormErrorAttrs(err error) []slog.Attr {
+	attrs := []slog.Attr{
+		slog.String("error_type", fmt.Sprintf("%T", err)),
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		attrs = append(attrs, slog.String("error_code", pgErr.Code))
+		if pgErr.ConstraintName != "" {
+			attrs = append(attrs, slog.String("constraint", pgErr.ConstraintName))
+		}
+	}
+
+	return attrs
 }
 
 func (l *gormSlogLogger) shouldLogError(err error) bool {

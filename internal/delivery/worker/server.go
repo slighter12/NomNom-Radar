@@ -10,6 +10,7 @@ import (
 
 	"radar/config"
 	"radar/internal/delivery"
+	apimiddleware "radar/internal/delivery/api/middleware"
 	"radar/internal/delivery/middleware"
 	"radar/internal/delivery/worker/handler"
 	"radar/internal/domain/lifecycle"
@@ -53,9 +54,19 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 	requestIDMiddleware := middleware.NewRequestIDMiddleware(params.Logger)
 	e.Use(requestIDMiddleware.Process)
 
-	// 3. Logger middleware
-	loggerMiddleware := middleware.NewLoggerMiddleware(params.Logger, params.Cfg)
-	e.Use(loggerMiddleware.Handle)
+	// Set up centralized error handler
+	errorMiddleware := apimiddleware.NewErrorMiddleware(params.Logger)
+	e.HTTPErrorHandler = errorMiddleware.HandleHTTPError
+
+	// 3. Request lifecycle logger
+	requestLogger := apimiddleware.NewRequestLoggerMiddleware(params.Logger, params.Cfg)
+	e.Use(requestLogger.Log)
+
+	// 4. Convert returned errors into HTTP responses inside the middleware chain
+	e.Use(errorMiddleware.HandleErrors)
+
+	// 5. Keep a bounded JSON body copy for sanitized error-only request logging
+	e.Use(apimiddleware.CaptureRequestBodyForErrorLog)
 
 	// Health check endpoint
 	e.GET("/health", func(c echo.Context) error {

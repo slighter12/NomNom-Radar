@@ -79,7 +79,7 @@ func NewRoutingService(params RoutingServiceParams) usecase.RoutingUsecase {
 		if err := svc.engine.LoadData(cfg.DataPath); err != nil {
 			logger.Warn("Failed to load CH routing data, using Haversine fallback",
 				slog.String("data_path", cfg.DataPath),
-				slog.Any("error", err),
+				slog.String("error", err.Error()),
 			)
 			svc.engine = nil
 		} else {
@@ -179,7 +179,7 @@ func (s *routingService) oneToManyCH(ctx context.Context, source usecase.Coordin
 	chResults, err := s.engine.OneToMany(ctx, chSource, chTargets)
 	if err != nil {
 		// Fallback to Haversine on CH engine error
-		s.log(ctx).Warn("CH engine OneToMany failed, falling back to Haversine", slog.Any("error", err))
+		s.log(ctx).Warn("CH engine OneToMany failed, falling back to Haversine", slog.String("error", err.Error()))
 
 		return s.oneToManyHaversine(ctx, source, targets)
 	}
@@ -275,7 +275,7 @@ func (s *routingService) CalculateDistance(ctx context.Context, source, target u
 		chResult, chErr := s.engine.ShortestPath(ctx, chSource, chTarget)
 		if chErr != nil {
 			// Fallback to Haversine on error (log but don't fail)
-			s.log(ctx).Warn("CH ShortestPath failed, using Haversine fallback", slog.Any("error", chErr))
+			s.log(ctx).Warn("CH ShortestPath failed, using Haversine fallback", slog.String("error", chErr.Error()))
 			result := s.calculateHaversineDistance(source, target)
 
 			return &result, nil

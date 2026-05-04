@@ -25,6 +25,8 @@ import (
 	_ "gocloud.dev/blob/gcsblob" // Register GCS blob driver for gs:// URLs
 )
 
+const defaultRoadLayerName = "transportation"
+
 // isCloudStorageScheme checks if the given URL scheme uses cloud storage bucket semantics.
 // For these schemes, gocloud.dev only uses the Host as bucket name and ignores the Path,
 // so we need to separate the bucket URL from the prefix (subdirectory path).
@@ -78,7 +80,7 @@ func NewPMTilesRoutingService(params PMTilesServiceParams) (usecase.RoutingUseca
 
 	roadLayer := cfg.RoadLayer
 	if roadLayer == "" {
-		roadLayer = "transportation" // Default OpenMapTiles layer name
+		roadLayer = defaultRoadLayerName // Default OpenMapTiles layer name
 	}
 
 	zoomLevel := cfg.ZoomLevel
@@ -396,7 +398,7 @@ func (s *pmtilesRoutingService) buildGraphForArea(ctx context.Context, source us
 		if err != nil {
 			s.logger.Debug("Failed to load tile",
 				slog.String("tile", tileKey(tile)),
-				slog.Any("error", err),
+				slog.String("error", err.Error()),
 			)
 
 			continue

@@ -32,11 +32,10 @@ type RegisterUserInput struct {
 
 // RegisterMerchantInput defines the data required to register a new merchant.
 type RegisterMerchantInput struct {
-	Name            string `json:"name" validate:"required"`
-	Email           string `json:"email" validate:"required,email"`
-	Password        string `json:"password" validate:"required"`
-	StoreName       string `json:"store_name" validate:"required"`
-	BusinessLicense string `json:"business_license" validate:"required"`
+	Name      string `json:"name" validate:"required"`
+	Email     string `json:"email" validate:"required,email"`
+	Password  string `json:"password" validate:"required"`
+	StoreName string `json:"store_name" validate:"required"`
 }
 
 // LoginInput defines the data required for a user to log in.
@@ -57,18 +56,16 @@ type LogoutInput struct {
 
 // GoogleCallbackInput defines the data required for Google login.
 type GoogleCallbackInput struct {
-	IDToken         string `json:"id_token" validate:"required"`
-	RequestedRole   string `json:"requested_role,omitempty" validate:"omitempty,oneof=user merchant"`
-	State           string `json:"state,omitempty" validate:"omitempty,oneof=user merchant"` // Deprecated: use requested_role instead.
-	StoreName       string `json:"store_name,omitempty"`
-	BusinessLicense string `json:"business_license,omitempty"`
+	IDToken       string `json:"id_token" validate:"required"`
+	RequestedRole string `json:"requested_role,omitempty" validate:"omitempty,oneof=user merchant"`
+	State         string `json:"state,omitempty" validate:"omitempty,oneof=user merchant"` // Deprecated: use requested_role instead.
+	StoreName     string `json:"store_name,omitempty"`
 }
 
 // CompleteMerchantOnboardingInput defines the data required to finish merchant onboarding.
 type CompleteMerchantOnboardingInput struct {
 	OnboardingToken string `json:"onboarding_token" validate:"required"`
 	StoreName       string `json:"store_name" validate:"required"`
-	BusinessLicense string `json:"business_license" validate:"required"`
 }
 
 type LinkProviderInput struct {

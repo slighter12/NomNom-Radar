@@ -147,11 +147,11 @@ func startServer(ctx context.Context, params startServerParams) {
 	for _, delivery := range params.Deliveries {
 		go func() {
 			if err := delivery.Serve(ctx); err != nil {
-				slog.Error("Failed to start server", slog.Any("error", err))
+				slog.Error("Failed to start server", slog.String("error", err.Error()))
 
 				// Trigger graceful shutdown to execute all OnStop hooks
 				if shutdownErr := params.Shutdown(); shutdownErr != nil {
-					slog.Error("Failed to shutdown gracefully", slog.Any("error", shutdownErr))
+					slog.Error("Failed to shutdown gracefully", slog.String("error", shutdownErr.Error()))
 					os.Exit(1)
 				}
 			}

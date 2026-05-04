@@ -20,7 +20,7 @@ NomNom-Radar is a real-time notification backend service. It utilizes PostgreSQL
 ## 🛠️ Tech Stack
 
 * **Backend**: **Go** with **Echo** framework
-* **Database**: PostgreSQL + PostGIS extension for geospatial data
+* **Database**: PostgreSQL 18+ + PostGIS extension for geospatial data
 * **Database Driver/ORM**: **GORM**
 * **Routing Engine**: PMTiles-based routing with MVT parsing, local pathfinding, and Haversine fallback
 * **Push Notifications**: Firebase Cloud Messaging (FCM)
@@ -53,7 +53,7 @@ go mod download
 
 3. **Set up the database:**
 
-Make sure you have PostgreSQL with PostGIS extension installed and running.
+Make sure you have PostgreSQL 18+ with PostGIS extension installed and running. The baseline migration uses PostgreSQL's built-in `uuidv7()` function.
 
 **Supabase Deployment - Required PostGIS Setup:**
 

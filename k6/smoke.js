@@ -1,5 +1,5 @@
-import http from 'k6/http';
-import { check, fail, sleep } from 'k6';
+import http from "k6/http";
+import { check, fail, sleep } from "k6";
 
 function numberFromEnv(name, defaultValue) {
   const raw = __ENV[name];
@@ -17,27 +17,30 @@ function boolFromEnv(name, defaultValue) {
     return defaultValue;
   }
 
-  return String(raw).toLowerCase() === 'true';
+  return String(raw).toLowerCase() === "true";
 }
 
-const BASE_URL = (__ENV.BASE_URL || 'http://localhost:4433').replace(/\/$/, '');
-const SMOKE_DURATION = __ENV.SMOKE_DURATION || '1m';
-const SMOKE_SETUP_TIMEOUT = __ENV.SMOKE_SETUP_TIMEOUT || '10m';
-const SMOKE_SLEEP_SECONDS = numberFromEnv('SMOKE_SLEEP_SECONDS', 0);
-const SMOKE_POOL_SIZE = Math.max(1, Math.floor(numberFromEnv('SMOKE_POOL_SIZE', 200)));
+const BASE_URL = (__ENV.BASE_URL || "http://localhost:4433").replace(/\/$/, "");
+const SMOKE_DURATION = __ENV.SMOKE_DURATION || "1m";
+const SMOKE_SETUP_TIMEOUT = __ENV.SMOKE_SETUP_TIMEOUT || "10m";
+const SMOKE_SLEEP_SECONDS = numberFromEnv("SMOKE_SLEEP_SECONDS", 0);
+const SMOKE_POOL_SIZE = Math.max(
+  1,
+  Math.floor(numberFromEnv("SMOKE_POOL_SIZE", 200)),
+);
 const SMOKE_RUN_ID = __ENV.SMOKE_RUN_ID || String(Date.now());
-const SMOKE_PASSWORD = __ENV.SMOKE_PASSWORD || 'K6SmokePass1!';
-const SMOKE_DO_LOGOUT = boolFromEnv('SMOKE_DO_LOGOUT', true);
+const SMOKE_PASSWORD = __ENV.SMOKE_PASSWORD || "K6SmokePass1!";
+const SMOKE_DO_LOGOUT = boolFromEnv("SMOKE_DO_LOGOUT", true);
 
 export const options = {
-  vus: numberFromEnv('SMOKE_VUS', 20),
+  vus: numberFromEnv("SMOKE_VUS", 20),
   duration: SMOKE_DURATION,
   setupTimeout: SMOKE_SETUP_TIMEOUT,
   thresholds: {
-    http_req_failed: ['rate<0.01'],
-    http_req_duration: ['p(95)<800'],
-    'http_req_duration{type:member_login}': ['p(95)<700'],
-    'http_req_duration{type:merchant_login}': ['p(95)<700'],
+    http_req_failed: ["rate<0.01"],
+    http_req_duration: ["p(95)<800"],
+    "http_req_duration{type:member_login}": ["p(95)<700"],
+    "http_req_duration{type:merchant_login}": ["p(95)<700"],
   },
 };
 
@@ -61,7 +64,7 @@ function assertStatus(res, status, label) {
 
 function assertStatuses(res, statuses, label) {
   const ok = check(res, {
-    [`${label} status is ${statuses.join('/')}`]: (r) =>
+    [`${label} status is ${statuses.join("/")}`]: (r) =>
       statuses.indexOf(r.status) >= 0,
   });
 
@@ -82,7 +85,6 @@ function buildMerchantAccount(index) {
     name: `k6-smoke-merchant-${SMOKE_RUN_ID}-${index}`,
     email: `k6-smoke-merchant-${SMOKE_RUN_ID}-${index}@example.com`,
     storeName: `K6 Smoke Store ${SMOKE_RUN_ID}-${index}`,
-    businessLicense: `K6-SMOKE-LICENSE-${SMOKE_RUN_ID}-${index}`,
   };
 }
 
@@ -96,15 +98,15 @@ function registerMember(account) {
     }),
     {
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       tags: {
-        name: 'smoke_register_member',
-        type: 'member_register',
+        name: "smoke_register_member",
+        type: "member_register",
       },
     },
   );
-  assertStatuses(res, [201, 409], 'member register');
+  assertStatuses(res, [201, 409], "member register");
 }
 
 function registerMerchant(account) {
@@ -115,19 +117,18 @@ function registerMerchant(account) {
       email: account.email,
       password: SMOKE_PASSWORD,
       store_name: account.storeName,
-      business_license: account.businessLicense,
     }),
     {
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       tags: {
-        name: 'smoke_register_merchant',
-        type: 'merchant_register',
+        name: "smoke_register_merchant",
+        type: "merchant_register",
       },
     },
   );
-  assertStatuses(res, [201, 409], 'merchant register');
+  assertStatuses(res, [201, 409], "merchant register");
 }
 
 function login(email, nameTag, typeTag) {
@@ -139,7 +140,7 @@ function login(email, nameTag, typeTag) {
     }),
     {
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       tags: {
         name: nameTag,
@@ -151,8 +152,8 @@ function login(email, nameTag, typeTag) {
 
   const body = parseJSON(res);
   const data = body && body.data ? body.data : null;
-  const accessToken = data && data.access_token ? data.access_token : '';
-  const refreshToken = data && data.refresh_token ? data.refresh_token : '';
+  const accessToken = data && data.access_token ? data.access_token : "";
+  const refreshToken = data && data.refresh_token ? data.refresh_token : "";
   if (!accessToken || !refreshToken) {
     fail(`${typeTag} login token is missing: ${res.body}`);
   }
@@ -171,7 +172,7 @@ function logout(refreshToken, nameTag, typeTag) {
     }),
     {
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       tags: {
         name: nameTag,
@@ -212,19 +213,23 @@ export default function (data) {
   const member = pickRandom(data.members);
   const merchant = pickRandom(data.merchants);
 
-  const memberSession = login(member.email, 'smoke_login_member', 'member_login');
+  const memberSession = login(
+    member.email,
+    "smoke_login_member",
+    "member_login",
+  );
   const merchantSession = login(
     merchant.email,
-    'smoke_login_merchant',
-    'merchant_login',
+    "smoke_login_merchant",
+    "merchant_login",
   );
 
   if (SMOKE_DO_LOGOUT) {
-    logout(memberSession.refreshToken, 'smoke_logout_member', 'member_logout');
+    logout(memberSession.refreshToken, "smoke_logout_member", "member_logout");
     logout(
       merchantSession.refreshToken,
-      'smoke_logout_merchant',
-      'merchant_logout',
+      "smoke_logout_merchant",
+      "merchant_logout",
     );
   }
 

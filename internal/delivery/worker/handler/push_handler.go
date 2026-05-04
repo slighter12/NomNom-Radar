@@ -100,7 +100,7 @@ func (h *PushHandler) HandlePush(c echo.Context) error {
 	// Parse Pub/Sub message
 	var pushMsg PubSubMessage
 	if err := c.Bind(&pushMsg); err != nil {
-		h.logger.Error("[Worker] Failed to parse push message", slog.Any("error", err))
+		h.logger.Error("[Worker] Failed to parse push message", slog.String("error", err.Error()))
 
 		return c.NoContent(http.StatusBadRequest)
 	}
@@ -108,7 +108,7 @@ func (h *PushHandler) HandlePush(c echo.Context) error {
 	// Decode base64 message data
 	data, err := base64.StdEncoding.DecodeString(pushMsg.Message.Data)
 	if err != nil {
-		h.logger.Error("[Worker] Failed to decode message data", slog.Any("error", err))
+		h.logger.Error("[Worker] Failed to decode message data", slog.String("error", err.Error()))
 
 		return c.NoContent(http.StatusBadRequest)
 	}
@@ -116,7 +116,7 @@ func (h *PushHandler) HandlePush(c echo.Context) error {
 	// Parse notification event
 	var event service.NotificationEvent
 	if err := json.Unmarshal(data, &event); err != nil {
-		h.logger.Error("[Worker] Failed to parse notification event", slog.Any("error", err))
+		h.logger.Error("[Worker] Failed to parse notification event", slog.String("error", err.Error()))
 
 		return c.NoContent(http.StatusBadRequest)
 	}
@@ -142,7 +142,7 @@ func (h *PushHandler) HandlePush(c echo.Context) error {
 	if err := h.processNotification(ctx, &event); err != nil {
 		reqLogger.Error("[Worker] Failed to process notification",
 			slog.String("notification_id", event.NotificationID),
-			slog.Any("error", err),
+			slog.String("error", err.Error()),
 			slog.Bool("retryable", isRetryableError(err)),
 		)
 		// Return 503 for retryable errors to trigger Pub/Sub retry
@@ -375,7 +375,7 @@ func (h *PushHandler) sendBatchedNotifications(ctx context.Context, tokens []str
 			h.logger.Error("[Worker] Failed to send batch",
 				slog.Int("batch_start", idx),
 				slog.Int("batch_size", len(batch)),
-				slog.Any("error", sendErr),
+				slog.String("error", sendErr.Error()),
 			)
 			totalFailed += len(batch)
 
@@ -448,7 +448,7 @@ func (h *PushHandler) cleanupInvalidTokens(ctx context.Context, invalidTokens []
 			if err := h.deviceRepo.DeleteDevice(ctx, device.ID); err != nil {
 				h.logger.Warn("[Worker] Failed to delete invalid device",
 					slog.String("device_id", device.ID.String()),
-					slog.Any("error", err),
+					slog.String("error", err.Error()),
 				)
 			}
 		}
@@ -459,12 +459,12 @@ func (h *PushHandler) cleanupInvalidTokens(ctx context.Context, invalidTokens []
 func (h *PushHandler) saveNotificationResults(ctx context.Context, notificationID uuid.UUID, logs []*entity.NotificationLog, sent, failed, invalidTokensCount int, eventID string) {
 	if len(logs) > 0 {
 		if err := h.notificationRepo.BatchCreateNotificationLogs(ctx, logs); err != nil {
-			h.logger.Error("[Worker] Failed to create notification logs", slog.Any("error", err))
+			h.logger.Error("[Worker] Failed to create notification logs", slog.String("error", err.Error()))
 		}
 	}
 
 	if err := h.notificationRepo.UpdateNotificationStatus(ctx, notificationID, sent, failed); err != nil {
-		h.logger.Error("[Worker] Failed to update notification status", slog.Any("error", err))
+		h.logger.Error("[Worker] Failed to update notification status", slog.String("error", err.Error()))
 	}
 
 	h.logger.Info("[Worker] Notification sending completed",

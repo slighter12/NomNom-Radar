@@ -131,7 +131,7 @@ func (h *LocationHandler) DeleteUserLocation(c echo.Context) error {
 		return err
 	}
 
-	return response.Success(c, http.StatusOK, map[string]string{"message": "Location deleted successfully"})
+	return response.Success(c, http.StatusOK, map[string]string{responseKeyMessage: "Location deleted successfully"})
 }
 
 // CreateMerchantLocation handles creating a new merchant location
@@ -210,7 +210,7 @@ func (h *LocationHandler) DeleteMerchantLocation(c echo.Context) error {
 		return err
 	}
 
-	return response.Success(c, http.StatusOK, map[string]string{"message": "Location deleted successfully"})
+	return response.Success(c, http.StatusOK, map[string]string{responseKeyMessage: "Location deleted successfully"})
 }
 
 func (h *LocationHandler) parseLocationID(c echo.Context) (uuid.UUID, error) {

@@ -127,7 +127,7 @@ func (h *UserHandler) Logout(c echo.Context) error {
 		return err
 	}
 
-	return response.Success(c, http.StatusOK, map[string]string{"message": "Successfully logged out"})
+	return response.Success(c, http.StatusOK, map[string]string{responseKeyMessage: "Successfully logged out"})
 }
 
 // GoogleCallback handles the Google Sign-In callback.
@@ -160,6 +160,24 @@ func (h *UserHandler) CompleteMerchantOnboarding(c echo.Context) error {
 	}
 
 	return response.Success(c, http.StatusOK, output)
+}
+
+func (h *UserHandler) SubmitMerchantVerification(c echo.Context) error {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+	}
+
+	input, err := bindRequiredPayload[usecase.SubmitMerchantVerificationInput](c, "Invalid merchant verification input")
+	if err != nil {
+		return err
+	}
+
+	if err := h.profileUC.SubmitMerchantVerification(c.Request().Context(), userID, input); err != nil {
+		return err
+	}
+
+	return response.Success(c, http.StatusOK, map[string]string{responseKeyStatus: "verified"})
 }
 
 func (h *UserHandler) LinkProvider(c echo.Context) error {
@@ -231,5 +249,5 @@ func setRetryAfterHeaderOnLockout(c echo.Context, err error) {
 
 // HealthCheck is a simple handler to check if the service is up.
 func HealthCheck(c echo.Context) error {
-	return response.Success(c, http.StatusOK, map[string]string{"status": "ok"})
+	return response.Success(c, http.StatusOK, map[string]string{responseKeyStatus: "ok"})
 }

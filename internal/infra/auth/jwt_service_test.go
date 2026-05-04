@@ -94,7 +94,6 @@ func TestJWTService_GenerateLinkingToken(t *testing.T) {
 		"google-user-id",
 		"merchant",
 		"NomNom Bento",
-		"A123456789",
 	)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, token)
@@ -107,7 +106,6 @@ func TestJWTService_GenerateLinkingToken(t *testing.T) {
 	assert.Equal(t, "google-user-id", claims.ProviderUserID)
 	assert.Equal(t, "merchant", claims.RequestedRole)
 	assert.Equal(t, "NomNom Bento", claims.StoreName)
-	assert.Equal(t, "A123456789", claims.BusinessLicense)
 	assert.Nil(t, claims.Roles)
 }
 
@@ -119,7 +117,7 @@ func TestJWTService_GenerateLinkingToken_UsesConfiguredLinkingSecret(t *testing.
 	assert.NoError(t, err)
 
 	userID := uuid.New()
-	token, err := jwtService.GenerateLinkingToken(userID, "google", "google-user-id", "user", "", "")
+	token, err := jwtService.GenerateLinkingToken(userID, "google", "google-user-id", "user", "")
 	assert.NoError(t, err)
 	assert.NotEmpty(t, token)
 

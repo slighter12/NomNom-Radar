@@ -67,7 +67,7 @@ func (repo *loginAttemptRepository) IncrementFailedCount(
 	var updated *model.LoginAttemptModel
 	err := repo.q.Transaction(func(transactionQuery *query.Query) error {
 		attemptModel, err := transactionQuery.LoginAttemptModel.WithContext(ctx).
-			Clauses(clause.Locking{Strength: "UPDATE"}).
+			Clauses(clause.Locking{Strength: rowLockStrengthUpdate}).
 			Where(transactionQuery.LoginAttemptModel.AttemptKey.Eq(attemptKey)).
 			Take()
 		if err != nil {
@@ -120,7 +120,6 @@ func (repo *loginAttemptRepository) IncrementFailedCount(
 }
 
 func (repo *loginAttemptRepository) ResetOnSuccess(ctx context.Context, attemptKey string) error {
-	now := time.Now()
 	if _, err := repo.q.LoginAttemptModel.WithContext(ctx).
 		Where(repo.q.LoginAttemptModel.AttemptKey.Eq(attemptKey)).
 		UpdateSimple(
@@ -129,7 +128,6 @@ func (repo *loginAttemptRepository) ResetOnSuccess(ctx context.Context, attemptK
 			repo.q.LoginAttemptModel.LockedUntil.Null(),
 			repo.q.LoginAttemptModel.LastFailedAt.Null(),
 			repo.q.LoginAttemptModel.LastLockoutAt.Null(),
-			repo.q.LoginAttemptModel.UpdatedAt.Value(now),
 		); err != nil {
 		return domainerrors.ErrPersistenceFailed
 	}
@@ -138,7 +136,6 @@ func (repo *loginAttemptRepository) ResetOnSuccess(ctx context.Context, attemptK
 }
 
 func (repo *loginAttemptRepository) ResetForAccountCreation(ctx context.Context, attemptKey string, userID uuid.UUID) error {
-	now := time.Now()
 	if _, err := repo.q.LoginAttemptModel.WithContext(ctx).
 		Where(
 			repo.q.LoginAttemptModel.AttemptKey.Eq(attemptKey),
@@ -151,7 +148,6 @@ func (repo *loginAttemptRepository) ResetForAccountCreation(ctx context.Context,
 			repo.q.LoginAttemptModel.LockedUntil.Null(),
 			repo.q.LoginAttemptModel.LastFailedAt.Null(),
 			repo.q.LoginAttemptModel.LastLockoutAt.Null(),
-			repo.q.LoginAttemptModel.UpdatedAt.Value(now),
 		); err != nil {
 		return domainerrors.ErrPersistenceFailed
 	}
@@ -161,7 +157,6 @@ func (repo *loginAttemptRepository) ResetForAccountCreation(ctx context.Context,
 
 func (repo *loginAttemptRepository) DecayLockoutCounts(ctx context.Context, decayDays int) error {
 	cutoff := time.Now().AddDate(0, 0, -decayDays)
-	now := time.Now()
 	if _, err := repo.q.LoginAttemptModel.WithContext(ctx).
 		Where(
 			repo.q.LoginAttemptModel.LastLockoutAt.IsNotNull(),
@@ -176,7 +171,6 @@ func (repo *loginAttemptRepository) DecayLockoutCounts(ctx context.Context, deca
 			repo.q.LoginAttemptModel.LockoutCount.Value(0),
 			repo.q.LoginAttemptModel.LockedUntil.Null(),
 			repo.q.LoginAttemptModel.LastLockoutAt.Null(),
-			repo.q.LoginAttemptModel.UpdatedAt.Value(now),
 		); err != nil {
 		return domainerrors.ErrPersistenceFailed
 	}

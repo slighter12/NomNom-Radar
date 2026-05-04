@@ -31,6 +31,8 @@ func newMerchantProfileModel(db *gorm.DB, opts ...gen.DOOption) merchantProfileM
 	_merchantProfileModel.StoreName = field.NewString(tableName, "store_name")
 	_merchantProfileModel.StoreDescription = field.NewString(tableName, "store_description")
 	_merchantProfileModel.BusinessLicense = field.NewString(tableName, "business_license")
+	_merchantProfileModel.VerificationStatus = field.NewString(tableName, "verification_status")
+	_merchantProfileModel.BusinessLicenseVerifiedAt = field.NewTime(tableName, "business_license_verified_at")
 	_merchantProfileModel.CreatedAt = field.NewTime(tableName, "created_at")
 	_merchantProfileModel.UpdatedAt = field.NewTime(tableName, "updated_at")
 	_merchantProfileModel.DeletedAt = field.NewField(tableName, "deleted_at")
@@ -48,15 +50,17 @@ func newMerchantProfileModel(db *gorm.DB, opts ...gen.DOOption) merchantProfileM
 type merchantProfileModel struct {
 	merchantProfileModelDo merchantProfileModelDo
 
-	ALL              field.Asterisk
-	UserID           field.Field
-	StoreName        field.String
-	StoreDescription field.String
-	BusinessLicense  field.String
-	CreatedAt        field.Time
-	UpdatedAt        field.Time
-	DeletedAt        field.Field
-	Addresses        merchantProfileModelHasManyAddresses
+	ALL                       field.Asterisk
+	UserID                    field.Field
+	StoreName                 field.String
+	StoreDescription          field.String
+	BusinessLicense           field.String
+	VerificationStatus        field.String
+	BusinessLicenseVerifiedAt field.Time
+	CreatedAt                 field.Time
+	UpdatedAt                 field.Time
+	DeletedAt                 field.Field
+	Addresses                 merchantProfileModelHasManyAddresses
 
 	fieldMap map[string]field.Expr
 }
@@ -77,6 +81,8 @@ func (m *merchantProfileModel) updateTableName(table string) *merchantProfileMod
 	m.StoreName = field.NewString(table, "store_name")
 	m.StoreDescription = field.NewString(table, "store_description")
 	m.BusinessLicense = field.NewString(table, "business_license")
+	m.VerificationStatus = field.NewString(table, "verification_status")
+	m.BusinessLicenseVerifiedAt = field.NewTime(table, "business_license_verified_at")
 	m.CreatedAt = field.NewTime(table, "created_at")
 	m.UpdatedAt = field.NewTime(table, "updated_at")
 	m.DeletedAt = field.NewField(table, "deleted_at")
@@ -108,11 +114,13 @@ func (m *merchantProfileModel) GetFieldByName(fieldName string) (field.OrderExpr
 }
 
 func (m *merchantProfileModel) fillFieldMap() {
-	m.fieldMap = make(map[string]field.Expr, 8)
+	m.fieldMap = make(map[string]field.Expr, 10)
 	m.fieldMap["user_id"] = m.UserID
 	m.fieldMap["store_name"] = m.StoreName
 	m.fieldMap["store_description"] = m.StoreDescription
 	m.fieldMap["business_license"] = m.BusinessLicense
+	m.fieldMap["verification_status"] = m.VerificationStatus
+	m.fieldMap["business_license_verified_at"] = m.BusinessLicenseVerifiedAt
 	m.fieldMap["created_at"] = m.CreatedAt
 	m.fieldMap["updated_at"] = m.UpdatedAt
 	m.fieldMap["deleted_at"] = m.DeletedAt

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"radar/internal/domain/entity"
+	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
 	mockRepo "radar/internal/mocks/repository"
 	"radar/internal/usecase"
@@ -108,8 +109,7 @@ func TestProfileService_SwitchToMerchant_Success(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 	input := &usecase.SwitchToMerchantInput{
-		StoreName:       "Test Store",
-		BusinessLicense: "BL123",
+		StoreName: "Test Store",
 	}
 
 	existingUser := &entity.User{
@@ -162,11 +162,9 @@ func TestProfileService_UpdateMerchantProfile_Success(t *testing.T) {
 	userID := uuid.New()
 	storeName := "New Store Name"
 	storeDescription := "New Description"
-	businessLicense := "BL-456"
 	input := &usecase.UpdateMerchantProfileInput{
 		StoreName:        &storeName,
 		StoreDescription: &storeDescription,
-		BusinessLicense:  &businessLicense,
 	}
 
 	existingUser := &entity.User{
@@ -175,7 +173,6 @@ func TestProfileService_UpdateMerchantProfile_Success(t *testing.T) {
 			UserID:           userID,
 			StoreName:        "Old Store",
 			StoreDescription: "Old Description",
-			BusinessLicense:  "BL-123",
 		},
 	}
 
@@ -191,7 +188,110 @@ func TestProfileService_UpdateMerchantProfile_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, storeName, existingUser.MerchantProfile.StoreName)
 	assert.Equal(t, storeDescription, existingUser.MerchantProfile.StoreDescription)
-	assert.Equal(t, businessLicense, existingUser.MerchantProfile.BusinessLicense)
+}
+
+func TestProfileService_SubmitMerchantVerification_Success(t *testing.T) {
+	fx := createTestProfileService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	input := &usecase.SubmitMerchantVerificationInput{BusinessLicense: " BL-456 "}
+	existingUser := &entity.User{
+		ID: userID,
+		MerchantProfile: &entity.MerchantProfile{
+			UserID:             userID,
+			StoreName:          "Store",
+			VerificationStatus: entity.MerchantVerificationStatusUnverified,
+		},
+	}
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+			mockUserRepo.EXPECT().FindByID(ctx, userID).Return(existingUser, nil)
+			mockUserRepo.EXPECT().
+				Update(ctx, mock.AnythingOfType("*entity.User")).
+				Run(func(_ context.Context, user *entity.User) {
+					assert.Equal(t, "BL-456", user.MerchantProfile.BusinessLicense)
+					assert.Equal(t, entity.MerchantVerificationStatusVerified, user.MerchantProfile.VerificationStatus)
+					assert.NotNil(t, user.MerchantProfile.BusinessLicenseVerifiedAt)
+				}).
+				Return(nil)
+
+			return fn(mockFactory)
+		})
+
+	err := fx.service.SubmitMerchantVerification(ctx, userID, input)
+
+	require.NoError(t, err)
+}
+
+func TestProfileService_SubmitMerchantVerification_VerifiedSameLicenseIsIdempotent(t *testing.T) {
+	fx := createTestProfileService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	input := &usecase.SubmitMerchantVerificationInput{BusinessLicense: "BL-456"}
+	existingUser := &entity.User{
+		ID: userID,
+		MerchantProfile: &entity.MerchantProfile{
+			UserID:             userID,
+			StoreName:          "Store",
+			BusinessLicense:    "BL-456",
+			VerificationStatus: entity.MerchantVerificationStatusVerified,
+		},
+	}
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+			mockUserRepo.EXPECT().FindByID(ctx, userID).Return(existingUser, nil)
+
+			return fn(mockFactory)
+		})
+
+	err := fx.service.SubmitMerchantVerification(ctx, userID, input)
+
+	require.NoError(t, err)
+}
+
+func TestProfileService_SubmitMerchantVerification_VerifiedDifferentLicenseReturnsConflict(t *testing.T) {
+	fx := createTestProfileService(t)
+
+	ctx := context.Background()
+	userID := uuid.New()
+	input := &usecase.SubmitMerchantVerificationInput{BusinessLicense: "BL-999"}
+	existingUser := &entity.User{
+		ID: userID,
+		MerchantProfile: &entity.MerchantProfile{
+			UserID:             userID,
+			StoreName:          "Store",
+			BusinessLicense:    "BL-456",
+			VerificationStatus: entity.MerchantVerificationStatusVerified,
+		},
+	}
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockUserRepo := mockRepo.NewMockUserRepository(t)
+			mockFactory.EXPECT().UserRepo().Return(mockUserRepo)
+			mockUserRepo.EXPECT().FindByID(ctx, userID).Return(existingUser, nil)
+
+			return fn(mockFactory)
+		})
+
+	err := fx.service.SubmitMerchantVerification(ctx, userID, input)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domainerrors.ErrConflict)
 }
 
 func TestProfileService_GetUserRole_OnlyUserProfile(t *testing.T) {

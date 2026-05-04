@@ -8,6 +8,13 @@ import (
 	"github.com/google/uuid"
 )
 
+type MerchantVerificationStatus string
+
+const (
+	MerchantVerificationStatusUnverified MerchantVerificationStatus = "unverified"
+	MerchantVerificationStatusVerified   MerchantVerificationStatus = "verified"
+)
+
 // User is the core entity in the system, representing a unique "person" or "account".
 // It contains only the most fundamental identity information shared across all roles.
 type User struct {
@@ -30,10 +37,12 @@ type UserProfile struct {
 
 // MerchantProfile holds data specific to the "merchant" role.
 type MerchantProfile struct {
-	UserID           uuid.UUID  `json:"user_id"`           // Foreign Key that links this profile to a core User entity.
-	Addresses        []*Address `json:"addresses"`         // A merchant can also have multiple addresses.
-	StoreName        string     `json:"store_name"`        // The merchant's official store name.
-	StoreDescription string     `json:"store_description"` // A description of the store and its products.
-	BusinessLicense  string     `json:"business_license"`  // The merchant's official business license number.
-	UpdatedAt        time.Time  `json:"updated_at"`        // Timestamp of the last modification to this profile.
+	UserID                    uuid.UUID                  `json:"user_id"`                                // Foreign Key that links this profile to a core User entity.
+	Addresses                 []*Address                 `json:"addresses"`                              // A merchant can also have multiple addresses.
+	StoreName                 string                     `json:"store_name"`                             // The merchant's official store name.
+	StoreDescription          string                     `json:"store_description"`                      // A description of the store and its products.
+	BusinessLicense           string                     `json:"business_license,omitempty"`             // The merchant's official business license number.
+	VerificationStatus        MerchantVerificationStatus `json:"verification_status"`                    // Verification state for merchant business identity.
+	BusinessLicenseVerifiedAt *time.Time                 `json:"business_license_verified_at,omitempty"` // Timestamp of successful business license verification.
+	UpdatedAt                 time.Time                  `json:"updated_at"`                             // Timestamp of the last modification to this profile.
 }

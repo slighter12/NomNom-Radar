@@ -112,9 +112,9 @@ func validateCSVFormats(dir string, metadata *RoutingMetadata) error {
 	fmt.Println("\nValidating CSV formats...")
 
 	csvChecks := map[string]func(string) error{
-		"vertices.csv":  validateVerticesCSV,
-		"edges.csv":     validateEdgesCSV,
-		"shortcuts.csv": validateShortcutsCSV,
+		routingVerticesCSV:  validateVerticesCSV,
+		routingEdgesCSV:     validateEdgesCSV,
+		routingShortcutsCSV: validateShortcutsCSV,
 	}
 
 	for filename, validator := range csvChecks {

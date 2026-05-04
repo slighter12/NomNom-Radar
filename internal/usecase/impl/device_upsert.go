@@ -14,6 +14,11 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	devicePlatformIOS     = "ios"
+	devicePlatformAndroid = "android"
+)
+
 func upsertUserDevice(
 	ctx context.Context,
 	deviceRepo repository.DeviceRepository,
@@ -114,7 +119,7 @@ func validateDeviceInfo(deviceInfo *usecase.DeviceInfo) error {
 	if deviceInfo.DeviceID == "" {
 		return domainerrors.ErrValidationFailed.WithDetails("device_id is required")
 	}
-	if deviceInfo.Platform != "ios" && deviceInfo.Platform != "android" {
+	if deviceInfo.Platform != devicePlatformIOS && deviceInfo.Platform != devicePlatformAndroid {
 		return domainerrors.ErrValidationFailed.WithDetails("platform must be ios or android")
 	}
 

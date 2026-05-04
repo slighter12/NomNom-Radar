@@ -31,7 +31,7 @@ const (
 )
 
 func merchantOnboardingRequiredFields() []string {
-	return []string{"store_name", "business_license"}
+	return []string{"store_name"}
 }
 
 type authRequest struct {
@@ -131,7 +131,7 @@ func (srv *userService) verifyEmailIdentity(ctx context.Context, req *authReques
 		srv.log(ctx).Warn(
 			"Password validation failed during registration",
 			slog.String("email_masked", maskEmailForLog(req.Email)),
-			slog.Any("error", err),
+			slog.String("error", err.Error()),
 		)
 
 		return nil, domainerrors.ErrValidationFailed.WithDetails("password does not meet security requirements")
@@ -319,7 +319,7 @@ func (srv *userService) createUserSkeleton(
 ) (*entity.User, bool, error) {
 	switch req.RequestedRole {
 	case entity.RoleMerchant:
-		if req.MerchantSeed == nil || !req.MerchantSeed.isComplete() {
+		if req.MerchantSeed == nil || !req.MerchantSeed.hasStoreName() {
 			user := &entity.User{
 				Name:  identity.Name,
 				Email: identity.Email,
@@ -361,7 +361,7 @@ func (srv *userService) ensureRequestedRole(
 		if userHasMerchantProfile(user) {
 			return false, nil
 		}
-		if req.MerchantSeed == nil || !req.MerchantSeed.isComplete() {
+		if req.MerchantSeed == nil || !req.MerchantSeed.hasStoreName() {
 			return true, nil
 		}
 
@@ -424,10 +424,9 @@ func (srv *userService) buildOnboardingRequiredResult(user *entity.User, request
 func (srv *userService) buildLinkingRequiredResult(user *entity.User, req *authRequest, provider, providerUserID string) (*usecase.AuthResult, error) {
 	// Keep the original OAuth role/profile intent in the linking token. Account linking is an
 	// interstitial re-auth step, not a separate product flow.
-	var storeName, businessLicense string
+	var storeName string
 	if req.MerchantSeed != nil {
 		storeName = req.MerchantSeed.StoreName
-		businessLicense = req.MerchantSeed.BusinessLicense
 	}
 
 	linkingToken, err := srv.tokenService.GenerateLinkingToken(
@@ -436,7 +435,6 @@ func (srv *userService) buildLinkingRequiredResult(user *entity.User, req *authR
 		providerUserID,
 		req.RequestedRole.String(),
 		storeName,
-		businessLicense,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate linking token: %w", err)
@@ -458,8 +456,7 @@ func (srv *userService) CompleteMerchantOnboarding(ctx context.Context, input *u
 	}
 
 	seed := merchantProfileSeed{
-		StoreName:       strings.TrimSpace(input.StoreName),
-		BusinessLicense: strings.TrimSpace(input.BusinessLicense),
+		StoreName: strings.TrimSpace(input.StoreName),
 	}
 
 	var user *entity.User
@@ -592,6 +589,6 @@ func ensureOAuthAuthLink(
 	return createOAuthAuthentication(ctx, authRepo, userID, provider, providerUserID)
 }
 
-func (s merchantProfileSeed) isComplete() bool {
-	return strings.TrimSpace(s.StoreName) != "" && strings.TrimSpace(s.BusinessLicense) != ""
+func (s merchantProfileSeed) hasStoreName() bool {
+	return strings.TrimSpace(s.StoreName) != ""
 }

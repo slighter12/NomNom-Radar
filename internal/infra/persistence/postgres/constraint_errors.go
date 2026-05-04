@@ -4,7 +4,14 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
+)
+
+const (
+	constraintMerchantBusinessLicenseActive = "idx_merchant_profiles_business_license_active"
+	constraintUsersEmailActive              = "idx_users_email_active"
+	rowLockStrengthUpdate                   = "UPDATE"
 )
 
 // Helper functions for PostgreSQL error checking
@@ -14,12 +21,50 @@ func isUniqueConstraintViolation(err error) bool {
 		return true
 	}
 
-	// Check error message for PostgreSQL-specific unique constraint violation patterns (may not be needed)
-	// errMsg := strings.ToLower(err.Error())
-	// return strings.Contains(errMsg, "duplicate key") ||
-	// 	strings.Contains(errMsg, "unique constraint") ||
-	// 	strings.Contains(errMsg, "already exists")
-	return false
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return true
+	}
+
+	errMsg := strings.ToLower(err.Error())
+
+	return strings.Contains(errMsg, "duplicate key") ||
+		strings.Contains(errMsg, "unique constraint") ||
+		strings.Contains(errMsg, "23505")
+}
+
+func violatedConstraintName(err error) string {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.ConstraintName
+	}
+
+	errMsg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(errMsg, constraintMerchantBusinessLicenseActive):
+		return constraintMerchantBusinessLicenseActive
+	case strings.Contains(errMsg, "merchant_profiles_business_license_key"):
+		return "merchant_profiles_business_license_key"
+	case strings.Contains(errMsg, constraintUsersEmailActive):
+		return constraintUsersEmailActive
+	case strings.Contains(errMsg, "users_email_key"):
+		return "users_email_key"
+	case strings.Contains(errMsg, "idx_auth_provider_provider_user_id_active"):
+		return "idx_auth_provider_provider_user_id_active"
+	case strings.Contains(errMsg, "idx_auth_provider_provider_user_id"):
+		return "idx_auth_provider_provider_user_id"
+	default:
+		return ""
+	}
+}
+
+func isBusinessLicenseUniqueConstraint(err error) bool {
+	switch violatedConstraintName(err) {
+	case constraintMerchantBusinessLicenseActive, "merchant_profiles_business_license_key":
+		return true
+	default:
+		return false
+	}
 }
 
 func isForeignKeyConstraintViolation(err error) bool {

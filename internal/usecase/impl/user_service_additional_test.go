@@ -24,11 +24,10 @@ func TestUserService_RegisterMerchant_Success(t *testing.T) {
 
 	ctx := context.Background()
 	input := &usecase.RegisterMerchantInput{
-		Name:            "Merchant Owner",
-		Email:           "merchant@example.com",
-		Password:        "Password123!",
-		StoreName:       "NomNom Bento",
-		BusinessLicense: "A123456789",
+		Name:      "Merchant Owner",
+		Email:     "merchant@example.com",
+		Password:  "Password123!",
+		StoreName: "NomNom Bento",
 	}
 
 	fx.hasher.EXPECT().ValidatePasswordStrength(input.Password).Return(nil).Once()
@@ -54,7 +53,8 @@ func TestUserService_RegisterMerchant_Success(t *testing.T) {
 				user.ID = uuid.New()
 				require.NotNil(t, user.MerchantProfile)
 				assert.Equal(t, input.StoreName, user.MerchantProfile.StoreName)
-				assert.Equal(t, input.BusinessLicense, user.MerchantProfile.BusinessLicense)
+				assert.Empty(t, user.MerchantProfile.BusinessLicense)
+				assert.Equal(t, entity.MerchantVerificationStatusUnverified, user.MerchantProfile.VerificationStatus)
 			}).
 			Return(nil)
 
@@ -144,11 +144,10 @@ func TestUserService_RegisterMerchant_ExistingOAuthUserReturnsConflict(t *testin
 	ctx := context.Background()
 	userID := uuid.New()
 	input := &usecase.RegisterMerchantInput{
-		Name:            "Merchant Owner",
-		Email:           "member@example.com",
-		Password:        "Password123!",
-		StoreName:       "NomNom Bento",
-		BusinessLicense: "A123456789",
+		Name:      "Merchant Owner",
+		Email:     "member@example.com",
+		Password:  "Password123!",
+		StoreName: "NomNom Bento",
 	}
 
 	fx.hasher.EXPECT().ValidatePasswordStrength(input.Password).Return(nil).Once()
@@ -794,7 +793,7 @@ func TestUserService_GoogleCallback_ExistingEmailUserReturnsLinkingRequired(t *t
 		Return(oauthUser, nil).
 		Once()
 	fx.tokenService.EXPECT().
-		GenerateLinkingToken(userID, entity.ProviderTypeGoogle.String(), oauthUser.ID, entity.RoleUser.String(), "", "").
+		GenerateLinkingToken(userID, entity.ProviderTypeGoogle.String(), oauthUser.ID, entity.RoleUser.String(), "").
 		Return("linking-token", nil).
 		Once()
 
@@ -840,10 +839,9 @@ func TestUserService_GoogleCallback_ExistingEmailMerchantStateReturnsLinkingRequ
 	ctx := context.Background()
 	userID := uuid.New()
 	input := &usecase.GoogleCallbackInput{
-		IDToken:         "google-id-token",
-		State:           "merchant",
-		StoreName:       "NomNom Bento",
-		BusinessLicense: "A123456789",
+		IDToken:   "google-id-token",
+		State:     "merchant",
+		StoreName: "NomNom Bento",
 	}
 	oauthUser := &service.OAuthUser{
 		ID:            "google-user-id",
@@ -863,7 +861,6 @@ func TestUserService_GoogleCallback_ExistingEmailMerchantStateReturnsLinkingRequ
 			oauthUser.ID,
 			entity.RoleMerchant.String(),
 			input.StoreName,
-			input.BusinessLicense,
 		).
 		Return("linking-token", nil).
 		Once()
@@ -1053,13 +1050,12 @@ func TestUserService_LinkProvider_MerchantIntentAttachesMerchantProfile(t *testi
 	fx.tokenService.EXPECT().
 		ValidateToken(input.LinkingToken).
 		Return(&service.Claims{
-			UserID:          userID,
-			Type:            service.TokenTypeLinking,
-			Provider:        entity.ProviderTypeGoogle.String(),
-			ProviderUserID:  "google-user-id",
-			RequestedRole:   entity.RoleMerchant.String(),
-			StoreName:       "NomNom Bento",
-			BusinessLicense: "A123456789",
+			UserID:         userID,
+			Type:           service.TokenTypeLinking,
+			Provider:       entity.ProviderTypeGoogle.String(),
+			ProviderUserID: "google-user-id",
+			RequestedRole:  entity.RoleMerchant.String(),
+			StoreName:      "NomNom Bento",
 		}, nil).
 		Once()
 	fx.hasher.EXPECT().
@@ -1136,7 +1132,8 @@ func TestUserService_LinkProvider_MerchantIntentAttachesMerchantProfile(t *testi
 					require.NotNil(t, user.MerchantProfile)
 					assert.Equal(t, userID, user.MerchantProfile.UserID)
 					assert.Equal(t, "NomNom Bento", user.MerchantProfile.StoreName)
-					assert.Equal(t, "A123456789", user.MerchantProfile.BusinessLicense)
+					assert.Empty(t, user.MerchantProfile.BusinessLicense)
+					assert.Equal(t, entity.MerchantVerificationStatusUnverified, user.MerchantProfile.VerificationStatus)
 				}).
 				Return(nil)
 
@@ -1185,9 +1182,8 @@ func TestUserService_LinkProvider_UserIntentAttachesUserProfile(t *testing.T) {
 		Name:  "Merchant Owner",
 		Email: "merchant@example.com",
 		MerchantProfile: &entity.MerchantProfile{
-			UserID:          userID,
-			StoreName:       "NomNom Bento",
-			BusinessLicense: "A123456789",
+			UserID:    userID,
+			StoreName: "NomNom Bento",
 		},
 	}
 
@@ -1360,9 +1356,8 @@ func TestUserService_GoogleCallback_ExistingGoogleMerchantUserStateAttachesUserP
 				Return(&entity.User{
 					ID: userID,
 					MerchantProfile: &entity.MerchantProfile{
-						UserID:          userID,
-						StoreName:       "NomNom Bento",
-						BusinessLicense: "A123456789",
+						UserID:    userID,
+						StoreName: "NomNom Bento",
 					},
 				}, nil)
 			mockUserRepo.EXPECT().
@@ -1403,10 +1398,9 @@ func TestUserService_GoogleCallback_NewMerchantStateCreatesMerchant(t *testing.T
 
 	ctx := context.Background()
 	input := &usecase.GoogleCallbackInput{
-		IDToken:         "google-id-token",
-		State:           "merchant",
-		StoreName:       "NomNom Bento",
-		BusinessLicense: "A123456789",
+		IDToken:   "google-id-token",
+		State:     "merchant",
+		StoreName: "NomNom Bento",
 	}
 	oauthUser := &service.OAuthUser{
 		ID:            "google-user-id",
@@ -1456,7 +1450,8 @@ func TestUserService_GoogleCallback_NewMerchantStateCreatesMerchant(t *testing.T
 					user.ID = uuid.New()
 					require.NotNil(t, user.MerchantProfile)
 					assert.Equal(t, input.StoreName, user.MerchantProfile.StoreName)
-					assert.Equal(t, input.BusinessLicense, user.MerchantProfile.BusinessLicense)
+					assert.Empty(t, user.MerchantProfile.BusinessLicense)
+					assert.Equal(t, entity.MerchantVerificationStatusUnverified, user.MerchantProfile.VerificationStatus)
 				}).
 				Return(nil)
 			mockAuthRepo.EXPECT().
@@ -1553,7 +1548,7 @@ func TestUserService_GoogleCallback_NewMerchantWithoutDraftReturnsOnboardingRequ
 	assert.Equal(t, usecase.AuthStatusOnboardingRequired, output.Status)
 	assert.Equal(t, "onboarding-token", output.OnboardingToken)
 	assert.Equal(t, entity.RoleMerchant.String(), output.RequestedRole)
-	assert.Equal(t, []string{"store_name", "business_license"}, output.RequiredFields)
+	assert.Equal(t, []string{"store_name"}, output.RequiredFields)
 	assert.Empty(t, output.AccessToken)
 	assert.Empty(t, output.RefreshToken)
 	assert.Nil(t, output.User)
@@ -1567,7 +1562,6 @@ func TestUserService_CompleteMerchantOnboarding_Success(t *testing.T) {
 	input := &usecase.CompleteMerchantOnboardingInput{
 		OnboardingToken: "onboarding-token",
 		StoreName:       "NomNom Bento",
-		BusinessLicense: "A123456789",
 	}
 
 	fx.tokenService.EXPECT().
@@ -1610,7 +1604,8 @@ func TestUserService_CompleteMerchantOnboarding_Success(t *testing.T) {
 				Run(func(_ context.Context, user *entity.User) {
 					require.NotNil(t, user.MerchantProfile)
 					assert.Equal(t, input.StoreName, user.MerchantProfile.StoreName)
-					assert.Equal(t, input.BusinessLicense, user.MerchantProfile.BusinessLicense)
+					assert.Empty(t, user.MerchantProfile.BusinessLicense)
+					assert.Equal(t, entity.MerchantVerificationStatusUnverified, user.MerchantProfile.VerificationStatus)
 				}).
 				Return(nil)
 
@@ -1638,7 +1633,6 @@ func TestUserService_CompleteMerchantOnboarding_AlreadyCompletedReturnsConflict(
 	input := &usecase.CompleteMerchantOnboardingInput{
 		OnboardingToken: "onboarding-token",
 		StoreName:       "NomNom Bento",
-		BusinessLicense: "A123456789",
 	}
 
 	fx.tokenService.EXPECT().
@@ -1660,9 +1654,8 @@ func TestUserService_CompleteMerchantOnboarding_AlreadyCompletedReturnsConflict(
 					Name:  "Merchant Owner",
 					Email: "merchant@example.com",
 					MerchantProfile: &entity.MerchantProfile{
-						UserID:          userID,
-						StoreName:       "Existing Store",
-						BusinessLicense: "B987654321",
+						UserID:    userID,
+						StoreName: "Existing Store",
 					},
 				}, nil)
 
@@ -1716,10 +1709,9 @@ func TestUserService_RevokeSession_Success(t *testing.T) {
 
 func TestUserService_HelperFunctions(t *testing.T) {
 	input := &usecase.RegisterMerchantInput{
-		Name:            "Merchant Owner",
-		Email:           "merchant@example.com",
-		StoreName:       "NomNom Bento",
-		BusinessLicense: "A123456789",
+		Name:      "Merchant Owner",
+		Email:     "merchant@example.com",
+		StoreName: "NomNom Bento",
 	}
 
 	merchantUser, err := buildNewMerchantEntity(input)
@@ -1728,7 +1720,8 @@ func TestUserService_HelperFunctions(t *testing.T) {
 	assert.Equal(t, input.Name, merchantUser.Name)
 	assert.Equal(t, input.Email, merchantUser.Email)
 	assert.Equal(t, input.StoreName, merchantUser.MerchantProfile.StoreName)
-	assert.Equal(t, input.BusinessLicense, merchantUser.MerchantProfile.BusinessLicense)
+	assert.Empty(t, merchantUser.MerchantProfile.BusinessLicense)
+	assert.Equal(t, entity.MerchantVerificationStatusUnverified, merchantUser.MerchantProfile.VerificationStatus)
 
 	user := &entity.User{ID: uuid.New()}
 	assert.False(t, userHasUserProfile(user))

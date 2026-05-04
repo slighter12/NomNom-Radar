@@ -6,7 +6,6 @@ import (
 
 	"radar/internal/delivery"
 	"radar/internal/delivery/api/response"
-	deliverycontext "radar/internal/delivery/context"
 	domainerrors "radar/internal/domain/errors"
 
 	"github.com/labstack/echo/v4"
@@ -32,6 +31,7 @@ func (m *ErrorMiddleware) HandleHTTPError(err error, c echo.Context) {
 	if errors.Is(err, delivery.ErrResponseHandled) {
 		return
 	}
+	setSourceErrorLog(c, err)
 
 	// Attempt to parse as AppError
 	if appErr, ok := errors.AsType[domainerrors.AppError](err); ok {
@@ -52,14 +52,24 @@ func (m *ErrorMiddleware) HandleHTTPError(err error, c echo.Context) {
 		return
 	}
 
-	// Default to internal error, log the error but return a generic message (do not expose internal details)
-	m.logger.Error("Unhandled error",
-		slog.Any("error", err),
-		slog.String("request_id", deliverycontext.GetRequestID(c)),
-		slog.String("path", c.Request().URL.Path),
-		slog.String("method", c.Request().Method),
-	)
-
 	// For 500 errors, do not expose internal error details to the client
 	_ = response.InternalServerError(c, "INTERNAL_ERROR", "Internal server error, please try again later")
+}
+
+// HandleErrors converts returned Go errors into HTTP responses inside the
+// middleware chain so the deferred request logger can record the final status.
+func (m *ErrorMiddleware) HandleErrors(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		err := next(c)
+		if err == nil {
+			return nil
+		}
+		if errors.Is(err, delivery.ErrResponseHandled) {
+			return nil
+		}
+
+		m.HandleHTTPError(err, c)
+
+		return nil
+	}
 }

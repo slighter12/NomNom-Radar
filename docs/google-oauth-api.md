@@ -180,7 +180,7 @@ or:
   "status": "onboarding_required",
   "onboarding_token": "short-lived-jwt",
   "requested_role": "merchant",
-  "required_fields": ["store_name", "business_license"]
+  "required_fields": ["store_name"]
 }
 ```
 
@@ -208,8 +208,7 @@ Role order in JWT claims is not a primary-role contract. Clients must treat role
 {
   "id_token": "google_id_token",
   "requested_role": "merchant",
-  "store_name": "NomNom Bento",
-  "business_license": "A123456789"
+  "store_name": "NomNom Bento"
 }
 ```
 
@@ -228,8 +227,7 @@ Role order in JWT claims is not a primary-role contract. Clients must treat role
 ```json
 {
   "onboarding_token": "short-lived-jwt",
-  "store_name": "NomNom Bento",
-  "business_license": "A123456789"
+  "store_name": "NomNom Bento"
 }
 ```
 
@@ -238,6 +236,25 @@ Role order in JWT claims is not a primary-role contract. Clients must treat role
 - **Replay behavior**:
   - If onboarding has already been completed for that account, the endpoint returns `409 conflict`
   - The same onboarding token must not be reused to mint additional sessions after merchant profile creation
+
+### POST /api/v1/merchant/verification
+
+- **Purpose**: Submit a merchant business license after account creation.
+- **Auth**: Requires an authenticated merchant account.
+- **Input**:
+
+```json
+{
+  "business_license": "A123456789"
+}
+```
+
+- **Output**:
+  - `status=verified` when the license is accepted
+  - `409 BUSINESS_LICENSE_ALREADY_EXISTS` when another active merchant already uses the same license
+- **Verification behavior**:
+  - The current flow auto-verifies accepted submissions immediately and stores the merchant as `verified`
+  - After a merchant is `verified`, the merchant cannot self-service change `business_license`; changes require an operational support path
 
 ### GET /api/oauth/google (Deprecated)
 

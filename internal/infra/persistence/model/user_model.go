@@ -44,14 +44,16 @@ func (UserProfileModel) TableName() string {
 
 // MerchantProfileModel mirrors the 'merchant_profiles' table. UserID references users.id (UUID).
 type MerchantProfileModel struct {
-	UserID           uuid.UUID       `gorm:"primaryKey"`
-	Addresses        []*AddressModel `gorm:"foreignKey:MerchantProfileID"`
-	StoreName        string          `gorm:"type:text;not null"`
-	StoreDescription string          `gorm:"type:text"`
-	BusinessLicense  string          `gorm:"type:text;not null;uniqueIndex:idx_merchant_profiles_business_license_active,where:deleted_at IS NULL"`
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	DeletedAt        gorm.DeletedAt `gorm:"index:idx_merchant_profiles_deleted_at"`
+	UserID                    uuid.UUID       `gorm:"primaryKey"`
+	Addresses                 []*AddressModel `gorm:"foreignKey:MerchantProfileID"`
+	StoreName                 string          `gorm:"type:text;not null"`
+	StoreDescription          string          `gorm:"type:text"`
+	BusinessLicense           *string         `gorm:"type:text;uniqueIndex:idx_merchant_profiles_business_license_active,where:deleted_at IS NULL AND business_license IS NOT NULL"`
+	VerificationStatus        string          `gorm:"type:text;not null;default:unverified"`
+	BusinessLicenseVerifiedAt *time.Time
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
+	DeletedAt                 gorm.DeletedAt `gorm:"index:idx_merchant_profiles_deleted_at"`
 }
 
 // TableName explicitly sets the table name for GORM.
