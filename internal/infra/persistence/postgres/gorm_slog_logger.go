@@ -124,27 +124,36 @@ func sanitizeSQLLogString(value string) string {
 
 	var builder strings.Builder
 	builder.Grow(len(value))
-	for i := 0; i < len(value); i++ {
-		if value[i] != '\'' {
-			builder.WriteByte(value[i])
-
-			continue
-		}
-
-		builder.WriteString("'?'")
-		i++
-		for i < len(value) {
-			if value[i] == '\'' {
-				if i+1 < len(value) && value[i+1] == '\'' {
-					i += 2
+	inLiteral := false
+	possibleLiteralEnd := false
+	for _, char := range value {
+		if inLiteral {
+			if possibleLiteralEnd {
+				if char == '\'' {
+					possibleLiteralEnd = false
 
 					continue
 				}
 
-				break
+				inLiteral = false
+				possibleLiteralEnd = false
+			} else if char == '\'' {
+				possibleLiteralEnd = true
+
+				continue
+			} else {
+				continue
 			}
-			i++
 		}
+
+		if char == '\'' {
+			builder.WriteString("'?'")
+			inLiteral = true
+
+			continue
+		}
+
+		builder.WriteRune(char)
 	}
 
 	return builder.String()
