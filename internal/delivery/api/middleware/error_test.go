@@ -28,6 +28,16 @@ type closeTrackingBody struct {
 	closed bool
 }
 
+type panicSourceStackProvider struct{}
+
+func (p panicSourceStackProvider) SourceStack() string {
+	panic("source stack should not be formatted")
+}
+
+func sourceStackTestError() error {
+	return WithSourceStack(errors.New("database failed for owner@example.com authorization=Bearer secret-token"))
+}
+
 func (b *closeTrackingBody) Read(p []byte) (int, error) {
 	return b.reader.Read(p)
 }
@@ -194,7 +204,7 @@ func TestErrorMiddleware_HandleHTTPError_LogsStackForInternalError(t *testing.T)
 	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
 	errorMiddleware := NewErrorMiddleware(logger)
 	handler := requestLogger.Log(errorMiddleware.HandleErrors(func(c echo.Context) error {
-		return errors.New("database failed for owner@example.com authorization=Bearer secret-token")
+		return sourceStackTestError()
 	}))
 
 	err := handler(c)
@@ -213,6 +223,75 @@ func TestErrorMiddleware_HandleHTTPError_LogsStackForInternalError(t *testing.T)
 	assert.NotContains(t, logOutput, "owner@example.com")
 	assert.NotContains(t, logOutput, "secret-token")
 	assert.NotContains(t, logOutput, "authorization=Bearer")
+
+	record := decodeLogRecord(t, logOutput)
+	stack, ok := record["stack"].(string)
+	require.True(t, ok)
+	assert.Contains(t, stack, "sourceStackTestError")
+	assert.Contains(t, stack, "RequestLoggerMiddleware")
+	assert.Less(t, strings.Index(stack, "sourceStackTestError"), strings.Index(stack, "RequestLoggerMiddleware"))
+}
+
+func TestRequestLoggerMiddleware_LogsFallbackStackForUnwrappedInternalError(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/broken", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
+	errorMiddleware := NewErrorMiddleware(logger)
+	handler := requestLogger.Log(errorMiddleware.HandleErrors(func(c echo.Context) error {
+		return errors.New("database failed")
+	}))
+
+	err := handler(c)
+	require.NoError(t, err)
+
+	record := decodeLogRecord(t, logs.String())
+	stack, ok := record["stack"].(string)
+	require.True(t, ok)
+	assert.Contains(t, stack, "stackForInternalServerError")
+	assert.Contains(t, stack, "RequestLoggerMiddleware).logRequest")
+}
+
+func TestSetSourceErrorLog_HandlesNilError(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	require.NotPanics(t, func() {
+		setSourceErrorLog(c, nil)
+	})
+	assert.Nil(t, c.Get(sourceErrorLogContextKey))
+}
+
+func TestRequestLoggerMiddleware_DoesNotFormatSourceStackForClientError(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/bad", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.Set(sourceErrorLogContextKey, sourceErrorLog{
+		Type:    "*errors.errorString",
+		Message: "bad request",
+		Stack:   panicSourceStackProvider{},
+	})
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
+	handler := requestLogger.Log(func(c echo.Context) error {
+		return response.BadRequest(c, "VALIDATION_ERROR", "bad request")
+	})
+
+	err := handler(c)
+	require.NoError(t, err)
+
+	record := decodeLogRecord(t, logs.String())
+	_, ok := record["stack"]
+	assert.False(t, ok)
 }
 
 func TestRequestLoggerMiddleware_LogsDirectSanitizedErrorResponse(t *testing.T) {

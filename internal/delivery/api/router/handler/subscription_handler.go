@@ -61,7 +61,7 @@ func (h *SubscriptionHandler) SubscribeToMerchant(c echo.Context) error {
 
 	subscription, err := h.subscriptionUC.SubscribeToMerchant(c.Request().Context(), userID, req.MerchantID, req.DeviceInfo)
 	if err != nil {
-		return err
+		return withSourceStack(err)
 	}
 
 	return response.Success(c, http.StatusCreated, subscription)
@@ -80,7 +80,7 @@ func (h *SubscriptionHandler) UnsubscribeFromMerchant(c echo.Context) error {
 	}
 
 	if err := h.subscriptionUC.UnsubscribeFromMerchant(c.Request().Context(), userID, merchantID); err != nil {
-		return err
+		return withSourceStack(err)
 	}
 
 	return response.Success(c, http.StatusOK, map[string]string{responseKeyMessage: "Unsubscribed successfully"})
@@ -95,7 +95,7 @@ func (h *SubscriptionHandler) GetUserSubscriptions(c echo.Context) error {
 
 	subscriptions, err := h.subscriptionUC.GetUserSubscriptions(c.Request().Context(), userID)
 	if err != nil {
-		return err
+		return withSourceStack(err)
 	}
 
 	return response.Success(c, http.StatusOK, subscriptions)
@@ -110,7 +110,7 @@ func (h *SubscriptionHandler) GenerateSubscriptionQR(c echo.Context) error {
 
 	qrCode, err := h.subscriptionUC.GenerateSubscriptionQR(c.Request().Context(), authenticatedMerchantID)
 	if err != nil {
-		return err
+		return withSourceStack(err)
 	}
 
 	// Return QR code as PNG image
@@ -134,7 +134,7 @@ func (h *SubscriptionHandler) ProcessQRSubscription(c echo.Context) error {
 
 	subscription, err := h.subscriptionUC.ProcessQRSubscription(c.Request().Context(), userID, req.QRData, req.DeviceInfo)
 	if err != nil {
-		return err
+		return withSourceStack(err)
 	}
 
 	return response.Success(c, http.StatusCreated, subscription)

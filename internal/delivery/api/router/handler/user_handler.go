@@ -59,7 +59,7 @@ func (h *UserHandler) RegisterUser(c echo.Context) error {
 
 	output, err := h.userUC.RegisterUser(c.Request().Context(), input)
 	if err != nil {
-		return err
+		return withSourceStack(err)
 	}
 
 	// Do not return sensitive data in the response.
@@ -77,7 +77,7 @@ func (h *UserHandler) RegisterMerchant(c echo.Context) error {
 
 	output, err := h.userUC.RegisterMerchant(c.Request().Context(), input)
 	if err != nil {
-		return err
+		return withSourceStack(err)
 	}
 
 	return response.Success(c, http.StatusCreated, output)
@@ -95,7 +95,7 @@ func (h *UserHandler) Login(c echo.Context) error {
 	if err != nil {
 		setRetryAfterHeaderOnLockout(c, err)
 
-		return err
+		return withSourceStack(err)
 	}
 
 	return response.Success(c, http.StatusOK, output)
@@ -110,7 +110,7 @@ func (h *UserHandler) RefreshToken(c echo.Context) error {
 
 	output, err := h.userUC.RefreshToken(c.Request().Context(), input)
 	if err != nil {
-		return err
+		return withSourceStack(err)
 	}
 
 	return response.Success(c, http.StatusOK, output)
@@ -124,7 +124,7 @@ func (h *UserHandler) Logout(c echo.Context) error {
 	}
 
 	if err := h.userUC.Logout(c.Request().Context(), input); err != nil {
-		return err
+		return withSourceStack(err)
 	}
 
 	return response.Success(c, http.StatusOK, map[string]string{responseKeyMessage: "Successfully logged out"})
@@ -141,7 +141,7 @@ func (h *UserHandler) GoogleCallback(c echo.Context) error {
 	// Process the callback
 	output, err := h.userUC.GoogleCallback(c.Request().Context(), input)
 	if err != nil {
-		return err
+		return withSourceStack(err)
 	}
 
 	return response.Success(c, http.StatusOK, output)
@@ -156,7 +156,7 @@ func (h *UserHandler) CompleteMerchantOnboarding(c echo.Context) error {
 
 	output, err := h.userUC.CompleteMerchantOnboarding(c.Request().Context(), input)
 	if err != nil {
-		return err
+		return withSourceStack(err)
 	}
 
 	return response.Success(c, http.StatusOK, output)
@@ -174,7 +174,7 @@ func (h *UserHandler) SubmitMerchantVerification(c echo.Context) error {
 	}
 
 	if err := h.profileUC.SubmitMerchantVerification(c.Request().Context(), userID, input); err != nil {
-		return err
+		return withSourceStack(err)
 	}
 
 	return response.Success(c, http.StatusOK, map[string]string{responseKeyStatus: "verified"})
@@ -190,7 +190,7 @@ func (h *UserHandler) LinkProvider(c echo.Context) error {
 	if err != nil {
 		setRetryAfterHeaderOnLockout(c, err)
 
-		return err
+		return withSourceStack(err)
 	}
 
 	return response.Success(c, http.StatusOK, output)
@@ -235,7 +235,7 @@ func (h *UserHandler) GetProfile(c echo.Context) error {
 
 	user, err := h.profileUC.GetProfile(c.Request().Context(), userID)
 	if err != nil {
-		return err
+		return withSourceStack(err)
 	}
 
 	return response.Success(c, http.StatusOK, user)

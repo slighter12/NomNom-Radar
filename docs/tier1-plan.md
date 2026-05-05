@@ -660,5 +660,5 @@ The underlying provider link creation logic (`ensureOAuthAuthLink` or similar) s
 
 The checklist above remains the acceptance checklist for final verification. Current backend implementation status:
 
-- Implemented in the current Tier 1 backend change set: Device Health schema/query flow, scheduled stale-device cleanup job, Argon2id hashing, OAuth provider linking re-authentication, login throttling, refresh token rotation, token family reuse detection, and token cleanup retention.
+- Implemented in the current Tier 1 backend change set: Device Health schema/query flow, scheduled stale-device cleanup job, Argon2id hashing, OAuth provider linking re-authentication, login throttling, refresh token rotation, token family reuse detection, token cleanup retention, and 5xx request log source-stack capture at the handler error boundary.
 - Still requires runtime or client verification: Cloud Run device-cleanup scheduling, Firebase delivery behavior, Argon2id benchmark on the target Cloud Run shape, client refresh single-flight behavior, and client device rebind flow.
