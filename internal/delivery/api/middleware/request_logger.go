@@ -1,10 +1,10 @@
 package middleware
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"runtime/debug"
 	"time"
 
 	"radar/config"
@@ -19,6 +19,7 @@ const sourceErrorLogContextKey = "source_error_for_log"
 type sourceErrorLog struct {
 	Type    string
 	Message string
+	Stack   string
 }
 
 // RequestLoggerMiddleware logs one request lifecycle entry after the response is finalized.
@@ -81,17 +82,37 @@ func (m *RequestLoggerMiddleware) logRequest(c echo.Context, start time.Time) {
 	}
 	if status >= http.StatusInternalServerError {
 		level = slog.LevelError
-		attrs = append(attrs, slog.String("stack", string(debug.Stack())))
+		if sourceErr, ok := c.Get(sourceErrorLogContextKey).(sourceErrorLog); ok && sourceErr.Stack != "" {
+			attrs = append(attrs, slog.String("stack", sourceErr.Stack))
+		}
 	}
 
 	m.logger.LogAttrs(c.Request().Context(), level, "HTTP request", attrs...)
 }
 
 func setSourceErrorLog(c echo.Context, err error) {
-	c.Set(sourceErrorLogContextKey, sourceErrorLog{
-		Type:    fmt.Sprintf("%T", err),
-		Message: sanitizeFreeTextLogValue(err.Error()),
-	})
+	logErr := unwrapSourceStackError(err)
+	sourceErr := sourceErrorLog{
+		Type:    fmt.Sprintf("%T", logErr),
+		Message: sanitizeFreeTextLogValue(logErr.Error()),
+	}
+
+	var stackProvider sourceStackProvider
+	if errors.As(err, &stackProvider) {
+		sourceErr.Stack = stackProvider.SourceStack()
+	}
+
+	c.Set(sourceErrorLogContextKey, sourceErr)
+}
+
+func unwrapSourceStackError(err error) error {
+	for {
+		sourceErr, ok := err.(*sourceStackError)
+		if !ok {
+			return err
+		}
+		err = sourceErr.Unwrap()
+	}
 }
 
 func responseErrorLogFromContext(c echo.Context, status int) responseErrorLog {

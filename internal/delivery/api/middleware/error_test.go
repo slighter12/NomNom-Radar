@@ -28,6 +28,10 @@ type closeTrackingBody struct {
 	closed bool
 }
 
+func sourceStackTestError() error {
+	return WithSourceStack(errors.New("database failed for owner@example.com authorization=Bearer secret-token"))
+}
+
 func (b *closeTrackingBody) Read(p []byte) (int, error) {
 	return b.reader.Read(p)
 }
@@ -194,7 +198,7 @@ func TestErrorMiddleware_HandleHTTPError_LogsStackForInternalError(t *testing.T)
 	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
 	errorMiddleware := NewErrorMiddleware(logger)
 	handler := requestLogger.Log(errorMiddleware.HandleErrors(func(c echo.Context) error {
-		return errors.New("database failed for owner@example.com authorization=Bearer secret-token")
+		return sourceStackTestError()
 	}))
 
 	err := handler(c)
@@ -213,6 +217,13 @@ func TestErrorMiddleware_HandleHTTPError_LogsStackForInternalError(t *testing.T)
 	assert.NotContains(t, logOutput, "owner@example.com")
 	assert.NotContains(t, logOutput, "secret-token")
 	assert.NotContains(t, logOutput, "authorization=Bearer")
+
+	record := decodeLogRecord(t, logOutput)
+	stack, ok := record["stack"].(string)
+	require.True(t, ok)
+	assert.Contains(t, stack, "sourceStackTestError")
+	assert.Contains(t, stack, "RequestLoggerMiddleware")
+	assert.Less(t, strings.Index(stack, "sourceStackTestError"), strings.Index(stack, "RequestLoggerMiddleware"))
 }
 
 func TestRequestLoggerMiddleware_LogsDirectSanitizedErrorResponse(t *testing.T) {

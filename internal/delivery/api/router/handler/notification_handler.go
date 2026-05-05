@@ -79,7 +79,7 @@ func (h *NotificationHandler) PublishLocationNotification(c echo.Context) error 
 		req.HintMessage,
 	)
 	if err != nil {
-		return err
+		return withSourceStack(err)
 	}
 
 	return response.Success(c, http.StatusCreated, notification)
@@ -137,7 +137,7 @@ func (h *NotificationHandler) GetMerchantNotificationHistory(c echo.Context) err
 
 	notifications, err := h.notificationUC.GetMerchantNotificationHistory(c.Request().Context(), merchantID, query.Limit, query.Offset)
 	if err != nil {
-		return err
+		return withSourceStack(err)
 	}
 
 	return response.Success(c, http.StatusOK, notifications)
