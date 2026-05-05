@@ -107,7 +107,7 @@ func setSourceErrorLog(c echo.Context, err error) {
 
 func unwrapSourceStackError(err error) error {
 	for {
-		sourceErr, ok := err.(*sourceStackError)
+		sourceErr, ok := errors.AsType[*sourceStackError](err)
 		if !ok {
 			return err
 		}

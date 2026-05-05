@@ -49,18 +49,18 @@ func WithSourceStack(err error) error {
 
 func captureSourceStack(skip int) string {
 	pcs := make([]uintptr, maxSourceStackFrames)
-	n := runtime.Callers(skip+2, pcs)
-	if n == 0 {
+	callersCount := runtime.Callers(skip+2, pcs)
+	if callersCount == 0 {
 		return ""
 	}
 
 	var builder strings.Builder
-	frames := runtime.CallersFrames(pcs[:n])
+	frames := runtime.CallersFrames(pcs[:callersCount])
 	for {
 		frame, more := frames.Next()
 		builder.WriteString(frame.Function)
 		builder.WriteByte('\n')
-		builder.WriteString(fmt.Sprintf("\t%s:%d", frame.File, frame.Line))
+		fmt.Fprintf(&builder, "\t%s:%d", frame.File, frame.Line)
 		if !more {
 			break
 		}
