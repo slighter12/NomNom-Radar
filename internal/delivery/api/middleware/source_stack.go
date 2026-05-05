@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 const maxSourceStackFrames = 32
@@ -15,6 +16,8 @@ type sourceStackProvider interface {
 
 type sourceStackError struct {
 	err   error
+	pcs   []uintptr
+	once  sync.Once
 	stack string
 }
 
@@ -27,6 +30,10 @@ func (e *sourceStackError) Unwrap() error {
 }
 
 func (e *sourceStackError) SourceStack() string {
+	e.once.Do(func() {
+		e.stack = formatSourceStack(e.pcs)
+	})
+
 	return e.stack
 }
 
@@ -42,20 +49,32 @@ func WithSourceStack(err error) error {
 	}
 
 	return &sourceStackError{
-		err:   err,
-		stack: captureSourceStack(1),
+		err: err,
+		pcs: captureSourcePCs(1),
 	}
 }
 
-func captureSourceStack(skip int) string {
+func captureSourcePCs(skip int) []uintptr {
 	pcs := make([]uintptr, maxSourceStackFrames)
 	callersCount := runtime.Callers(skip+2, pcs)
 	if callersCount == 0 {
+		return nil
+	}
+
+	return pcs[:callersCount]
+}
+
+func captureSourceStack(skip int) string {
+	return formatSourceStack(captureSourcePCs(skip + 1))
+}
+
+func formatSourceStack(pcs []uintptr) string {
+	if len(pcs) == 0 {
 		return ""
 	}
 
 	var builder strings.Builder
-	frames := runtime.CallersFrames(pcs[:callersCount])
+	frames := runtime.CallersFrames(pcs)
 	for {
 		frame, more := frames.Next()
 		builder.WriteString(frame.Function)

@@ -19,7 +19,7 @@ const sourceErrorLogContextKey = "source_error_for_log"
 type sourceErrorLog struct {
 	Type    string
 	Message string
-	Stack   string
+	Stack   sourceStackProvider
 }
 
 // RequestLoggerMiddleware logs one request lifecycle entry after the response is finalized.
@@ -82,15 +82,17 @@ func (m *RequestLoggerMiddleware) logRequest(c echo.Context, start time.Time) {
 	}
 	if status >= http.StatusInternalServerError {
 		level = slog.LevelError
-		if sourceErr, ok := c.Get(sourceErrorLogContextKey).(sourceErrorLog); ok && sourceErr.Stack != "" {
-			attrs = append(attrs, slog.String("stack", sourceErr.Stack))
-		}
+		attrs = append(attrs, slog.String("stack", stackForInternalServerError(c)))
 	}
 
 	m.logger.LogAttrs(c.Request().Context(), level, "HTTP request", attrs...)
 }
 
 func setSourceErrorLog(c echo.Context, err error) {
+	if err == nil {
+		return
+	}
+
 	logErr := unwrapSourceStackError(err)
 	sourceErr := sourceErrorLog{
 		Type:    fmt.Sprintf("%T", logErr),
@@ -99,10 +101,20 @@ func setSourceErrorLog(c echo.Context, err error) {
 
 	var stackProvider sourceStackProvider
 	if errors.As(err, &stackProvider) {
-		sourceErr.Stack = stackProvider.SourceStack()
+		sourceErr.Stack = stackProvider
 	}
 
 	c.Set(sourceErrorLogContextKey, sourceErr)
+}
+
+func stackForInternalServerError(c echo.Context) string {
+	if sourceErr, ok := c.Get(sourceErrorLogContextKey).(sourceErrorLog); ok && sourceErr.Stack != nil {
+		if stack := sourceErr.Stack.SourceStack(); stack != "" {
+			return stack
+		}
+	}
+
+	return captureSourceStack(0)
 }
 
 func unwrapSourceStackError(err error) error {
