@@ -1,4 +1,4 @@
-name: Deploy Prod
+name: Deploy Cloud Run Service Prod
 
 on:
   workflow_dispatch:
@@ -25,6 +25,7 @@ jobs:
     uses: ./.github/workflows/deploy-cloud-run-reusable.yml
     with:
       environment_name: prod
+      resource_type: service
       target: ${{ inputs.target }}
       image_ref: ${{ inputs.image_ref }}
       run_migration: ${{ inputs.run_migration }}

@@ -7,6 +7,11 @@ on:
         description: "GitHub environment name"
         required: true
         type: string
+      resource_type:
+        description: "Cloud Run resource type: service or job"
+        required: false
+        default: service
+        type: string
       target:
         description: "Deploy target"
         required: true
@@ -25,10 +30,35 @@ on:
         required: false
         default: false
         type: boolean
+      configure_scheduler:
+        description: "Create or update the Cloud Scheduler trigger for Cloud Run Jobs"
+        required: false
+        default: false
+        type: boolean
+      execute_now:
+        description: "Execute the Cloud Run Job immediately after deploy"
+        required: false
+        default: false
+        type: boolean
+      schedule:
+        description: "Cloud Scheduler cron expression for Cloud Run Jobs"
+        required: false
+        default: "0 3 * * *"
+        type: string
+      schedule_time_zone:
+        description: "Cloud Scheduler time zone for Cloud Run Jobs"
+        required: false
+        default: "Asia/Taipei"
+        type: string
+      scheduler_name:
+        description: "Cloud Scheduler job name for Cloud Run Jobs"
+        required: false
+        default: ""
+        type: string
 
 jobs:
   deploy:
-    name: Deploy ${{ inputs.target }} to ${{ inputs.environment_name }}
+    name: Deploy ${{ inputs.resource_type }} ${{ inputs.target }} to ${{ inputs.environment_name }}
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment_name }}
     permissions:
@@ -41,15 +71,52 @@ jobs:
       GCP_SA_EMAIL: ${{ vars.GCP_SA_EMAIL }}
       GOOGLE_OAUTH_CLIENT_ID: ${{ vars.GOOGLEOAUTH_CLIENTID }}
     steps:
-      - name: Validate deployment configuration
+      - name: Validate common deployment configuration
         env:
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
         run: |
           set -euo pipefail
 
-          for required in PROJECT_ID REGION REGISTRY ALLOWED_HOST GCP_SA_EMAIL GOOGLE_OAUTH_CLIENT_ID GCP_SA_KEY; do
+          for required in PROJECT_ID REGION REGISTRY GCP_SA_EMAIL GCP_SA_KEY; do
             if [ -z "${!required:-}" ]; then
               echo "::error::Missing required deployment configuration: ${required}"
+              exit 1
+            fi
+          done
+
+          case "${{ inputs.resource_type }}" in
+            service)
+              case "${{ inputs.target }}" in
+                radar|geoworker) ;;
+                *)
+                  echo "::error::Unsupported Cloud Run service target: ${{ inputs.target }}"
+                  exit 1
+                  ;;
+              esac
+              ;;
+            job)
+              case "${{ inputs.target }}" in
+                device-cleanup) ;;
+                *)
+                  echo "::error::Unsupported Cloud Run job target: ${{ inputs.target }}"
+                  exit 1
+                  ;;
+              esac
+              ;;
+            *)
+              echo "::error::Unsupported resource_type: ${{ inputs.resource_type }}"
+              exit 1
+              ;;
+          esac
+
+      - name: Validate service deployment configuration
+        if: ${{ inputs.resource_type == 'service' }}
+        run: |
+          set -euo pipefail
+
+          for required in ALLOWED_HOST GOOGLE_OAUTH_CLIENT_ID; do
+            if [ -z "${!required:-}" ]; then
+              echo "::error::Missing required service deployment configuration: ${required}"
               exit 1
             fi
           done
@@ -138,6 +205,7 @@ jobs:
             --format='value(image_summary.fully_qualified_digest)'
 
       - name: Prepare service YAML
+        if: ${{ inputs.resource_type == 'service' }}
         env:
           CLOUDFLARE_ORIGIN_SECRET: ${{ secrets.CLOUDFLARE_ORIGIN_SECRET }}
         run: |
@@ -167,7 +235,8 @@ jobs:
             sed -i "s|HTTP_CLOUDFLARESECRET_PLACEHOLDER|${CLOUDFLARE_SECRET_ESCAPED}|g" /tmp/service.yaml
           fi
 
-      - name: Deploy to Cloud Run
+      - name: Deploy Cloud Run service
+        if: ${{ inputs.resource_type == 'service' }}
         id: deploy
         run: |
           set -euo pipefail
@@ -184,8 +253,84 @@ jobs:
               --role="roles/run.invoker"
           fi
 
+      - name: Deploy Cloud Run job
+        if: ${{ inputs.resource_type == 'job' }}
+        run: |
+          set -euo pipefail
+
+          case "${{ inputs.target }}" in
+            device-cleanup)
+              gcloud run jobs deploy "${{ inputs.target }}" \
+                --image="${{ steps.image.outputs.name }}" \
+                --project="${PROJECT_ID}" \
+                --region="${REGION}" \
+                --service-account="${GCP_SA_EMAIL}" \
+                --tasks=1 \
+                --parallelism=1 \
+                --memory=512Mi \
+                --cpu=1 \
+                --task-timeout=10m \
+                --set-env-vars="ENV_LOG_PRETTY=false,ENV_LOG_LEVEL=info,POSTGRES_PRESET=supabase_transaction,POSTGRES_SSLMODE=require,POSTGRES_MAXOPENCONNS=5" \
+                --set-secrets="POSTGRES_MASTER_DSN=postgres-master-dsn:latest" \
+                --quiet
+              ;;
+            *)
+              echo "::error::Missing Cloud Run Job deployment configuration for target: ${{ inputs.target }}"
+              exit 1
+              ;;
+          esac
+
+      - name: Configure Cloud Scheduler for job
+        if: ${{ inputs.resource_type == 'job' && inputs.configure_scheduler }}
+        run: |
+          set -euo pipefail
+
+          SCHEDULER_JOB_NAME="${{ inputs.scheduler_name }}"
+          if [ -z "${SCHEDULER_JOB_NAME}" ]; then
+            echo "::error::scheduler_name is required when configure_scheduler is enabled."
+            exit 1
+          fi
+
+          JOB_RUN_URI="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${{ inputs.target }}:run"
+
+          if gcloud scheduler jobs describe "${SCHEDULER_JOB_NAME}" \
+            --project="${PROJECT_ID}" \
+            --location="${REGION}" >/dev/null 2>&1; then
+            gcloud scheduler jobs update http "${SCHEDULER_JOB_NAME}" \
+              --project="${PROJECT_ID}" \
+              --location="${REGION}" \
+              --schedule="${{ inputs.schedule }}" \
+              --time-zone="${{ inputs.schedule_time_zone }}" \
+              --uri="${JOB_RUN_URI}" \
+              --http-method=POST \
+              --oauth-service-account-email="${GCP_SA_EMAIL}" \
+              --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform" \
+              --quiet
+          else
+            gcloud scheduler jobs create http "${SCHEDULER_JOB_NAME}" \
+              --project="${PROJECT_ID}" \
+              --location="${REGION}" \
+              --schedule="${{ inputs.schedule }}" \
+              --time-zone="${{ inputs.schedule_time_zone }}" \
+              --uri="${JOB_RUN_URI}" \
+              --http-method=POST \
+              --oauth-service-account-email="${GCP_SA_EMAIL}" \
+              --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform" \
+              --quiet
+          fi
+
+      - name: Execute Cloud Run job
+        if: ${{ inputs.resource_type == 'job' && inputs.execute_now }}
+        run: |
+          set -euo pipefail
+
+          gcloud run jobs execute "${{ inputs.target }}" \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --wait
+
       - name: Sync Cloudflare Transform Rule Header
-        if: ${{ inputs.enable_cloudflare_sync && inputs.target == 'radar' }}
+        if: ${{ inputs.resource_type == 'service' && inputs.enable_cloudflare_sync && inputs.target == 'radar' }}
         env:
           CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CF_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
@@ -244,7 +389,8 @@ jobs:
             exit 1
           fi
 
-      - name: Show Output
+      - name: Show service output
+        if: ${{ inputs.resource_type == 'service' }}
         run: |
           set -euo pipefail
 
@@ -252,3 +398,13 @@ jobs:
             --project="${PROJECT_ID}" \
             --region="${REGION}" \
             --format='value(status.url)'
+
+      - name: Show job output
+        if: ${{ inputs.resource_type == 'job' }}
+        run: |
+          set -euo pipefail
+
+          gcloud run jobs describe "${{ inputs.target }}" \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --format='yaml(name,spec.template.spec.taskCount,spec.template.spec.parallelism,spec.template.spec.template.spec.containers[0].image,status.latestCreatedExecution.name)'

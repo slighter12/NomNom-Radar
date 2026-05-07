@@ -1,0 +1,61 @@
+name: Deploy Cloud Run Job Dev
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Deploy target"
+        required: true
+        type: choice
+        options:
+          - device-cleanup
+      image_ref:
+        description: "Required image tag or commit SHA to deploy."
+        required: true
+        default: ""
+      run_migration:
+        description: "Run shared database migrations before deploy when this release includes schema changes."
+        required: false
+        type: boolean
+        default: false
+      configure_scheduler:
+        description: "Create or update Cloud Scheduler trigger. Leave off for image-only job deploys."
+        required: false
+        type: boolean
+        default: false
+      execute_now:
+        description: "Execute the Cloud Run Job immediately after deploy"
+        required: false
+        type: boolean
+        default: false
+      schedule:
+        description: "Cloud Scheduler cron expression"
+        required: false
+        type: string
+        default: "0 3 * * *"
+      schedule_time_zone:
+        description: "Cloud Scheduler time zone"
+        required: false
+        type: string
+        default: "Asia/Taipei"
+      scheduler_name:
+        description: "Cloud Scheduler job name"
+        required: false
+        type: string
+        default: "device-cleanup-daily"
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy-cloud-run-reusable.yml
+    with:
+      environment_name: dev
+      resource_type: job
+      target: ${{ inputs.target }}
+      image_ref: ${{ inputs.image_ref }}
+      run_migration: ${{ inputs.run_migration }}
+      configure_scheduler: ${{ inputs.configure_scheduler }}
+      execute_now: ${{ inputs.execute_now }}
+      schedule: ${{ inputs.schedule }}
+      schedule_time_zone: ${{ inputs.schedule_time_zone }}
+      scheduler_name: ${{ inputs.scheduler_name }}
+    secrets: inherit
