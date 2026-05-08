@@ -52,7 +52,7 @@ The job deploy sets the same database and logging runtime configuration document
 Prerequisites for Scheduler management:
 
 - `cloudscheduler.googleapis.com` must be enabled in the target GCP project.
-- The workflow deployer service account needs permission to create or update Cloud Scheduler jobs, for example `roles/cloudscheduler.admin`.
+- The workflow deployer service account needs permission to create or update Cloud Scheduler jobs, for example `roles/cloudscheduler.jobEditor`, and `roles/iam.serviceAccountUser` on the scheduler service account.
 - The service account used by Cloud Scheduler must have permission to run the Cloud Run Job, for example `roles/run.invoker` on the target job or project.
 
 ### Manual Deploy Fallback
