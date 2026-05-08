@@ -25,7 +25,37 @@ ${REGISTRY}/${IMAGE_NAME}/device-cleanup:${TAG}
 ${REGISTRY}/${IMAGE_NAME}/device-cleanup:latest
 ```
 
-### Deploy Job
+### Deploy with GitHub Actions
+
+Use the dedicated workflow for the target environment:
+
+- `Deploy Cloud Run Job Dev`
+- `Deploy Cloud Run Job Prod`
+
+Inputs:
+
+| Input | Description |
+|-------|-------------|
+| `target` | Cloud Run Job target. Currently only `device-cleanup`. |
+| `image_ref` | Required image tag or commit SHA to deploy. |
+| `run_migration` | Runs the shared database migrations before deploy when this release includes schema changes. Defaults to `false`. |
+| `configure_scheduler` | Creates or updates the Cloud Scheduler trigger configured by `schedule`, `schedule_time_zone`, and `scheduler_name`. Leave disabled for image-only job deploys. Defaults to `false`. |
+| `execute_now` | Executes the job immediately after deploy. Defaults to `false`. |
+| `schedule` | Cloud Scheduler cron expression. Defaults to `0 3 * * *`. |
+| `schedule_time_zone` | Cloud Scheduler time zone. Defaults to `Asia/Taipei`. |
+| `scheduler_name` | Cloud Scheduler job name. Defaults to `device-cleanup-daily` for this job; change it if `schedule` is no longer daily or if adding another job target. |
+
+The workflow reuses the shared Cloud Run deployment setup used by services: Google auth, Artifact Registry image resolution, optional migration, and image existence verification. If `run_migration` is enabled, it runs the same goose migration path used by service deploys before deploying the job. The deployment branch for jobs runs `gcloud run jobs deploy` instead of `gcloud run services replace`.
+
+The job deploy sets the same database and logging runtime configuration documented below. Firebase and HTTP server settings are not required.
+
+Prerequisites for Scheduler management:
+
+- `cloudscheduler.googleapis.com` must be enabled in the target GCP project.
+- The workflow deployer service account needs permission to create or update Cloud Scheduler jobs, for example `roles/cloudscheduler.jobEditor`, and `roles/iam.serviceAccountUser` on the scheduler service account.
+- The service account used by Cloud Scheduler must have permission to run the Cloud Run Job, for example `roles/run.invoker` on the target job or project.
+
+### Manual Deploy Fallback
 
 Deploy the image as a Cloud Run Job. Use the same database and logging environment variables as the `radar` service; Firebase and HTTP server settings are not required.
 
@@ -42,18 +72,22 @@ gcloud run jobs deploy device-cleanup \
 
 ### Schedule
 
-Create a Cloud Scheduler trigger that executes the job once per day:
+Cloud Scheduler is configured separately from the job image deploy. The GitHub Actions workflow creates or updates this scheduler only when `configure_scheduler` is enabled. Leave it disabled for normal image-only job deploys. Enable it when first creating the scheduler or intentionally changing `scheduler_name`, `schedule`, `schedule_time_zone`, URI, HTTP method, or OAuth scope.
+
+For manual fallback, create a Cloud Scheduler trigger that executes the job once per day:
 
 ```sh
 gcloud scheduler jobs create http device-cleanup-daily \
   --location REGION \
   --schedule "0 3 * * *" \
-  --uri "https://REGION-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/PROJECT_ID/jobs/device-cleanup:run" \
+  --time-zone "Asia/Taipei" \
+  --uri "https://run.googleapis.com/v2/projects/PROJECT_ID/locations/REGION/jobs/device-cleanup:run" \
   --http-method POST \
-  --oauth-service-account-email SERVICE_ACCOUNT
+  --oauth-service-account-email SERVICE_ACCOUNT \
+  --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform"
 ```
 
-The service account used by Cloud Scheduler must have permission to run the Cloud Run Job.
+The workflow creates or updates the scheduler trigger, but it does not grant IAM. The service account used by Cloud Scheduler must already have permission to run the Cloud Run Job, for example `roles/run.invoker` on the target job or project.
 
 ### Manual Run
 
