@@ -48,6 +48,8 @@ Tier 1 post-implementation follow-ups:
 
 ### Tier 2 — Mobile Vendor Discovery
 
+Detailed implementation plan: [tier2-plan.md](./tier2-plan.md)
+
 | # | Item | Rationale |
 |---|------|-----------|
 | 6 | Mobile Vendor Category Taxonomy | Discovery needs platform-defined main categories and subcategories before search pages or hub pages can be stable. The taxonomy should support mobile vendors broadly, not only food trucks. |

@@ -7,6 +7,7 @@ packages:
       AddressRepository:
       AuthRepository:
       DeviceRepository:
+      DiscoveryRepository:
       LoginAttemptRepository:
       NotificationRepository:
       RefreshTokenRepository:

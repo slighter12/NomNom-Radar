@@ -129,6 +129,52 @@ func (_c *MockRepositoryFactory_AuthRepo_Call) RunAndReturn(run func() repositor
 	return _c
 }
 
+// DiscoveryRepo provides a mock function for the type MockRepositoryFactory
+func (_mock *MockRepositoryFactory) DiscoveryRepo() repository.DiscoveryRepository {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for DiscoveryRepo")
+	}
+
+	var r0 repository.DiscoveryRepository
+	if returnFunc, ok := ret.Get(0).(func() repository.DiscoveryRepository); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repository.DiscoveryRepository)
+		}
+	}
+	return r0
+}
+
+// MockRepositoryFactory_DiscoveryRepo_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DiscoveryRepo'
+type MockRepositoryFactory_DiscoveryRepo_Call struct {
+	*mock.Call
+}
+
+// DiscoveryRepo is a helper method to define mock.On call
+func (_e *MockRepositoryFactory_Expecter) DiscoveryRepo() *MockRepositoryFactory_DiscoveryRepo_Call {
+	return &MockRepositoryFactory_DiscoveryRepo_Call{Call: _e.mock.On("DiscoveryRepo")}
+}
+
+func (_c *MockRepositoryFactory_DiscoveryRepo_Call) Run(run func()) *MockRepositoryFactory_DiscoveryRepo_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepositoryFactory_DiscoveryRepo_Call) Return(discoveryRepository repository.DiscoveryRepository) *MockRepositoryFactory_DiscoveryRepo_Call {
+	_c.Call.Return(discoveryRepository)
+	return _c
+}
+
+func (_c *MockRepositoryFactory_DiscoveryRepo_Call) RunAndReturn(run func() repository.DiscoveryRepository) *MockRepositoryFactory_DiscoveryRepo_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // LoginAttemptRepo provides a mock function for the type MockRepositoryFactory
 func (_mock *MockRepositoryFactory) LoginAttemptRepo() repository.LoginAttemptRepository {
 	ret := _mock.Called()

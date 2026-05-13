@@ -51,9 +51,17 @@ type MerchantProfileModel struct {
 	BusinessLicense           *string         `gorm:"type:text;uniqueIndex:idx_merchant_profiles_business_license_active,where:deleted_at IS NULL AND business_license IS NOT NULL"`
 	VerificationStatus        string          `gorm:"type:text;not null;default:unverified"`
 	BusinessLicenseVerifiedAt *time.Time
+	DiscoveryCategoryID       *uuid.UUID `gorm:"type:uuid"`
+	DiscoverySubcategoryID    *uuid.UUID `gorm:"type:uuid"`
+	ActiveHubID               *uuid.UUID `gorm:"type:uuid"`
+	IsPublic                  bool       `gorm:"not null;default:false"`
 	CreatedAt                 time.Time
 	UpdatedAt                 time.Time
 	DeletedAt                 gorm.DeletedAt `gorm:"index:idx_merchant_profiles_deleted_at"`
+
+	DiscoveryCategory    *DiscoveryCategoryModel    `gorm:"foreignKey:DiscoveryCategoryID"`
+	DiscoverySubcategory *DiscoverySubcategoryModel `gorm:"foreignKey:DiscoverySubcategoryID"`
+	ActiveHub            *HubModel                  `gorm:"foreignKey:ActiveHubID"`
 }
 
 // TableName explicitly sets the table name for GORM.

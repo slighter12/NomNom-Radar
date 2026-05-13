@@ -44,5 +44,9 @@ type MerchantProfile struct {
 	BusinessLicense           string                     `json:"business_license,omitempty"`             // The merchant's official business license number.
 	VerificationStatus        MerchantVerificationStatus `json:"verification_status"`                    // Verification state for merchant business identity.
 	BusinessLicenseVerifiedAt *time.Time                 `json:"business_license_verified_at,omitempty"` // Timestamp of successful business license verification.
+	DiscoveryCategoryID       *uuid.UUID                 `json:"discovery_category_id,omitempty"`        // Platform-defined discovery category reference.
+	DiscoverySubcategoryID    *uuid.UUID                 `json:"discovery_subcategory_id,omitempty"`     // Platform-defined discovery subcategory reference.
+	ActiveHubID               *uuid.UUID                 `json:"active_hub_id,omitempty"`                // Optional active hub reference for discovery.
+	IsPublic                  bool                       `json:"is_public"`                              // Public discovery visibility flag.
 	UpdatedAt                 time.Time                  `json:"updated_at"`                             // Timestamp of the last modification to this profile.
 }

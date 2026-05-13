@@ -72,6 +72,7 @@ func injectRepo() fx.Option {
 			postgres.NewMenuRepository,
 			postgres.NewRefreshTokenRepository,
 			postgres.NewLoginAttemptRepository,
+			postgres.NewDiscoveryRepository,
 			postgres.NewTransactionManager,
 			postgres.NewDeviceRepository,
 			postgres.NewSubscriptionRepository,
