@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -12,6 +14,7 @@ import (
 	"radar/internal/domain/service"
 	"radar/internal/usecase"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/fx"
 )
@@ -37,6 +40,48 @@ type UserHandler struct {
 type GoogleCallbackQueryParams struct {
 	Code  string `query:"code"`
 	State string `query:"state"`
+}
+
+type optionalUUIDRequestField struct {
+	isSet bool
+	value *uuid.UUID
+}
+
+func (field *optionalUUIDRequestField) UnmarshalJSON(data []byte) error {
+	field.isSet = true
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		field.value = nil
+
+		return nil
+	}
+
+	var raw string
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	parsed, err := uuid.Parse(raw)
+	if err != nil {
+		return err
+	}
+
+	field.value = &parsed
+
+	return nil
+}
+
+func (field optionalUUIDRequestField) toUsecase() usecase.OptionalUUIDUpdate {
+	return usecase.OptionalUUIDUpdate{
+		IsSet: field.isSet,
+		Value: field.value,
+	}
+}
+
+type UpdateMerchantDiscoveryProfileRequest struct {
+	DiscoveryCategoryID    optionalUUIDRequestField `json:"discovery_category_id"`
+	DiscoverySubcategoryID optionalUUIDRequestField `json:"discovery_subcategory_id"`
+	ActiveHubID            optionalUUIDRequestField `json:"active_hub_id"`
+	IsPublic               *bool                    `json:"is_public,omitempty"`
 }
 
 // NewUserHandler is the constructor for UserHandler, injected by Fx.
@@ -178,6 +223,44 @@ func (h *UserHandler) SubmitMerchantVerification(c echo.Context) error {
 	}
 
 	return response.Success(c, http.StatusOK, map[string]string{responseKeyStatus: "verified"})
+}
+
+func (h *UserHandler) GetMerchantDiscoveryProfile(c echo.Context) error {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+	}
+
+	result, err := h.profileUC.GetMerchantDiscoveryProfile(c.Request().Context(), userID)
+	if err != nil {
+		return withSourceStack(err)
+	}
+
+	return response.Success(c, http.StatusOK, result)
+}
+
+func (h *UserHandler) UpdateMerchantDiscoveryProfile(c echo.Context) error {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+	}
+
+	var req UpdateMerchantDiscoveryProfileRequest
+	if err := bindRequest(c, &req, "Invalid merchant discovery profile input"); err != nil {
+		return err
+	}
+
+	result, err := h.profileUC.UpdateMerchantDiscoveryProfile(c.Request().Context(), userID, &usecase.UpdateMerchantDiscoveryProfileInput{
+		DiscoveryCategoryID:    req.DiscoveryCategoryID.toUsecase(),
+		DiscoverySubcategoryID: req.DiscoverySubcategoryID.toUsecase(),
+		ActiveHubID:            req.ActiveHubID.toUsecase(),
+		IsPublic:               req.IsPublic,
+	})
+	if err != nil {
+		return withSourceStack(err)
+	}
+
+	return response.Success(c, http.StatusOK, result)
 }
 
 func (h *UserHandler) LinkProvider(c echo.Context) error {

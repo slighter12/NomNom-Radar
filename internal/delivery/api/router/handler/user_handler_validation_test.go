@@ -106,3 +106,16 @@ func TestUserHandler_InvalidPayloadsAreRejectedAtHTTPBoundary(t *testing.T) {
 		})
 	}
 }
+
+func TestUserHandler_UpdateMerchantDiscoveryProfile_InvalidUUIDRejectedAtHTTPBoundary(t *testing.T) {
+	handler := &UserHandler{}
+	c, rec := newJSONContext(http.MethodPatch, "/merchant/discovery-profile", `{"discovery_category_id":"not-a-uuid"}`)
+	c.Set("userID", uuid.New())
+
+	err := handler.UpdateMerchantDiscoveryProfile(c)
+
+	require.ErrorIs(t, err, delivery.ErrResponseHandled)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"code":"INVALID_INPUT"`)
+	assert.Contains(t, rec.Body.String(), `"message":"Invalid merchant discovery profile input"`)
+}
