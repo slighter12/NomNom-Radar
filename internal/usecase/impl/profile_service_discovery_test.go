@@ -65,8 +65,8 @@ func TestProfileService_GetMerchantDiscoveryProfile_Success(t *testing.T) {
 		factory.EXPECT().AddressRepo().Return(mockAddressRepo)
 		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
 		mockAddressRepo.EXPECT().
-			FindActiveAddressesByOwner(ctx, userID, entity.OwnerTypeMerchantProfile).
-			Return([]*entity.Address{{ID: uuid.New(), OwnerID: userID, OwnerType: entity.OwnerTypeMerchantProfile, IsPrimary: true, IsActive: true}}, nil)
+			FindPrimaryAddressByOwner(ctx, userID, entity.OwnerTypeMerchantProfile).
+			Return(&entity.Address{ID: uuid.New(), OwnerID: userID, OwnerType: entity.OwnerTypeMerchantProfile, IsPrimary: true, IsActive: true}, nil)
 		mockDiscoveryRepo.EXPECT().FindCategoryByID(ctx, categoryID).Return(category, nil)
 		mockDiscoveryRepo.EXPECT().FindSubcategoryByID(ctx, subcategoryID).Return(subcategory, nil)
 		mockDiscoveryRepo.EXPECT().FindHubByID(ctx, hubID).Return(hub, nil)
@@ -124,8 +124,8 @@ func TestProfileService_UpdateMerchantDiscoveryProfile_EnablePublicSuccess(t *te
 		mockDiscoveryRepo.EXPECT().FindSubcategoryByID(ctx, subcategoryID).Return(subcategory, nil).Twice()
 		mockDiscoveryRepo.EXPECT().FindHubByID(ctx, hubID).Return(hub, nil).Twice()
 		mockAddressRepo.EXPECT().
-			FindActiveAddressesByOwner(ctx, userID, entity.OwnerTypeMerchantProfile).
-			Return([]*entity.Address{{ID: uuid.New(), OwnerID: userID, OwnerType: entity.OwnerTypeMerchantProfile, IsPrimary: true, IsActive: true}}, nil)
+			FindPrimaryAddressByOwner(ctx, userID, entity.OwnerTypeMerchantProfile).
+			Return(&entity.Address{ID: uuid.New(), OwnerID: userID, OwnerType: entity.OwnerTypeMerchantProfile, IsPrimary: true, IsActive: true}, nil)
 		mockUserRepo.EXPECT().
 			Update(ctx, mock.AnythingOfType("*entity.User")).
 			Run(func(_ context.Context, updated *entity.User) {
@@ -176,8 +176,8 @@ func TestProfileService_UpdateMerchantDiscoveryProfile_ClearActiveHub(t *testing
 		factory.EXPECT().AddressRepo().Return(mockAddressRepo)
 		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
 		mockAddressRepo.EXPECT().
-			FindActiveAddressesByOwner(ctx, userID, entity.OwnerTypeMerchantProfile).
-			Return(nil, nil)
+			FindPrimaryAddressByOwner(ctx, userID, entity.OwnerTypeMerchantProfile).
+			Return(nil, domainerrors.ErrAddressNotFound)
 		mockUserRepo.EXPECT().
 			Update(ctx, mock.AnythingOfType("*entity.User")).
 			Run(func(_ context.Context, updated *entity.User) {
@@ -228,8 +228,8 @@ func TestProfileService_UpdateMerchantDiscoveryProfile_AllowsDisablingPublicWith
 		factory.EXPECT().AddressRepo().Return(mockAddressRepo)
 		mockUserRepo.EXPECT().FindByID(ctx, userID).Return(user, nil)
 		mockAddressRepo.EXPECT().
-			FindActiveAddressesByOwner(ctx, userID, entity.OwnerTypeMerchantProfile).
-			Return(nil, nil)
+			FindPrimaryAddressByOwner(ctx, userID, entity.OwnerTypeMerchantProfile).
+			Return(nil, domainerrors.ErrAddressNotFound)
 		updateCall := mockUserRepo.EXPECT().
 			Update(ctx, mock.AnythingOfType("*entity.User")).
 			Run(func(_ context.Context, updated *entity.User) {
@@ -376,8 +376,8 @@ func TestProfileService_UpdateMerchantDiscoveryProfile_RejectsUnverifiedPublicMe
 			FindSubcategoryByID(ctx, subcategoryID).
 			Return(&entity.DiscoverySubcategory{ID: subcategoryID, CategoryID: categoryID, Status: entity.DiscoveryStatusActive}, nil)
 		mockAddressRepo.EXPECT().
-			FindActiveAddressesByOwner(ctx, userID, entity.OwnerTypeMerchantProfile).
-			Return([]*entity.Address{{ID: uuid.New(), OwnerID: userID, OwnerType: entity.OwnerTypeMerchantProfile, IsPrimary: true, IsActive: true}}, nil)
+			FindPrimaryAddressByOwner(ctx, userID, entity.OwnerTypeMerchantProfile).
+			Return(&entity.Address{ID: uuid.New(), OwnerID: userID, OwnerType: entity.OwnerTypeMerchantProfile, IsPrimary: true, IsActive: true}, nil)
 	})
 
 	_, err := fx.service.UpdateMerchantDiscoveryProfile(ctx, userID, input)
@@ -422,8 +422,8 @@ func TestProfileService_UpdateMerchantDiscoveryProfile_RejectsPublicWithoutActiv
 			FindSubcategoryByID(ctx, subcategoryID).
 			Return(&entity.DiscoverySubcategory{ID: subcategoryID, CategoryID: categoryID, Status: entity.DiscoveryStatusActive}, nil)
 		mockAddressRepo.EXPECT().
-			FindActiveAddressesByOwner(ctx, userID, entity.OwnerTypeMerchantProfile).
-			Return(nil, nil)
+			FindPrimaryAddressByOwner(ctx, userID, entity.OwnerTypeMerchantProfile).
+			Return(&entity.Address{ID: uuid.New(), OwnerID: userID, OwnerType: entity.OwnerTypeMerchantProfile, IsPrimary: true, IsActive: false}, nil)
 	})
 
 	_, err := fx.service.UpdateMerchantDiscoveryProfile(ctx, userID, input)

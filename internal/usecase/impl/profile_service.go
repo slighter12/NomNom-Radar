@@ -207,65 +207,7 @@ func (srv *profileService) UpdateMerchantDiscoveryProfile(ctx context.Context, u
 	var result *usecase.MerchantDiscoveryProfileResult
 
 	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
-		userRepo := repoFactory.UserRepo()
-		discoveryRepo := repoFactory.DiscoveryRepo()
-		addressRepo := repoFactory.AddressRepo()
-
-		user, err := userRepo.FindByID(ctx, userID)
-		if err != nil {
-			if errors.Is(err, domainerrors.ErrUserNotFound) {
-				return domainerrors.ErrNotFound
-			}
-
-			return err
-		}
-		if user.MerchantProfile == nil {
-			return domainerrors.ErrValidationFailed.WithDetails("user does not have a merchant profile")
-		}
-
-		profile := user.MerchantProfile
-		categoryID := profile.DiscoveryCategoryID
-		subcategoryID := profile.DiscoverySubcategoryID
-		hubID := profile.ActiveHubID
-		isPublic := profile.IsPublic
-
-		if input.DiscoveryCategoryID.IsSet {
-			categoryID = input.DiscoveryCategoryID.Value
-		}
-		if input.DiscoverySubcategoryID.IsSet {
-			subcategoryID = input.DiscoverySubcategoryID.Value
-		}
-		if input.ActiveHubID.IsSet {
-			hubID = input.ActiveHubID.Value
-		}
-		if input.IsPublic != nil {
-			isPublic = *input.IsPublic
-		}
-
-		if err := validateMerchantDiscoveryUpdateValues(ctx, discoveryRepo, input, categoryID, subcategoryID, hubID, isPublic); err != nil {
-			return err
-		}
-
-		hasActivePrimaryLocation, err := merchantHasActivePrimaryLocation(ctx, addressRepo, userID)
-		if err != nil {
-			return err
-		}
-		if isPublic {
-			if err := validateMerchantDiscoveryEligibility(profile, categoryID, subcategoryID, hasActivePrimaryLocation); err != nil {
-				return err
-			}
-		}
-
-		profile.DiscoveryCategoryID = categoryID
-		profile.DiscoverySubcategoryID = subcategoryID
-		profile.ActiveHubID = hubID
-		profile.IsPublic = isPublic
-
-		if err := userRepo.Update(ctx, user); err != nil {
-			return err
-		}
-
-		resolved, err := buildMerchantDiscoveryProfileResult(ctx, discoveryRepo, profile, hasActivePrimaryLocation)
+		resolved, err := updateMerchantDiscoveryProfile(ctx, repoFactory, userID, input)
 		if err != nil {
 			return err
 		}
@@ -278,6 +220,118 @@ func (srv *profileService) UpdateMerchantDiscoveryProfile(ctx context.Context, u
 	}
 
 	return result, nil
+}
+
+type merchantDiscoveryProfileUpdate struct {
+	categoryID    *uuid.UUID
+	subcategoryID *uuid.UUID
+	hubID         *uuid.UUID
+	isPublic      bool
+}
+
+func updateMerchantDiscoveryProfile(
+	ctx context.Context,
+	repoFactory repository.RepositoryFactory,
+	userID uuid.UUID,
+	input *usecase.UpdateMerchantDiscoveryProfileInput,
+) (*usecase.MerchantDiscoveryProfileResult, error) {
+	userRepo := repoFactory.UserRepo()
+	discoveryRepo := repoFactory.DiscoveryRepo()
+	addressRepo := repoFactory.AddressRepo()
+
+	user, profile, err := findMerchantProfileForUpdate(ctx, userRepo, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	update := buildMerchantDiscoveryProfileUpdate(profile, input)
+	if err := validateMerchantDiscoveryUpdateValues(ctx, discoveryRepo, input, update); err != nil {
+		return nil, err
+	}
+
+	hasActivePrimaryLocation, err := merchantHasActivePrimaryLocation(ctx, addressRepo, userID)
+	if err != nil {
+		return nil, err
+	}
+	if err := validatePublicMerchantDiscoveryUpdate(profile, update, hasActivePrimaryLocation); err != nil {
+		return nil, err
+	}
+
+	applyMerchantDiscoveryProfileUpdate(profile, update)
+	if err := userRepo.Update(ctx, user); err != nil {
+		return nil, err
+	}
+
+	return buildMerchantDiscoveryProfileResult(ctx, discoveryRepo, profile, hasActivePrimaryLocation)
+}
+
+func findMerchantProfileForUpdate(
+	ctx context.Context,
+	userRepo repository.UserRepository,
+	userID uuid.UUID,
+) (*entity.User, *entity.MerchantProfile, error) {
+	user, err := userRepo.FindByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, domainerrors.ErrUserNotFound) {
+			return nil, nil, domainerrors.ErrNotFound
+		}
+
+		return nil, nil, err
+	}
+	if user.MerchantProfile == nil {
+		return nil, nil, domainerrors.ErrValidationFailed.WithDetails("user does not have a merchant profile")
+	}
+
+	return user, user.MerchantProfile, nil
+}
+
+func buildMerchantDiscoveryProfileUpdate(
+	profile *entity.MerchantProfile,
+	input *usecase.UpdateMerchantDiscoveryProfileInput,
+) merchantDiscoveryProfileUpdate {
+	update := merchantDiscoveryProfileUpdate{
+		categoryID:    profile.DiscoveryCategoryID,
+		subcategoryID: profile.DiscoverySubcategoryID,
+		hubID:         profile.ActiveHubID,
+		isPublic:      profile.IsPublic,
+	}
+
+	if input.DiscoveryCategoryID.IsSet {
+		update.categoryID = input.DiscoveryCategoryID.Value
+	}
+	if input.DiscoverySubcategoryID.IsSet {
+		update.subcategoryID = input.DiscoverySubcategoryID.Value
+	}
+	if input.ActiveHubID.IsSet {
+		update.hubID = input.ActiveHubID.Value
+	}
+	if input.IsPublic != nil {
+		update.isPublic = *input.IsPublic
+	}
+
+	return update
+}
+
+func validatePublicMerchantDiscoveryUpdate(
+	profile *entity.MerchantProfile,
+	update merchantDiscoveryProfileUpdate,
+	hasActivePrimaryLocation bool,
+) error {
+	if !update.isPublic {
+		return nil
+	}
+
+	return validateMerchantDiscoveryEligibility(profile, update.categoryID, update.subcategoryID, hasActivePrimaryLocation)
+}
+
+func applyMerchantDiscoveryProfileUpdate(
+	profile *entity.MerchantProfile,
+	update merchantDiscoveryProfileUpdate,
+) {
+	profile.DiscoveryCategoryID = update.categoryID
+	profile.DiscoverySubcategoryID = update.subcategoryID
+	profile.ActiveHubID = update.hubID
+	profile.IsPublic = update.isPublic
 }
 
 func (srv *profileService) SubmitMerchantVerification(ctx context.Context, userID uuid.UUID, input *usecase.SubmitMerchantVerificationInput) error {
@@ -386,40 +440,22 @@ func validateMerchantDiscoveryValues(
 ) error {
 	var category *entity.DiscoveryCategory
 	if categoryID != nil {
-		foundCategory, err := discoveryRepo.FindCategoryByID(ctx, *categoryID)
+		foundCategory, err := validateActiveDiscoveryCategory(ctx, discoveryRepo, *categoryID)
 		if err != nil {
 			return err
-		}
-		if foundCategory.Status != entity.DiscoveryStatusActive {
-			return domainerrors.ErrValidationFailed.WithDetails("discovery_category_id must reference an active category")
 		}
 		category = foundCategory
 	}
 
 	if subcategoryID != nil {
-		if category == nil {
-			return domainerrors.ErrValidationFailed.WithDetails("discovery_subcategory_id requires discovery_category_id")
-		}
-
-		subcategory, err := discoveryRepo.FindSubcategoryByID(ctx, *subcategoryID)
-		if err != nil {
+		if err := validateRequiredActiveDiscoverySubcategory(ctx, discoveryRepo, category, *subcategoryID); err != nil {
 			return err
-		}
-		if subcategory.Status != entity.DiscoveryStatusActive {
-			return domainerrors.ErrValidationFailed.WithDetails("discovery_subcategory_id must reference an active subcategory")
-		}
-		if subcategory.CategoryID != category.ID {
-			return domainerrors.ErrValidationFailed.WithDetails("discovery_subcategory_id must belong to discovery_category_id")
 		}
 	}
 
 	if hubID != nil {
-		hub, err := discoveryRepo.FindHubByID(ctx, *hubID)
-		if err != nil {
+		if err := validateActiveHub(ctx, discoveryRepo, *hubID); err != nil {
 			return err
-		}
-		if hub.Status != entity.DiscoveryStatusActive {
-			return domainerrors.ErrValidationFailed.WithDetails("active_hub_id must reference an active hub")
 		}
 	}
 
@@ -430,81 +466,184 @@ func validateMerchantDiscoveryUpdateValues(
 	ctx context.Context,
 	discoveryRepo repository.DiscoveryRepository,
 	input *usecase.UpdateMerchantDiscoveryProfileInput,
-	categoryID *uuid.UUID,
-	subcategoryID *uuid.UUID,
-	hubID *uuid.UUID,
-	isPublic bool,
+	update merchantDiscoveryProfileUpdate,
 ) error {
-	if isPublic {
-		return validateMerchantDiscoveryValues(ctx, discoveryRepo, categoryID, subcategoryID, hubID)
+	if update.isPublic {
+		return validateMerchantDiscoveryValues(ctx, discoveryRepo, update.categoryID, update.subcategoryID, update.hubID)
 	}
 
-	return validateSelectedMerchantDiscoveryValues(ctx, discoveryRepo, input, categoryID, subcategoryID, hubID)
+	return validateSelectedMerchantDiscoveryValues(ctx, discoveryRepo, input, update)
 }
 
 func validateSelectedMerchantDiscoveryValues(
 	ctx context.Context,
 	discoveryRepo repository.DiscoveryRepository,
 	input *usecase.UpdateMerchantDiscoveryProfileInput,
-	categoryID *uuid.UUID,
-	subcategoryID *uuid.UUID,
-	hubID *uuid.UUID,
+	update merchantDiscoveryProfileUpdate,
 ) error {
-	if input.DiscoveryCategoryID.IsSet && categoryID != nil {
-		category, err := discoveryRepo.FindCategoryByID(ctx, *categoryID)
-		if err != nil {
-			return err
-		}
-		if category.Status != entity.DiscoveryStatusActive {
-			return domainerrors.ErrValidationFailed.WithDetails("discovery_category_id must reference an active category")
-		}
+	if err := validateSelectedDiscoveryCategory(ctx, discoveryRepo, input, update.categoryID); err != nil {
+		return err
 	}
-
-	if input.DiscoverySubcategoryID.IsSet && subcategoryID != nil {
-		if categoryID == nil {
-			return domainerrors.ErrValidationFailed.WithDetails("discovery_subcategory_id requires discovery_category_id")
-		}
-
-		subcategory, err := discoveryRepo.FindSubcategoryByID(ctx, *subcategoryID)
-		if err != nil {
-			return err
-		}
-		if subcategory.Status != entity.DiscoveryStatusActive {
-			return domainerrors.ErrValidationFailed.WithDetails("discovery_subcategory_id must reference an active subcategory")
-		}
-		if subcategory.CategoryID != *categoryID {
-			return domainerrors.ErrValidationFailed.WithDetails("discovery_subcategory_id must belong to discovery_category_id")
-		}
+	if err := validateSelectedDiscoverySubcategory(ctx, discoveryRepo, input, update); err != nil {
+		return err
 	}
-
-	// Category changed in this PATCH but subcategory was kept. Re-verify the
-	// kept subcategory still belongs to the new category without requiring it
-	// to be active while the merchant remains private.
-	if input.DiscoveryCategoryID.IsSet && !input.DiscoverySubcategoryID.IsSet && subcategoryID != nil {
-		if categoryID == nil {
-			return domainerrors.ErrValidationFailed.WithDetails("discovery_subcategory_id requires discovery_category_id")
-		}
-
-		subcategory, err := discoveryRepo.FindSubcategoryByID(ctx, *subcategoryID)
-		if err != nil {
-			return err
-		}
-		if subcategory.CategoryID != *categoryID {
-			return domainerrors.ErrValidationFailed.WithDetails("discovery_subcategory_id must belong to discovery_category_id")
-		}
+	if err := validateRetainedDiscoverySubcategory(ctx, discoveryRepo, input, update); err != nil {
+		return err
 	}
-
-	if input.ActiveHubID.IsSet && hubID != nil {
-		hub, err := discoveryRepo.FindHubByID(ctx, *hubID)
-		if err != nil {
-			return err
-		}
-		if hub.Status != entity.DiscoveryStatusActive {
-			return domainerrors.ErrValidationFailed.WithDetails("active_hub_id must reference an active hub")
-		}
+	if err := validateSelectedHub(ctx, discoveryRepo, input, update.hubID); err != nil {
+		return err
 	}
 
 	return nil
+}
+
+func validateActiveDiscoveryCategory(
+	ctx context.Context,
+	discoveryRepo repository.DiscoveryRepository,
+	categoryID uuid.UUID,
+) (*entity.DiscoveryCategory, error) {
+	category, err := discoveryRepo.FindCategoryByID(ctx, categoryID)
+	if err != nil {
+		return nil, err
+	}
+	if category.Status != entity.DiscoveryStatusActive {
+		return nil, domainerrors.ErrValidationFailed.WithDetails("discovery_category_id must reference an active category")
+	}
+
+	return category, nil
+}
+
+func validateRequiredActiveDiscoverySubcategory(
+	ctx context.Context,
+	discoveryRepo repository.DiscoveryRepository,
+	category *entity.DiscoveryCategory,
+	subcategoryID uuid.UUID,
+) error {
+	if category == nil {
+		return domainerrors.ErrValidationFailed.WithDetails("discovery_subcategory_id requires discovery_category_id")
+	}
+
+	return validateActiveDiscoverySubcategory(ctx, discoveryRepo, category.ID, subcategoryID)
+}
+
+func validateActiveDiscoverySubcategory(
+	ctx context.Context,
+	discoveryRepo repository.DiscoveryRepository,
+	categoryID uuid.UUID,
+	subcategoryID uuid.UUID,
+) error {
+	subcategory, err := discoveryRepo.FindSubcategoryByID(ctx, subcategoryID)
+	if err != nil {
+		return err
+	}
+	if subcategory.Status != entity.DiscoveryStatusActive {
+		return domainerrors.ErrValidationFailed.WithDetails("discovery_subcategory_id must reference an active subcategory")
+	}
+	if subcategory.CategoryID != categoryID {
+		return domainerrors.ErrValidationFailed.WithDetails("discovery_subcategory_id must belong to discovery_category_id")
+	}
+
+	return nil
+}
+
+func validateActiveHub(
+	ctx context.Context,
+	discoveryRepo repository.DiscoveryRepository,
+	hubID uuid.UUID,
+) error {
+	hub, err := discoveryRepo.FindHubByID(ctx, hubID)
+	if err != nil {
+		return err
+	}
+	if hub.Status != entity.DiscoveryStatusActive {
+		return domainerrors.ErrValidationFailed.WithDetails("active_hub_id must reference an active hub")
+	}
+
+	return nil
+}
+
+func validateSelectedDiscoveryCategory(
+	ctx context.Context,
+	discoveryRepo repository.DiscoveryRepository,
+	input *usecase.UpdateMerchantDiscoveryProfileInput,
+	categoryID *uuid.UUID,
+) error {
+	if !input.DiscoveryCategoryID.IsSet || categoryID == nil {
+		return nil
+	}
+
+	_, err := validateActiveDiscoveryCategory(ctx, discoveryRepo, *categoryID)
+
+	return err
+}
+
+func validateSelectedDiscoverySubcategory(
+	ctx context.Context,
+	discoveryRepo repository.DiscoveryRepository,
+	input *usecase.UpdateMerchantDiscoveryProfileInput,
+	update merchantDiscoveryProfileUpdate,
+) error {
+	if !input.DiscoverySubcategoryID.IsSet || update.subcategoryID == nil {
+		return nil
+	}
+	if update.categoryID == nil {
+		return domainerrors.ErrValidationFailed.WithDetails("discovery_subcategory_id requires discovery_category_id")
+	}
+
+	return validateActiveDiscoverySubcategory(ctx, discoveryRepo, *update.categoryID, *update.subcategoryID)
+}
+
+func validateRetainedDiscoverySubcategory(
+	ctx context.Context,
+	discoveryRepo repository.DiscoveryRepository,
+	input *usecase.UpdateMerchantDiscoveryProfileInput,
+	update merchantDiscoveryProfileUpdate,
+) error {
+	if !shouldValidateRetainedDiscoverySubcategory(input, update.subcategoryID) {
+		return nil
+	}
+	if update.categoryID == nil {
+		return domainerrors.ErrValidationFailed.WithDetails("discovery_subcategory_id requires discovery_category_id")
+	}
+
+	return validateDiscoverySubcategoryCategory(ctx, discoveryRepo, *update.categoryID, *update.subcategoryID)
+}
+
+func shouldValidateRetainedDiscoverySubcategory(
+	input *usecase.UpdateMerchantDiscoveryProfileInput,
+	subcategoryID *uuid.UUID,
+) bool {
+	return input.DiscoveryCategoryID.IsSet && !input.DiscoverySubcategoryID.IsSet && subcategoryID != nil
+}
+
+func validateDiscoverySubcategoryCategory(
+	ctx context.Context,
+	discoveryRepo repository.DiscoveryRepository,
+	categoryID uuid.UUID,
+	subcategoryID uuid.UUID,
+) error {
+	subcategory, err := discoveryRepo.FindSubcategoryByID(ctx, subcategoryID)
+	if err != nil {
+		return err
+	}
+	if subcategory.CategoryID != categoryID {
+		return domainerrors.ErrValidationFailed.WithDetails("discovery_subcategory_id must belong to discovery_category_id")
+	}
+
+	return nil
+}
+
+func validateSelectedHub(
+	ctx context.Context,
+	discoveryRepo repository.DiscoveryRepository,
+	input *usecase.UpdateMerchantDiscoveryProfileInput,
+	hubID *uuid.UUID,
+) error {
+	if !input.ActiveHubID.IsSet || hubID == nil {
+		return nil
+	}
+
+	return validateActiveHub(ctx, discoveryRepo, *hubID)
 }
 
 func validateMerchantDiscoveryEligibility(
@@ -534,17 +673,19 @@ func merchantHasActivePrimaryLocation(
 	addressRepo repository.AddressRepository,
 	merchantID uuid.UUID,
 ) (bool, error) {
-	addresses, err := addressRepo.FindActiveAddressesByOwner(ctx, merchantID, entity.OwnerTypeMerchantProfile)
+	address, err := addressRepo.FindPrimaryAddressByOwner(ctx, merchantID, entity.OwnerTypeMerchantProfile)
 	if err != nil {
+		if errors.Is(err, domainerrors.ErrAddressNotFound) {
+			return false, nil
+		}
+
 		return false, err
 	}
-	for _, address := range addresses {
-		if address.IsPrimary {
-			return true, nil
-		}
+	if address == nil {
+		return false, nil
 	}
 
-	return false, nil
+	return address.IsActive, nil
 }
 
 func buildMerchantDiscoveryProfileResult(
