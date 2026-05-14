@@ -97,6 +97,10 @@ func (f *sessionLimitTestRepoFactory) LoginAttemptRepo() repository.LoginAttempt
 	return nil
 }
 
+func (f *sessionLimitTestRepoFactory) DiscoveryRepo() repository.DiscoveryRepository {
+	return nil
+}
+
 type sessionLimitTestUserRepo struct {
 	user      *entity.User
 	lockCalls atomic.Int64

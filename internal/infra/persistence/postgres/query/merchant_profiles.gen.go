@@ -33,6 +33,10 @@ func newMerchantProfileModel(db *gorm.DB, opts ...gen.DOOption) merchantProfileM
 	_merchantProfileModel.BusinessLicense = field.NewString(tableName, "business_license")
 	_merchantProfileModel.VerificationStatus = field.NewString(tableName, "verification_status")
 	_merchantProfileModel.BusinessLicenseVerifiedAt = field.NewTime(tableName, "business_license_verified_at")
+	_merchantProfileModel.DiscoveryCategoryID = field.NewField(tableName, "discovery_category_id")
+	_merchantProfileModel.DiscoverySubcategoryID = field.NewField(tableName, "discovery_subcategory_id")
+	_merchantProfileModel.ActiveHubID = field.NewField(tableName, "active_hub_id")
+	_merchantProfileModel.IsPublic = field.NewBool(tableName, "is_public")
 	_merchantProfileModel.CreatedAt = field.NewTime(tableName, "created_at")
 	_merchantProfileModel.UpdatedAt = field.NewTime(tableName, "updated_at")
 	_merchantProfileModel.DeletedAt = field.NewField(tableName, "deleted_at")
@@ -40,6 +44,37 @@ func newMerchantProfileModel(db *gorm.DB, opts ...gen.DOOption) merchantProfileM
 		db: db.Session(&gorm.Session{}),
 
 		RelationField: field.NewRelation("Addresses", "model.AddressModel"),
+	}
+
+	_merchantProfileModel.DiscoveryCategory = merchantProfileModelBelongsToDiscoveryCategory{
+		db: db.Session(&gorm.Session{}),
+
+		RelationField: field.NewRelation("DiscoveryCategory", "model.DiscoveryCategoryModel"),
+		Subcategories: struct {
+			field.RelationField
+			Category struct {
+				field.RelationField
+			}
+		}{
+			RelationField: field.NewRelation("DiscoveryCategory.Subcategories", "model.DiscoverySubcategoryModel"),
+			Category: struct {
+				field.RelationField
+			}{
+				RelationField: field.NewRelation("DiscoveryCategory.Subcategories.Category", "model.DiscoveryCategoryModel"),
+			},
+		},
+	}
+
+	_merchantProfileModel.DiscoverySubcategory = merchantProfileModelBelongsToDiscoverySubcategory{
+		db: db.Session(&gorm.Session{}),
+
+		RelationField: field.NewRelation("DiscoverySubcategory", "model.DiscoverySubcategoryModel"),
+	}
+
+	_merchantProfileModel.ActiveHub = merchantProfileModelBelongsToActiveHub{
+		db: db.Session(&gorm.Session{}),
+
+		RelationField: field.NewRelation("ActiveHub", "model.HubModel"),
 	}
 
 	_merchantProfileModel.fillFieldMap()
@@ -57,10 +92,20 @@ type merchantProfileModel struct {
 	BusinessLicense           field.String
 	VerificationStatus        field.String
 	BusinessLicenseVerifiedAt field.Time
+	DiscoveryCategoryID       field.Field
+	DiscoverySubcategoryID    field.Field
+	ActiveHubID               field.Field
+	IsPublic                  field.Bool
 	CreatedAt                 field.Time
 	UpdatedAt                 field.Time
 	DeletedAt                 field.Field
 	Addresses                 merchantProfileModelHasManyAddresses
+
+	DiscoveryCategory merchantProfileModelBelongsToDiscoveryCategory
+
+	DiscoverySubcategory merchantProfileModelBelongsToDiscoverySubcategory
+
+	ActiveHub merchantProfileModelBelongsToActiveHub
 
 	fieldMap map[string]field.Expr
 }
@@ -83,6 +128,10 @@ func (m *merchantProfileModel) updateTableName(table string) *merchantProfileMod
 	m.BusinessLicense = field.NewString(table, "business_license")
 	m.VerificationStatus = field.NewString(table, "verification_status")
 	m.BusinessLicenseVerifiedAt = field.NewTime(table, "business_license_verified_at")
+	m.DiscoveryCategoryID = field.NewField(table, "discovery_category_id")
+	m.DiscoverySubcategoryID = field.NewField(table, "discovery_subcategory_id")
+	m.ActiveHubID = field.NewField(table, "active_hub_id")
+	m.IsPublic = field.NewBool(table, "is_public")
 	m.CreatedAt = field.NewTime(table, "created_at")
 	m.UpdatedAt = field.NewTime(table, "updated_at")
 	m.DeletedAt = field.NewField(table, "deleted_at")
@@ -114,13 +163,17 @@ func (m *merchantProfileModel) GetFieldByName(fieldName string) (field.OrderExpr
 }
 
 func (m *merchantProfileModel) fillFieldMap() {
-	m.fieldMap = make(map[string]field.Expr, 10)
+	m.fieldMap = make(map[string]field.Expr, 17)
 	m.fieldMap["user_id"] = m.UserID
 	m.fieldMap["store_name"] = m.StoreName
 	m.fieldMap["store_description"] = m.StoreDescription
 	m.fieldMap["business_license"] = m.BusinessLicense
 	m.fieldMap["verification_status"] = m.VerificationStatus
 	m.fieldMap["business_license_verified_at"] = m.BusinessLicenseVerifiedAt
+	m.fieldMap["discovery_category_id"] = m.DiscoveryCategoryID
+	m.fieldMap["discovery_subcategory_id"] = m.DiscoverySubcategoryID
+	m.fieldMap["active_hub_id"] = m.ActiveHubID
+	m.fieldMap["is_public"] = m.IsPublic
 	m.fieldMap["created_at"] = m.CreatedAt
 	m.fieldMap["updated_at"] = m.UpdatedAt
 	m.fieldMap["deleted_at"] = m.DeletedAt
@@ -131,12 +184,21 @@ func (m merchantProfileModel) clone(db *gorm.DB) merchantProfileModel {
 	m.merchantProfileModelDo.ReplaceConnPool(db.Statement.ConnPool)
 	m.Addresses.db = db.Session(&gorm.Session{Initialized: true})
 	m.Addresses.db.Statement.ConnPool = db.Statement.ConnPool
+	m.DiscoveryCategory.db = db.Session(&gorm.Session{Initialized: true})
+	m.DiscoveryCategory.db.Statement.ConnPool = db.Statement.ConnPool
+	m.DiscoverySubcategory.db = db.Session(&gorm.Session{Initialized: true})
+	m.DiscoverySubcategory.db.Statement.ConnPool = db.Statement.ConnPool
+	m.ActiveHub.db = db.Session(&gorm.Session{Initialized: true})
+	m.ActiveHub.db.Statement.ConnPool = db.Statement.ConnPool
 	return m
 }
 
 func (m merchantProfileModel) replaceDB(db *gorm.DB) merchantProfileModel {
 	m.merchantProfileModelDo.ReplaceDB(db)
 	m.Addresses.db = db.Session(&gorm.Session{})
+	m.DiscoveryCategory.db = db.Session(&gorm.Session{})
+	m.DiscoverySubcategory.db = db.Session(&gorm.Session{})
+	m.ActiveHub.db = db.Session(&gorm.Session{})
 	return m
 }
 
@@ -217,6 +279,256 @@ func (a merchantProfileModelHasManyAddressesTx) Count() int64 {
 }
 
 func (a merchantProfileModelHasManyAddressesTx) Unscoped() *merchantProfileModelHasManyAddressesTx {
+	a.tx = a.tx.Unscoped()
+	return &a
+}
+
+type merchantProfileModelBelongsToDiscoveryCategory struct {
+	db *gorm.DB
+
+	field.RelationField
+
+	Subcategories struct {
+		field.RelationField
+		Category struct {
+			field.RelationField
+		}
+	}
+}
+
+func (a merchantProfileModelBelongsToDiscoveryCategory) Where(conds ...field.Expr) *merchantProfileModelBelongsToDiscoveryCategory {
+	if len(conds) == 0 {
+		return &a
+	}
+
+	exprs := make([]clause.Expression, 0, len(conds))
+	for _, cond := range conds {
+		exprs = append(exprs, cond.BeCond().(clause.Expression))
+	}
+	a.db = a.db.Clauses(clause.Where{Exprs: exprs})
+	return &a
+}
+
+func (a merchantProfileModelBelongsToDiscoveryCategory) WithContext(ctx context.Context) *merchantProfileModelBelongsToDiscoveryCategory {
+	a.db = a.db.WithContext(ctx)
+	return &a
+}
+
+func (a merchantProfileModelBelongsToDiscoveryCategory) Session(session *gorm.Session) *merchantProfileModelBelongsToDiscoveryCategory {
+	a.db = a.db.Session(session)
+	return &a
+}
+
+func (a merchantProfileModelBelongsToDiscoveryCategory) Model(m *model.MerchantProfileModel) *merchantProfileModelBelongsToDiscoveryCategoryTx {
+	return &merchantProfileModelBelongsToDiscoveryCategoryTx{a.db.Model(m).Association(a.Name())}
+}
+
+func (a merchantProfileModelBelongsToDiscoveryCategory) Unscoped() *merchantProfileModelBelongsToDiscoveryCategory {
+	a.db = a.db.Unscoped()
+	return &a
+}
+
+type merchantProfileModelBelongsToDiscoveryCategoryTx struct{ tx *gorm.Association }
+
+func (a merchantProfileModelBelongsToDiscoveryCategoryTx) Find() (result *model.DiscoveryCategoryModel, err error) {
+	return result, a.tx.Find(&result)
+}
+
+func (a merchantProfileModelBelongsToDiscoveryCategoryTx) Append(values ...*model.DiscoveryCategoryModel) (err error) {
+	targetValues := make([]interface{}, len(values))
+	for i, v := range values {
+		targetValues[i] = v
+	}
+	return a.tx.Append(targetValues...)
+}
+
+func (a merchantProfileModelBelongsToDiscoveryCategoryTx) Replace(values ...*model.DiscoveryCategoryModel) (err error) {
+	targetValues := make([]interface{}, len(values))
+	for i, v := range values {
+		targetValues[i] = v
+	}
+	return a.tx.Replace(targetValues...)
+}
+
+func (a merchantProfileModelBelongsToDiscoveryCategoryTx) Delete(values ...*model.DiscoveryCategoryModel) (err error) {
+	targetValues := make([]interface{}, len(values))
+	for i, v := range values {
+		targetValues[i] = v
+	}
+	return a.tx.Delete(targetValues...)
+}
+
+func (a merchantProfileModelBelongsToDiscoveryCategoryTx) Clear() error {
+	return a.tx.Clear()
+}
+
+func (a merchantProfileModelBelongsToDiscoveryCategoryTx) Count() int64 {
+	return a.tx.Count()
+}
+
+func (a merchantProfileModelBelongsToDiscoveryCategoryTx) Unscoped() *merchantProfileModelBelongsToDiscoveryCategoryTx {
+	a.tx = a.tx.Unscoped()
+	return &a
+}
+
+type merchantProfileModelBelongsToDiscoverySubcategory struct {
+	db *gorm.DB
+
+	field.RelationField
+}
+
+func (a merchantProfileModelBelongsToDiscoverySubcategory) Where(conds ...field.Expr) *merchantProfileModelBelongsToDiscoverySubcategory {
+	if len(conds) == 0 {
+		return &a
+	}
+
+	exprs := make([]clause.Expression, 0, len(conds))
+	for _, cond := range conds {
+		exprs = append(exprs, cond.BeCond().(clause.Expression))
+	}
+	a.db = a.db.Clauses(clause.Where{Exprs: exprs})
+	return &a
+}
+
+func (a merchantProfileModelBelongsToDiscoverySubcategory) WithContext(ctx context.Context) *merchantProfileModelBelongsToDiscoverySubcategory {
+	a.db = a.db.WithContext(ctx)
+	return &a
+}
+
+func (a merchantProfileModelBelongsToDiscoverySubcategory) Session(session *gorm.Session) *merchantProfileModelBelongsToDiscoverySubcategory {
+	a.db = a.db.Session(session)
+	return &a
+}
+
+func (a merchantProfileModelBelongsToDiscoverySubcategory) Model(m *model.MerchantProfileModel) *merchantProfileModelBelongsToDiscoverySubcategoryTx {
+	return &merchantProfileModelBelongsToDiscoverySubcategoryTx{a.db.Model(m).Association(a.Name())}
+}
+
+func (a merchantProfileModelBelongsToDiscoverySubcategory) Unscoped() *merchantProfileModelBelongsToDiscoverySubcategory {
+	a.db = a.db.Unscoped()
+	return &a
+}
+
+type merchantProfileModelBelongsToDiscoverySubcategoryTx struct{ tx *gorm.Association }
+
+func (a merchantProfileModelBelongsToDiscoverySubcategoryTx) Find() (result *model.DiscoverySubcategoryModel, err error) {
+	return result, a.tx.Find(&result)
+}
+
+func (a merchantProfileModelBelongsToDiscoverySubcategoryTx) Append(values ...*model.DiscoverySubcategoryModel) (err error) {
+	targetValues := make([]interface{}, len(values))
+	for i, v := range values {
+		targetValues[i] = v
+	}
+	return a.tx.Append(targetValues...)
+}
+
+func (a merchantProfileModelBelongsToDiscoverySubcategoryTx) Replace(values ...*model.DiscoverySubcategoryModel) (err error) {
+	targetValues := make([]interface{}, len(values))
+	for i, v := range values {
+		targetValues[i] = v
+	}
+	return a.tx.Replace(targetValues...)
+}
+
+func (a merchantProfileModelBelongsToDiscoverySubcategoryTx) Delete(values ...*model.DiscoverySubcategoryModel) (err error) {
+	targetValues := make([]interface{}, len(values))
+	for i, v := range values {
+		targetValues[i] = v
+	}
+	return a.tx.Delete(targetValues...)
+}
+
+func (a merchantProfileModelBelongsToDiscoverySubcategoryTx) Clear() error {
+	return a.tx.Clear()
+}
+
+func (a merchantProfileModelBelongsToDiscoverySubcategoryTx) Count() int64 {
+	return a.tx.Count()
+}
+
+func (a merchantProfileModelBelongsToDiscoverySubcategoryTx) Unscoped() *merchantProfileModelBelongsToDiscoverySubcategoryTx {
+	a.tx = a.tx.Unscoped()
+	return &a
+}
+
+type merchantProfileModelBelongsToActiveHub struct {
+	db *gorm.DB
+
+	field.RelationField
+}
+
+func (a merchantProfileModelBelongsToActiveHub) Where(conds ...field.Expr) *merchantProfileModelBelongsToActiveHub {
+	if len(conds) == 0 {
+		return &a
+	}
+
+	exprs := make([]clause.Expression, 0, len(conds))
+	for _, cond := range conds {
+		exprs = append(exprs, cond.BeCond().(clause.Expression))
+	}
+	a.db = a.db.Clauses(clause.Where{Exprs: exprs})
+	return &a
+}
+
+func (a merchantProfileModelBelongsToActiveHub) WithContext(ctx context.Context) *merchantProfileModelBelongsToActiveHub {
+	a.db = a.db.WithContext(ctx)
+	return &a
+}
+
+func (a merchantProfileModelBelongsToActiveHub) Session(session *gorm.Session) *merchantProfileModelBelongsToActiveHub {
+	a.db = a.db.Session(session)
+	return &a
+}
+
+func (a merchantProfileModelBelongsToActiveHub) Model(m *model.MerchantProfileModel) *merchantProfileModelBelongsToActiveHubTx {
+	return &merchantProfileModelBelongsToActiveHubTx{a.db.Model(m).Association(a.Name())}
+}
+
+func (a merchantProfileModelBelongsToActiveHub) Unscoped() *merchantProfileModelBelongsToActiveHub {
+	a.db = a.db.Unscoped()
+	return &a
+}
+
+type merchantProfileModelBelongsToActiveHubTx struct{ tx *gorm.Association }
+
+func (a merchantProfileModelBelongsToActiveHubTx) Find() (result *model.HubModel, err error) {
+	return result, a.tx.Find(&result)
+}
+
+func (a merchantProfileModelBelongsToActiveHubTx) Append(values ...*model.HubModel) (err error) {
+	targetValues := make([]interface{}, len(values))
+	for i, v := range values {
+		targetValues[i] = v
+	}
+	return a.tx.Append(targetValues...)
+}
+
+func (a merchantProfileModelBelongsToActiveHubTx) Replace(values ...*model.HubModel) (err error) {
+	targetValues := make([]interface{}, len(values))
+	for i, v := range values {
+		targetValues[i] = v
+	}
+	return a.tx.Replace(targetValues...)
+}
+
+func (a merchantProfileModelBelongsToActiveHubTx) Delete(values ...*model.HubModel) (err error) {
+	targetValues := make([]interface{}, len(values))
+	for i, v := range values {
+		targetValues[i] = v
+	}
+	return a.tx.Delete(targetValues...)
+}
+
+func (a merchantProfileModelBelongsToActiveHubTx) Clear() error {
+	return a.tx.Clear()
+}
+
+func (a merchantProfileModelBelongsToActiveHubTx) Count() int64 {
+	return a.tx.Count()
+}
+
+func (a merchantProfileModelBelongsToActiveHubTx) Unscoped() *merchantProfileModelBelongsToActiveHubTx {
 	a.tx = a.tx.Unscoped()
 	return &a
 }

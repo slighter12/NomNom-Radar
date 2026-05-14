@@ -333,6 +333,10 @@ func toMerchantProfileDomain(data *model.MerchantProfileModel) *entity.MerchantP
 		BusinessLicense:           stringFromPtr(data.BusinessLicense),
 		VerificationStatus:        merchantVerificationStatusFromString(data.VerificationStatus),
 		BusinessLicenseVerifiedAt: data.BusinessLicenseVerifiedAt,
+		DiscoveryCategoryID:       data.DiscoveryCategoryID,
+		DiscoverySubcategoryID:    data.DiscoverySubcategoryID,
+		ActiveHubID:               data.ActiveHubID,
+		IsPublic:                  data.IsPublic,
 		Addresses:                 addresses,
 		UpdatedAt:                 data.UpdatedAt,
 	}
@@ -380,6 +384,10 @@ func fromMerchantProfileDomain(data *entity.MerchantProfile) *model.MerchantProf
 		BusinessLicense:           stringPtrFromNonBlank(data.BusinessLicense),
 		VerificationStatus:        merchantVerificationStatusString(data.VerificationStatus),
 		BusinessLicenseVerifiedAt: data.BusinessLicenseVerifiedAt,
+		DiscoveryCategoryID:       data.DiscoveryCategoryID,
+		DiscoverySubcategoryID:    data.DiscoverySubcategoryID,
+		ActiveHubID:               data.ActiveHubID,
+		IsPublic:                  data.IsPublic,
 		Addresses:                 addresses,
 		UpdatedAt:                 data.UpdatedAt,
 	}

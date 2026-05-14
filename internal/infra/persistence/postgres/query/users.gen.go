@@ -48,6 +48,40 @@ func newUserModel(db *gorm.DB, opts ...gen.DOOption) userModel {
 		db: db.Session(&gorm.Session{}),
 
 		RelationField: field.NewRelation("MerchantProfile", "model.MerchantProfileModel"),
+		DiscoveryCategory: struct {
+			field.RelationField
+			Subcategories struct {
+				field.RelationField
+				Category struct {
+					field.RelationField
+				}
+			}
+		}{
+			RelationField: field.NewRelation("MerchantProfile.DiscoveryCategory", "model.DiscoveryCategoryModel"),
+			Subcategories: struct {
+				field.RelationField
+				Category struct {
+					field.RelationField
+				}
+			}{
+				RelationField: field.NewRelation("MerchantProfile.DiscoveryCategory.Subcategories", "model.DiscoverySubcategoryModel"),
+				Category: struct {
+					field.RelationField
+				}{
+					RelationField: field.NewRelation("MerchantProfile.DiscoveryCategory.Subcategories.Category", "model.DiscoveryCategoryModel"),
+				},
+			},
+		},
+		DiscoverySubcategory: struct {
+			field.RelationField
+		}{
+			RelationField: field.NewRelation("MerchantProfile.DiscoverySubcategory", "model.DiscoverySubcategoryModel"),
+		},
+		ActiveHub: struct {
+			field.RelationField
+		}{
+			RelationField: field.NewRelation("MerchantProfile.ActiveHub", "model.HubModel"),
+		},
 		Addresses: struct {
 			field.RelationField
 		}{
@@ -259,6 +293,21 @@ type userModelHasOneMerchantProfile struct {
 
 	field.RelationField
 
+	DiscoveryCategory struct {
+		field.RelationField
+		Subcategories struct {
+			field.RelationField
+			Category struct {
+				field.RelationField
+			}
+		}
+	}
+	DiscoverySubcategory struct {
+		field.RelationField
+	}
+	ActiveHub struct {
+		field.RelationField
+	}
 	Addresses struct {
 		field.RelationField
 	}

@@ -24,4 +24,6 @@ type RepositoryFactory interface {
 	RefreshTokenRepo() RefreshTokenRepository
 	// LoginAttemptRepo returns a LoginAttemptRepository instance bound to the current transaction.
 	LoginAttemptRepo() LoginAttemptRepository
+	// DiscoveryRepo returns a DiscoveryRepository instance bound to the current transaction.
+	DiscoveryRepo() DiscoveryRepository
 }

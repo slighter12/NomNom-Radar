@@ -48,6 +48,11 @@ func (f *gormRepositoryFactory) LoginAttemptRepo() repository.LoginAttemptReposi
 	return NewLoginAttemptRepository(f.tx)
 }
 
+// DiscoveryRepo creates a new discovery repository instance bound to the transaction.
+func (f *gormRepositoryFactory) DiscoveryRepo() repository.DiscoveryRepository {
+	return NewDiscoveryRepository(f.tx)
+}
+
 // NewTransactionManager is the constructor for gormTransactionManager.
 // This function will be used as an Fx provider.
 func NewTransactionManager(db *gorm.DB, logger *slog.Logger) repository.TransactionManager {
