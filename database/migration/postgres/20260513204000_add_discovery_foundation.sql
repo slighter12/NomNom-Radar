@@ -66,8 +66,8 @@ CREATE TABLE hubs (
         CHECK (ends_at IS NULL OR starts_at IS NULL OR ends_at >= starts_at)
 );
 
-CREATE INDEX idx_hubs_status_city_area_name
-    ON hubs(status, city, area_name, name);
+CREATE INDEX idx_hubs_status_city_area_type_name
+    ON hubs(status, city, area_name, type, name);
 
 CREATE INDEX idx_hubs_type_status
     ON hubs(type, status);
@@ -92,6 +92,15 @@ ALTER TABLE merchant_profiles
 CREATE INDEX idx_merchant_profiles_discovery_public
     ON merchant_profiles(is_public, verification_status, discovery_category_id, discovery_subcategory_id, active_hub_id)
     WHERE deleted_at IS NULL;
+
+CREATE INDEX idx_merchant_profiles_discovery_category_id
+    ON merchant_profiles(discovery_category_id);
+
+CREATE INDEX idx_merchant_profiles_discovery_subcategory_id
+    ON merchant_profiles(discovery_subcategory_id);
+
+CREATE INDEX idx_merchant_profiles_active_hub_id
+    ON merchant_profiles(active_hub_id);
 
 CREATE INDEX idx_merchant_profiles_active_hub
     ON merchant_profiles(active_hub_id)
