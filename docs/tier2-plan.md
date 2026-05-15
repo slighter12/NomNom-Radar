@@ -113,13 +113,13 @@ Implementation guidance:
 
 Acceptance checklist:
 
-- [ ] Active categories and subcategories can be listed for clients.
-- [ ] Active hubs can be listed for clients.
-- [ ] Public merchant search supports keyword, category, subcategory, hub, and nearby filters.
-- [ ] Category pages can be powered by merchant search alone.
-- [ ] Search by hub can later power Tier 3 hub pages.
-- [ ] Ineligible merchants are excluded from search.
-- [ ] Coordinate and non-coordinate search responses follow the product rules above.
+- [x] Active categories and subcategories can be listed for clients.
+- [x] Active hubs can be listed for clients.
+- [x] Public merchant search supports keyword, category, subcategory, hub, and nearby filters.
+- [x] Category pages can be powered by merchant search alone.
+- [x] Search by hub can later power Tier 3 hub pages.
+- [x] Ineligible merchants are excluded from search.
+- [x] Coordinate and non-coordinate search responses follow the product rules above.
 
 ## Recommended Order
 
@@ -143,3 +143,5 @@ Phase 1 creates the stable data model, Phase 2 lets merchants populate it, and P
 ## Status
 
 Phase 2 merchant discovery profile is implemented with merchant read/update endpoints and usecase-level public discovery eligibility checks. Existing Phase 1 schema was kept because its nullable discovery fields and subcategory/category composite foreign key already support Phase 2 validation without additional migration changes.
+
+Phase 3 consumer discovery search is implemented with authenticated consumer discovery value listing and public merchant search. Search reuses one backend path for category and future hub pages, applies Phase 2 public eligibility semantics in the repository query, and adds one focused PostGIS partial index for active primary merchant locations used by nearby discovery.
