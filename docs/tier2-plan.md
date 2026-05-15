@@ -76,11 +76,12 @@ Implementation guidance:
 
 Acceptance checklist:
 
-- [ ] Merchant can read current discovery profile.
-- [ ] Merchant can update category, subcategory, hub, and public visibility.
-- [ ] Invalid, inactive, or mismatched discovery values are rejected.
-- [ ] Unverified merchants or merchants without active primary location cannot enable public discovery.
-- [ ] Existing profile behavior remains compatible.
+- [x] Merchant can read current discovery profile.
+- [x] Merchant can update category, subcategory, hub, and public visibility.
+- [x] Merchant can clear the active hub.
+- [x] Invalid, inactive, or mismatched discovery values are rejected.
+- [x] Unverified merchants or merchants without active primary location cannot enable public discovery.
+- [x] Existing profile behavior remains compatible.
 
 ## Phase 3 - Consumer Discovery Search
 
@@ -141,4 +142,4 @@ Phase 1 creates the stable data model, Phase 2 lets merchants populate it, and P
 
 ## Status
 
-This is the Tier 2 execution guide. Update this section as each phase is implemented.
+Phase 2 merchant discovery profile is implemented with merchant read/update endpoints and usecase-level public discovery eligibility checks. Existing Phase 1 schema was kept because its nullable discovery fields and subcategory/category composite foreign key already support Phase 2 validation without additional migration changes.
