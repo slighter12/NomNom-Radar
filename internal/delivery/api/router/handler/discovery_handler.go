@@ -3,7 +3,6 @@ package handler
 import (
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"radar/internal/delivery/api/response"
@@ -98,8 +97,8 @@ func (h *DiscoveryHandler) parseSearchPublicMerchantsInput(
 	c echo.Context,
 ) (*usecase.SearchPublicMerchantsInput, error) {
 	query := newSearchPublicMerchantsQueryParams()
-	if err := bindQueryParams(c, &query); err != nil {
-		return nil, handleSearchPublicMerchantsQueryBindingError(c)
+	if err := bindQueryParams(c, &query, "Invalid merchant search query input"); err != nil {
+		return nil, err
 	}
 
 	if err := validateRequest(c, &query); err != nil {
@@ -149,7 +148,7 @@ func newSearchPublicMerchantsQueryParams() SearchPublicMerchantsQueryParams {
 	}
 }
 
-func parseOptionalUUIDQueryValue(c echo.Context, name string, rawValue string) (*uuid.UUID, error) {
+func parseOptionalUUIDQueryValue(_ echo.Context, name string, rawValue string) (*uuid.UUID, error) {
 	rawValue = strings.TrimSpace(rawValue)
 	if rawValue == "" {
 		return nil, nil
@@ -157,36 +156,8 @@ func parseOptionalUUIDQueryValue(c echo.Context, name string, rawValue string) (
 
 	value, err := uuid.Parse(rawValue)
 	if err != nil {
-		return nil, abortHandledResponse(response.BadRequest(
-			c,
-			"VALIDATION_ERROR",
-			name+" 必須為有效的 UUID",
-		))
+		return nil, validationFailedError(name + " must be a valid UUID")
 	}
 
 	return &value, nil
-}
-
-func handleSearchPublicMerchantsQueryBindingError(c echo.Context) error {
-	for _, name := range []string{"page", "page_size", "radius_meters"} {
-		rawValue := strings.TrimSpace(c.QueryParam(name))
-		if rawValue == "" {
-			continue
-		}
-		if _, err := strconv.Atoi(rawValue); err != nil {
-			return abortHandledResponse(response.BadRequest(c, "VALIDATION_ERROR", name+" 必須為整數"))
-		}
-	}
-
-	for _, name := range []string{"latitude", "longitude"} {
-		rawValue := strings.TrimSpace(c.QueryParam(name))
-		if rawValue == "" {
-			continue
-		}
-		if _, err := strconv.ParseFloat(rawValue, 64); err != nil {
-			return abortHandledResponse(response.BadRequest(c, "VALIDATION_ERROR", name+" 必須為數字"))
-		}
-	}
-
-	return abortHandledResponse(response.BindingError(c, "INVALID_INPUT", "Invalid merchant search query input"))
 }

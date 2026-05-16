@@ -55,7 +55,7 @@ func TestErrorMiddleware_HandleHTTPError_SkipsCommittedResponse(t *testing.T) {
 	c := e.NewContext(req, rec)
 	middleware := NewErrorMiddleware(slog.Default())
 
-	err := response.BadRequest(c, "VALIDATION_ERROR", "name is required")
+	err := response.BadRequest(c, "VALIDATION_FAILED", "name is required")
 	require.NoError(t, err)
 
 	bodyBefore := rec.Body.String()
@@ -283,7 +283,7 @@ func TestRequestLoggerMiddleware_DoesNotFormatSourceStackForClientError(t *testi
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
 	handler := requestLogger.Log(func(c echo.Context) error {
-		return response.BadRequest(c, "VALIDATION_ERROR", "bad request")
+		return response.BadRequest(c, "VALIDATION_FAILED", "bad request")
 	})
 
 	err := handler(c)
@@ -344,7 +344,7 @@ func TestRequestLoggerMiddleware_LogsHandledResponseSentinelOnce(t *testing.T) {
 	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
 	errorMiddleware := NewErrorMiddleware(logger)
 	handler := requestLogger.Log(errorMiddleware.HandleErrors(func(c echo.Context) error {
-		err := response.BadRequest(c, "VALIDATION_ERROR", "name is required")
+		err := response.BadRequest(c, "VALIDATION_FAILED", "name is required")
 		require.NoError(t, err)
 
 		return delivery.ErrResponseHandled
@@ -355,7 +355,7 @@ func TestRequestLoggerMiddleware_LogsHandledResponseSentinelOnce(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Equal(t, 1, strings.Count(logs.String(), "\n"))
-	assert.Contains(t, logs.String(), "VALIDATION_ERROR")
+	assert.Contains(t, logs.String(), "VALIDATION_FAILED")
 }
 
 func TestRequestLoggerMiddleware_SkipsSuccessfulRequestOutsideDebug(t *testing.T) {

@@ -3,11 +3,12 @@ package handler
 import (
 	"bytes"
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"radar/internal/delivery"
+	apimiddleware "radar/internal/delivery/api/middleware"
 	apivalidator "radar/internal/delivery/api/validator"
 
 	"github.com/labstack/echo/v4"
@@ -34,12 +35,14 @@ func TestBindRequiredPayload_ValidatesPayload(t *testing.T) {
 	c, rec := newJSONContext(http.MethodPost, "/", `{}`)
 
 	payload, err := bindRequiredPayload[testValidationPayload](c, "Invalid input")
+	writeTestErrorResponse(c, err)
 
-	require.ErrorIs(t, err, delivery.ErrResponseHandled)
+	require.Error(t, err)
 	assert.Nil(t, payload)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
-	assert.Contains(t, rec.Body.String(), `"code":"VALIDATION_ERROR"`)
-	assert.Contains(t, rec.Body.String(), `"message":"name is required"`)
+	assert.Contains(t, rec.Body.String(), `"code":"VALIDATION_FAILED"`)
+	assert.Contains(t, rec.Body.String(), `"message":"輸入資料驗證失敗"`)
+	assert.Contains(t, rec.Body.String(), `"details":"name is required"`)
 }
 
 func TestBindAndValidateRequest_StopsAfterValidationError(t *testing.T) {
@@ -47,9 +50,19 @@ func TestBindAndValidateRequest_StopsAfterValidationError(t *testing.T) {
 	var payload testValidationPayload
 
 	err := bindAndValidateRequest(c, &payload, "Invalid input")
+	writeTestErrorResponse(c, err)
 
-	require.ErrorIs(t, err, delivery.ErrResponseHandled)
+	require.Error(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
-	assert.Contains(t, rec.Body.String(), `"code":"VALIDATION_ERROR"`)
-	assert.Contains(t, rec.Body.String(), `"message":"name is required"`)
+	assert.Contains(t, rec.Body.String(), `"code":"VALIDATION_FAILED"`)
+	assert.Contains(t, rec.Body.String(), `"message":"輸入資料驗證失敗"`)
+	assert.Contains(t, rec.Body.String(), `"details":"name is required"`)
+}
+
+func writeTestErrorResponse(c echo.Context, err error) {
+	if err == nil {
+		return
+	}
+
+	apimiddleware.NewErrorMiddleware(slog.Default()).HandleHTTPError(err, c)
 }

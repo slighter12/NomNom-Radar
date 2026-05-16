@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"testing"
 
-	"radar/internal/delivery"
 	"radar/internal/domain/entity"
 	"radar/internal/usecase"
 
@@ -195,20 +194,24 @@ func TestDiscoveryHandler_SearchPublicMerchants_InvalidQueryRejected(t *testing.
 	handler := &DiscoveryHandler{discoveryUC: &recordingDiscoveryUsecase{}}
 
 	tests := []struct {
-		name   string
-		target string
+		name     string
+		target   string
+		wantCode string
 	}{
 		{
-			name:   "invalid uuid",
-			target: "/api/v1/merchants?category_id=not-a-uuid",
+			name:     "invalid uuid",
+			target:   "/api/v1/merchants?category_id=not-a-uuid",
+			wantCode: "VALIDATION_FAILED",
 		},
 		{
-			name:   "invalid coordinate",
-			target: "/api/v1/merchants?latitude=abc",
+			name:     "invalid coordinate",
+			target:   "/api/v1/merchants?latitude=abc",
+			wantCode: "INVALID_INPUT",
 		},
 		{
-			name:   "invalid page",
-			target: "/api/v1/merchants?page=0",
+			name:     "invalid page",
+			target:   "/api/v1/merchants?page=0",
+			wantCode: "VALIDATION_FAILED",
 		},
 	}
 
@@ -217,10 +220,11 @@ func TestDiscoveryHandler_SearchPublicMerchants_InvalidQueryRejected(t *testing.
 			c, rec := newJSONContext(http.MethodGet, tt.target, "")
 
 			err := handler.SearchPublicMerchants(c)
+			writeTestErrorResponse(c, err)
 
-			require.ErrorIs(t, err, delivery.ErrResponseHandled)
+			require.Error(t, err)
 			assert.Equal(t, http.StatusBadRequest, rec.Code)
-			assert.Contains(t, rec.Body.String(), `"code":"VALIDATION_ERROR"`)
+			assert.Contains(t, rec.Body.String(), `"code":"`+tt.wantCode+`"`)
 		})
 	}
 }

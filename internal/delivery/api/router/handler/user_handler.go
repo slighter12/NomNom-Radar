@@ -283,13 +283,13 @@ func (h *UserHandler) LinkProvider(c echo.Context) error {
 // Query params (code, state) are read from the URL; the rest comes from the JSON body.
 func (h *UserHandler) extractGoogleCallbackInput(c echo.Context) (*usecase.GoogleCallbackInput, error) {
 	var query GoogleCallbackQueryParams
-	if err := bindQueryParams(c, &query); err != nil {
-		return nil, response.BindingError(c, "INVALID_INPUT", "Invalid Google callback input")
+	if err := bindQueryParams(c, &query, "Invalid Google callback input"); err != nil {
+		return nil, err
 	}
 
 	// Handle authorization code flow (not implemented yet)
 	if query.Code != "" {
-		return nil, response.BadRequest(c, "INVALID_INPUT", "Authorization code flow not implemented yet. Please use ID token flow.")
+		return nil, invalidInputError("authorization code flow is not implemented; use id_token flow")
 	}
 
 	input, err := bindRequiredPayload[usecase.GoogleCallbackInput](c, "Invalid Google callback input")
