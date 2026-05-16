@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 
 	"radar/internal/delivery/api/middleware"
@@ -218,7 +217,7 @@ func (h *MenuHandler) UpdateMenuItemStatus(c echo.Context) error {
 		return err
 	}
 	if req.IsAvailable == nil {
-		return response.BadRequest(c, "VALIDATION_ERROR", "請提供 is_available")
+		return validationFailedError("is_available is required")
 	}
 
 	item, err := h.menuUC.UpdateMenuItemStatus(c.Request().Context(), merchantID, itemID, *req.IsAvailable)
@@ -278,8 +277,8 @@ func (h *MenuHandler) parseMerchantID(c echo.Context) (uuid.UUID, error) {
 
 func (h *MenuHandler) parseListMerchantMenuItemsInput(c echo.Context) (*usecase.ListMerchantMenuItemsInput, error) {
 	query := newListMerchantMenuItemsQueryParams()
-	if err := bindQueryParams(c, &query); err != nil {
-		return nil, handleListMenuItemsQueryBindingError(c, true)
+	if err := bindQueryParams(c, &query, "Invalid menu item query input"); err != nil {
+		return nil, err
 	}
 
 	normalizePaginationQueryParams(c, &query.PaginationQueryParams)
@@ -304,8 +303,8 @@ func (h *MenuHandler) parseListMerchantMenuItemsInput(c echo.Context) (*usecase.
 
 func (h *MenuHandler) parseListPublicMerchantMenuItemsInput(c echo.Context) (*usecase.ListMerchantMenuItemsInput, error) {
 	query := newListPublicMerchantMenuItemsQueryParams()
-	if err := bindQueryParams(c, &query); err != nil {
-		return nil, handleListMenuItemsQueryBindingError(c, false)
+	if err := bindQueryParams(c, &query, "Invalid menu item query input"); err != nil {
+		return nil, err
 	}
 
 	normalizePaginationQueryParams(c, &query.PaginationQueryParams)
@@ -336,22 +335,6 @@ func newListPublicMerchantMenuItemsQueryParams() ListPublicMerchantMenuItemsQuer
 	}
 }
 
-func handleListMenuItemsQueryBindingError(c echo.Context, checkIsAvailable bool) error {
-	if err := handlePaginationQueryBindingError(c); err != nil {
-		return err
-	}
-
-	if checkIsAvailable {
-		if isAvailableValue := strings.TrimSpace(c.QueryParam("is_available")); isAvailableValue != "" {
-			if _, err := strconv.ParseBool(isAvailableValue); err != nil {
-				return response.BadRequest(c, "VALIDATION_ERROR", "is_available 必須為布林值")
-			}
-		}
-	}
-
-	return response.BindingError(c, "INVALID_INPUT", "Invalid menu item query input")
-}
-
 func normalizePaginationQueryParams(c echo.Context, params *PaginationQueryParams) {
 	if strings.TrimSpace(c.QueryParam("page")) == "" {
 		params.Page = defaultMenuItemsPage
@@ -360,22 +343,6 @@ func normalizePaginationQueryParams(c echo.Context, params *PaginationQueryParam
 	if strings.TrimSpace(c.QueryParam("page_size")) == "" {
 		params.PageSize = defaultMenuItemsPageSize
 	}
-}
-
-func handlePaginationQueryBindingError(c echo.Context) error {
-	if pageValue := strings.TrimSpace(c.QueryParam("page")); pageValue != "" {
-		if _, err := strconv.Atoi(pageValue); err != nil {
-			return response.BadRequest(c, "VALIDATION_ERROR", "page 必須為大於 0 的整數")
-		}
-	}
-
-	if pageSizeValue := strings.TrimSpace(c.QueryParam("page_size")); pageSizeValue != "" {
-		if _, err := strconv.Atoi(pageSizeValue); err != nil {
-			return response.BadRequest(c, "VALIDATION_ERROR", "page_size 必須為大於 0 的整數")
-		}
-	}
-
-	return nil
 }
 
 func (h *MenuHandler) validateCreateMenuItemRequest(c echo.Context, req *CreateMenuItemRequest) error {
@@ -397,7 +364,7 @@ func (h *MenuHandler) validateMenuItemRequest(
 		return err
 	}
 
-	return h.validateMenuItemRequestURLs(c, imageURL, externalURL)
+	return h.validateMenuItemRequestURLs(imageURL, externalURL)
 }
 
 func normalizeMenuItemRequestFields(name, category, currency *string) {
@@ -412,12 +379,12 @@ func normalizeMenuItemRequestFields(name, category, currency *string) {
 	}
 }
 
-func (h *MenuHandler) validateMenuItemRequestURLs(c echo.Context, imageURL, externalURL *string) error {
+func (h *MenuHandler) validateMenuItemRequestURLs(imageURL, externalURL *string) error {
 	if err := validateOptionalHTTPURL(imageURL); err != nil {
-		return response.BadRequest(c, "VALIDATION_ERROR", "image_url 必須為有效的 http/https URL")
+		return validationFailedError("image_url must be a valid http/https URL")
 	}
 	if err := validateOptionalHTTPURL(externalURL); err != nil {
-		return response.BadRequest(c, "VALIDATION_ERROR", "external_url 必須為有效的 http/https URL")
+		return validationFailedError("external_url must be a valid http/https URL")
 	}
 
 	return nil

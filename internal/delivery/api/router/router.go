@@ -20,6 +20,7 @@ type RouterParams struct {
 	DeviceHandler       *handler.DeviceHandler
 	SubscriptionHandler *handler.SubscriptionHandler
 	NotificationHandler *handler.NotificationHandler
+	DiscoveryHandler    *handler.DiscoveryHandler
 	AuthMiddleware      *middleware.AuthMiddleware
 	Config              *config.Config
 }
@@ -33,6 +34,7 @@ type router struct {
 	deviceHandler       *handler.DeviceHandler
 	subscriptionHandler *handler.SubscriptionHandler
 	notificationHandler *handler.NotificationHandler
+	discoveryHandler    *handler.DiscoveryHandler
 	authMiddleware      *middleware.AuthMiddleware
 	config              *config.Config
 }
@@ -48,6 +50,7 @@ func NewRouter(params RouterParams) *router {
 		deviceHandler:       params.DeviceHandler,
 		subscriptionHandler: params.SubscriptionHandler,
 		notificationHandler: params.NotificationHandler,
+		discoveryHandler:    params.DiscoveryHandler,
 		authMiddleware:      params.AuthMiddleware,
 		config:              params.Config,
 	}
@@ -150,7 +153,16 @@ func (r *router) registerAPIV1ConsumerRoutes(apiV1 *echo.Group) {
 	consumerMerchantsGroup := apiV1.Group("/merchants")
 	consumerMerchantsGroup.Use(r.authMiddleware.RequireRole(entity.RoleUser))
 	{
+		consumerMerchantsGroup.GET("", r.discoveryHandler.SearchPublicMerchants)
 		consumerMerchantsGroup.GET("/:merchantId/menu", r.menuHandler.GetPublicMerchantMenu)
+	}
+
+	discoveryGroup := apiV1.Group("/discovery")
+	discoveryGroup.Use(r.authMiddleware.RequireRole(entity.RoleUser))
+	{
+		discoveryGroup.GET("/categories", r.discoveryHandler.ListActiveCategories)
+		discoveryGroup.GET("/subcategories", r.discoveryHandler.ListActiveSubcategories)
+		discoveryGroup.GET("/hubs", r.discoveryHandler.ListActiveHubs)
 	}
 }
 

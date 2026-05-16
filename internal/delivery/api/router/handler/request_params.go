@@ -6,8 +6,7 @@ import (
 	"reflect"
 	"strings"
 
-	"radar/internal/delivery"
-	"radar/internal/delivery/api/response"
+	domainerrors "radar/internal/domain/errors"
 
 	validatorpkg "github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
@@ -43,13 +42,17 @@ func NewLimitOffsetQueryParams(defaultLimit, defaultOffset int) LimitOffsetQuery
 	}
 }
 
-func bindQueryParams(c echo.Context, params any) error {
-	return (&echo.DefaultBinder{}).BindQueryParams(c, params)
+func bindQueryParams(c echo.Context, params any, invalidMessage string) error {
+	if err := (&echo.DefaultBinder{}).BindQueryParams(c, params); err != nil {
+		return invalidInputError(invalidMessage)
+	}
+
+	return nil
 }
 
 func bindRequest(c echo.Context, req any, invalidMessage string) error {
 	if err := c.Bind(req); err != nil {
-		return abortHandledResponse(response.BindingError(c, "INVALID_INPUT", invalidMessage))
+		return invalidInputError(invalidMessage)
 	}
 
 	return nil
@@ -57,7 +60,7 @@ func bindRequest(c echo.Context, req any, invalidMessage string) error {
 
 func validateRequest(c echo.Context, req any) error {
 	if err := c.Validate(req); err != nil {
-		return abortHandledResponse(response.BadRequest(c, "VALIDATION_ERROR", validationMessage(err, req)))
+		return validationFailedError(validationMessage(err, req))
 	}
 
 	return nil
@@ -71,9 +74,9 @@ func bindAndValidateRequest(c echo.Context, req any, invalidMessage string) erro
 	return validateRequest(c, req)
 }
 
-func requireBoundPayload[T any](c echo.Context, payload *T) error {
+func requireBoundPayload[T any](payload *T) error {
 	if payload == nil {
-		return abortHandledResponse(response.BadRequest(c, "VALIDATION_ERROR", "請檢查輸入內容"))
+		return validationFailedError("request body is required")
 	}
 
 	return nil
@@ -84,7 +87,7 @@ func bindRequiredPayload[T any](c echo.Context, invalidMessage string) (*T, erro
 	if err := bindRequest(c, &payload, invalidMessage); err != nil {
 		return nil, err
 	}
-	if err := requireBoundPayload(c, payload); err != nil {
+	if err := requireBoundPayload(payload); err != nil {
 		return nil, err
 	}
 	if err := validateRequest(c, payload); err != nil {
@@ -113,12 +116,12 @@ func bindDeviceIDPathParam(c echo.Context, invalidMessage string) (uuid.UUID, er
 func bindUUIDPathParam(c echo.Context, paramName, invalidMessage string) (uuid.UUID, error) {
 	value := strings.TrimSpace(c.Param(paramName))
 	if value == "" {
-		return uuid.Nil, abortHandledResponse(response.BadRequest(c, "INVALID_ID", invalidMessage))
+		return uuid.Nil, invalidIDError(invalidMessage)
 	}
 
 	id, err := uuid.Parse(value)
 	if err != nil {
-		return uuid.Nil, abortHandledResponse(response.BadRequest(c, "INVALID_ID", invalidMessage))
+		return uuid.Nil, invalidIDError(invalidMessage)
 	}
 
 	return id, nil
@@ -126,29 +129,22 @@ func bindUUIDPathParam(c echo.Context, paramName, invalidMessage string) (uuid.U
 
 func validatePaginationQueryParams(c echo.Context, params *PaginationQueryParams) error {
 	if err := c.Validate(params); err != nil {
-		if validationErrors, ok := errors.AsType[validatorpkg.ValidationErrors](err); ok {
-			for _, validationErr := range validationErrors {
-				switch validationErr.StructField() {
-				case "Page":
-					return abortHandledResponse(response.BadRequest(c, "VALIDATION_ERROR", "page 必須為大於 0 的整數"))
-				case "PageSize":
-					return abortHandledResponse(response.BadRequest(c, "VALIDATION_ERROR", "page_size 必須為大於 0 的整數"))
-				}
-			}
-		}
-
-		return abortHandledResponse(response.BadRequest(c, "VALIDATION_ERROR", "Invalid pagination query input"))
+		return validationFailedError(validationMessage(err, params))
 	}
 
 	return nil
 }
 
-func abortHandledResponse(err error) error {
-	if err != nil {
-		return err
-	}
+func invalidInputError(details string) error {
+	return domainerrors.ErrInvalidInput.WithDetails(details)
+}
 
-	return delivery.ErrResponseHandled
+func invalidIDError(details string) error {
+	return domainerrors.ErrInvalidID.WithDetails(details)
+}
+
+func validationFailedError(details string) error {
+	return domainerrors.ErrValidationFailed.WithDetails(details)
 }
 
 func validationMessage(err error, req any) string {
@@ -172,7 +168,7 @@ func validationMessage(err error, req any) string {
 		return fmt.Sprintf("%s is invalid", fieldName)
 	}
 
-	return "請檢查輸入內容"
+	return "request input is invalid"
 }
 
 func requestFieldName(req any, validationErr validatorpkg.FieldError) string {

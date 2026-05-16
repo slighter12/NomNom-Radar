@@ -7,6 +7,7 @@ package repository
 import (
 	"context"
 	"radar/internal/domain/entity"
+	"radar/internal/domain/repository"
 
 	"github.com/google/uuid"
 	mock "github.com/stretchr/testify/mock"
@@ -629,6 +630,80 @@ func (_c *MockDiscoveryRepository_ListActiveSubcategories_Call) Return(discovery
 }
 
 func (_c *MockDiscoveryRepository_ListActiveSubcategories_Call) RunAndReturn(run func(ctx context.Context) ([]*entity.DiscoverySubcategory, error)) *MockDiscoveryRepository_ListActiveSubcategories_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SearchPublicMerchants provides a mock function for the type MockDiscoveryRepository
+func (_mock *MockDiscoveryRepository) SearchPublicMerchants(ctx context.Context, filter *repository.PublicMerchantSearchFilter) ([]*entity.PublicMerchantSearchItem, int64, error) {
+	ret := _mock.Called(ctx, filter)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SearchPublicMerchants")
+	}
+
+	var r0 []*entity.PublicMerchantSearchItem
+	var r1 int64
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *repository.PublicMerchantSearchFilter) ([]*entity.PublicMerchantSearchItem, int64, error)); ok {
+		return returnFunc(ctx, filter)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *repository.PublicMerchantSearchFilter) []*entity.PublicMerchantSearchItem); ok {
+		r0 = returnFunc(ctx, filter)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*entity.PublicMerchantSearchItem)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *repository.PublicMerchantSearchFilter) int64); ok {
+		r1 = returnFunc(ctx, filter)
+	} else {
+		r1 = ret.Get(1).(int64)
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, *repository.PublicMerchantSearchFilter) error); ok {
+		r2 = returnFunc(ctx, filter)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
+}
+
+// MockDiscoveryRepository_SearchPublicMerchants_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SearchPublicMerchants'
+type MockDiscoveryRepository_SearchPublicMerchants_Call struct {
+	*mock.Call
+}
+
+// SearchPublicMerchants is a helper method to define mock.On call
+//   - ctx context.Context
+//   - filter *repository.PublicMerchantSearchFilter
+func (_e *MockDiscoveryRepository_Expecter) SearchPublicMerchants(ctx interface{}, filter interface{}) *MockDiscoveryRepository_SearchPublicMerchants_Call {
+	return &MockDiscoveryRepository_SearchPublicMerchants_Call{Call: _e.mock.On("SearchPublicMerchants", ctx, filter)}
+}
+
+func (_c *MockDiscoveryRepository_SearchPublicMerchants_Call) Run(run func(ctx context.Context, filter *repository.PublicMerchantSearchFilter)) *MockDiscoveryRepository_SearchPublicMerchants_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *repository.PublicMerchantSearchFilter
+		if args[1] != nil {
+			arg1 = args[1].(*repository.PublicMerchantSearchFilter)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockDiscoveryRepository_SearchPublicMerchants_Call) Return(publicMerchantSearchItems []*entity.PublicMerchantSearchItem, n int64, err error) *MockDiscoveryRepository_SearchPublicMerchants_Call {
+	_c.Call.Return(publicMerchantSearchItems, n, err)
+	return _c
+}
+
+func (_c *MockDiscoveryRepository_SearchPublicMerchants_Call) RunAndReturn(run func(ctx context.Context, filter *repository.PublicMerchantSearchFilter) ([]*entity.PublicMerchantSearchItem, int64, error)) *MockDiscoveryRepository_SearchPublicMerchants_Call {
 	_c.Call.Return(run)
 	return _c
 }

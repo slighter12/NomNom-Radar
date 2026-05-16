@@ -4,8 +4,6 @@ import (
 	"net/http"
 	"testing"
 
-	"radar/internal/delivery"
-
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -21,7 +19,8 @@ func TestUserHandler_InvalidPayloadsAreRejectedAtHTTPBoundary(t *testing.T) {
 		body       string
 		handle     func(echo.Context) error
 		wantStatus int
-		wantBody   string
+		wantCode   string
+		wantDetail string
 	}{
 		{
 			name:       "register user missing name",
@@ -29,7 +28,8 @@ func TestUserHandler_InvalidPayloadsAreRejectedAtHTTPBoundary(t *testing.T) {
 			body:       `{"email":"user@example.com","password":"secret"}`,
 			handle:     handler.RegisterUser,
 			wantStatus: http.StatusBadRequest,
-			wantBody:   `"message":"name is required"`,
+			wantCode:   "VALIDATION_FAILED",
+			wantDetail: "name is required",
 		},
 		{
 			name:       "login missing email",
@@ -37,7 +37,8 @@ func TestUserHandler_InvalidPayloadsAreRejectedAtHTTPBoundary(t *testing.T) {
 			body:       `{"password":"secret"}`,
 			handle:     handler.Login,
 			wantStatus: http.StatusBadRequest,
-			wantBody:   `"message":"email is required"`,
+			wantCode:   "VALIDATION_FAILED",
+			wantDetail: "email is required",
 		},
 		{
 			name:       "refresh token missing refresh token",
@@ -45,7 +46,8 @@ func TestUserHandler_InvalidPayloadsAreRejectedAtHTTPBoundary(t *testing.T) {
 			body:       `{}`,
 			handle:     handler.RefreshToken,
 			wantStatus: http.StatusBadRequest,
-			wantBody:   `"message":"refresh_token is required"`,
+			wantCode:   "VALIDATION_FAILED",
+			wantDetail: "refresh_token is required",
 		},
 		{
 			name:       "logout missing refresh token",
@@ -53,7 +55,8 @@ func TestUserHandler_InvalidPayloadsAreRejectedAtHTTPBoundary(t *testing.T) {
 			body:       `{}`,
 			handle:     handler.Logout,
 			wantStatus: http.StatusBadRequest,
-			wantBody:   `"message":"refresh_token is required"`,
+			wantCode:   "VALIDATION_FAILED",
+			wantDetail: "refresh_token is required",
 		},
 		{
 			name:       "google callback missing id token",
@@ -61,7 +64,8 @@ func TestUserHandler_InvalidPayloadsAreRejectedAtHTTPBoundary(t *testing.T) {
 			body:       `{}`,
 			handle:     handler.GoogleCallback,
 			wantStatus: http.StatusBadRequest,
-			wantBody:   `"message":"id_token is required"`,
+			wantCode:   "VALIDATION_FAILED",
+			wantDetail: "id_token is required",
 		},
 		{
 			name:       "google callback invalid query state",
@@ -69,7 +73,8 @@ func TestUserHandler_InvalidPayloadsAreRejectedAtHTTPBoundary(t *testing.T) {
 			body:       `{"id_token":"token","requested_role":"user"}`,
 			handle:     handler.GoogleCallback,
 			wantStatus: http.StatusBadRequest,
-			wantBody:   `"message":"state must be one of [user merchant]"`,
+			wantCode:   "VALIDATION_FAILED",
+			wantDetail: "state must be one of [user merchant]",
 		},
 		{
 			name:       "merchant onboarding missing store name",
@@ -77,7 +82,8 @@ func TestUserHandler_InvalidPayloadsAreRejectedAtHTTPBoundary(t *testing.T) {
 			body:       `{"onboarding_token":"token"}`,
 			handle:     handler.CompleteMerchantOnboarding,
 			wantStatus: http.StatusBadRequest,
-			wantBody:   `"message":"store_name is required"`,
+			wantCode:   "VALIDATION_FAILED",
+			wantDetail: "store_name is required",
 		},
 		{
 			name:   "merchant verification missing business license",
@@ -89,7 +95,8 @@ func TestUserHandler_InvalidPayloadsAreRejectedAtHTTPBoundary(t *testing.T) {
 				return handler.SubmitMerchantVerification(c)
 			},
 			wantStatus: http.StatusBadRequest,
-			wantBody:   `"message":"business_license is required"`,
+			wantCode:   "VALIDATION_FAILED",
+			wantDetail: "business_license is required",
 		},
 	}
 
@@ -98,11 +105,13 @@ func TestUserHandler_InvalidPayloadsAreRejectedAtHTTPBoundary(t *testing.T) {
 			c, rec := newJSONContext(http.MethodPost, tt.target, tt.body)
 
 			err := tt.handle(c)
+			writeTestErrorResponse(c, err)
 
-			require.ErrorIs(t, err, delivery.ErrResponseHandled)
+			require.Error(t, err)
 			assert.Equal(t, tt.wantStatus, rec.Code)
-			assert.Contains(t, rec.Body.String(), `"code":"VALIDATION_ERROR"`)
-			assert.Contains(t, rec.Body.String(), tt.wantBody)
+			assert.Contains(t, rec.Body.String(), `"code":"`+tt.wantCode+`"`)
+			assert.Contains(t, rec.Body.String(), `"message":"輸入資料驗證失敗"`)
+			assert.Contains(t, rec.Body.String(), `"details":"`+tt.wantDetail+`"`)
 		})
 	}
 }
@@ -113,9 +122,11 @@ func TestUserHandler_UpdateMerchantDiscoveryProfile_InvalidUUIDRejectedAtHTTPBou
 	c.Set("userID", uuid.New())
 
 	err := handler.UpdateMerchantDiscoveryProfile(c)
+	writeTestErrorResponse(c, err)
 
-	require.ErrorIs(t, err, delivery.ErrResponseHandled)
+	require.Error(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Contains(t, rec.Body.String(), `"code":"INVALID_INPUT"`)
-	assert.Contains(t, rec.Body.String(), `"message":"Invalid merchant discovery profile input"`)
+	assert.Contains(t, rec.Body.String(), `"message":"輸入格式錯誤"`)
+	assert.Contains(t, rec.Body.String(), `"details":"Invalid merchant discovery profile input"`)
 }

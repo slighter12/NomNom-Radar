@@ -3,7 +3,6 @@ package handler
 import (
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"radar/internal/delivery/api/middleware"
@@ -67,7 +66,7 @@ func (h *NotificationHandler) PublishLocationNotification(c echo.Context) error 
 	}
 
 	// Validate request
-	if err := h.validatePublishNotificationRequest(c, &req); err != nil {
+	if err := h.validatePublishNotificationRequest(&req); err != nil {
 		return err
 	}
 
@@ -86,38 +85,38 @@ func (h *NotificationHandler) PublishLocationNotification(c echo.Context) error 
 }
 
 // validatePublishNotificationRequest validates the publish notification request
-func (h *NotificationHandler) validatePublishNotificationRequest(c echo.Context, req *PublishNotificationRequest) error {
+func (h *NotificationHandler) validatePublishNotificationRequest(req *PublishNotificationRequest) error {
 	// Validate that either addressID or locationData is provided
 	if req.AddressID == nil && req.LocationData == nil {
-		return response.BadRequest(c, "VALIDATION_ERROR", "Either address_id or location_data must be provided")
+		return validationFailedError("either address_id or location_data must be provided")
 	}
 
 	// Validate that both are not provided
 	if req.AddressID != nil && req.LocationData != nil {
-		return response.BadRequest(c, "VALIDATION_ERROR", "Only one of address_id or location_data should be provided")
+		return validationFailedError("only one of address_id or location_data should be provided")
 	}
 
 	// Validate location data if provided
 	if req.LocationData != nil {
-		return h.validateLocationData(c, req.LocationData)
+		return h.validateLocationData(req.LocationData)
 	}
 
 	return nil
 }
 
 // validateLocationData validates the location data
-func (h *NotificationHandler) validateLocationData(c echo.Context, data *usecase.LocationData) error {
+func (h *NotificationHandler) validateLocationData(data *usecase.LocationData) error {
 	if data.LocationName == "" {
-		return response.BadRequest(c, "VALIDATION_ERROR", "location_name is required in location_data")
+		return validationFailedError("location_name is required in location_data")
 	}
 	if data.FullAddress == "" {
-		return response.BadRequest(c, "VALIDATION_ERROR", "full_address is required in location_data")
+		return validationFailedError("full_address is required in location_data")
 	}
 	if data.Latitude < -90 || data.Latitude > 90 {
-		return response.BadRequest(c, "VALIDATION_ERROR", "latitude must be between -90 and 90")
+		return validationFailedError("latitude must be between -90 and 90")
 	}
 	if data.Longitude < -180 || data.Longitude > 180 {
-		return response.BadRequest(c, "VALIDATION_ERROR", "longitude must be between -180 and 180")
+		return validationFailedError("longitude must be between -180 and 180")
 	}
 
 	return nil
@@ -146,23 +145,27 @@ func (h *NotificationHandler) GetMerchantNotificationHistory(c echo.Context) err
 func (h *NotificationHandler) parseNotificationHistoryQueryParams(c echo.Context) (NotificationHistoryQueryParams, error) {
 	query := newNotificationHistoryQueryParams()
 
-	if limitValue := strings.TrimSpace(c.QueryParam("limit")); limitValue != "" {
-		limit, err := strconv.Atoi(limitValue)
-		if err != nil || limit <= 0 {
-			return query, response.BadRequest(c, "VALIDATION_ERROR", "limit 必須為大於 0 的整數")
-		}
-		query.Limit = min(limit, maxNotificationHistoryLimit)
+	if err := bindQueryParams(c, &query, "Invalid notification history query input"); err != nil {
+		return query, err
 	}
 
-	if offsetValue := strings.TrimSpace(c.QueryParam("offset")); offsetValue != "" {
-		offset, err := strconv.Atoi(offsetValue)
-		if err != nil || offset < 0 {
-			return query, response.BadRequest(c, "VALIDATION_ERROR", "offset 必須為大於或等於 0 的整數")
-		}
-		query.Offset = offset
+	normalizeNotificationHistoryQueryParams(c, &query)
+	if err := c.Validate(&query); err != nil {
+		return query, validationFailedError(validationMessage(err, &query))
 	}
+
+	query.Limit = min(query.Limit, maxNotificationHistoryLimit)
 
 	return query, nil
+}
+
+func normalizeNotificationHistoryQueryParams(c echo.Context, query *NotificationHistoryQueryParams) {
+	if strings.TrimSpace(c.QueryParam("limit")) == "" {
+		query.Limit = defaultNotificationHistoryLimit
+	}
+	if strings.TrimSpace(c.QueryParam("offset")) == "" {
+		query.Offset = defaultNotificationHistoryOffset
+	}
 }
 
 func newNotificationHistoryQueryParams() NotificationHistoryQueryParams {
