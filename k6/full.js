@@ -257,6 +257,93 @@ function extractID(res, label) {
   return id;
 }
 
+function extractData(res, label) {
+  const body = parseJSON(res);
+  if (!body || !body.data) {
+    fail(`${label} response missing data: ${truncate(res.body, 500)}`);
+  }
+
+  return body.data;
+}
+
+function findBySlug(items, slug) {
+  for (let i = 0; i < items.length; i += 1) {
+    if (items[i] && items[i].slug === slug) {
+      return items[i];
+    }
+  }
+
+  return null;
+}
+
+function getRequiredDiscoveryValues(token) {
+  const categoriesRes = get(
+    "/api/v1/discovery/categories",
+    "full_list_discovery_categories",
+    token,
+  );
+  assertStatus(categoriesRes, 200, "list discovery categories");
+  const categoriesData = extractData(categoriesRes, "list discovery categories");
+  const categories = categoriesData.categories || [];
+  const foodCategory = findBySlug(categories, "food");
+  if (!foodCategory) {
+    fail(`food discovery category is missing: ${truncate(categoriesRes.body, 500)}`);
+  }
+
+  const subcategoriesRes = get(
+    "/api/v1/discovery/subcategories",
+    "full_list_discovery_subcategories",
+    token,
+  );
+  assertStatus(subcategoriesRes, 200, "list discovery subcategories");
+  const subcategoriesData = extractData(
+    subcategoriesRes,
+    "list discovery subcategories",
+  );
+  const subcategories = subcategoriesData.subcategories || [];
+  const mealSubcategory = findBySlug(subcategories, "meal");
+  if (!mealSubcategory) {
+    fail(
+      `meal discovery subcategory is missing: ${truncate(subcategoriesRes.body, 500)}`,
+    );
+  }
+  if (mealSubcategory.category_id !== foodCategory.id) {
+    fail("meal discovery subcategory does not belong to food category");
+  }
+
+  const hubsRes = get("/api/v1/discovery/hubs", "full_list_discovery_hubs", token);
+  assertStatus(hubsRes, 200, "list discovery hubs");
+  const hubsData = extractData(hubsRes, "list discovery hubs");
+  if (!hubsData.hubs) {
+    fail(`discovery hubs response missing hubs: ${truncate(hubsRes.body, 500)}`);
+  }
+
+  return {
+    categoryID: foodCategory.id,
+    subcategoryID: mealSubcategory.id,
+  };
+}
+
+function assertSearchFindsMerchant(path, requestName, token, merchantID) {
+  const res = get(path, requestName, token);
+  assertStatus(res, 200, requestName);
+
+  const data = extractData(res, requestName);
+  const merchants = data.merchants || [];
+  let found = null;
+  for (let i = 0; i < merchants.length; i += 1) {
+    if (merchants[i] && merchants[i].merchant_id === merchantID) {
+      found = merchants[i];
+      break;
+    }
+  }
+  if (!found) {
+    fail(`${requestName} did not return merchant ${merchantID}: ${truncate(res.body, 500)}`);
+  }
+
+  return found;
+}
+
 export function setup() {
   const healthRes = get("/health", "full_setup_health");
   assertStatus(healthRes, 200, "setup health");
@@ -476,7 +563,7 @@ export default function (setupData) {
         full_address: "No. 100, Merchant Street, Taipei",
         latitude: 25.0478,
         longitude: 121.5319,
-        is_primary: false,
+        is_primary: true,
         is_active: true,
       },
       "full_create_merchant_location",
@@ -505,6 +592,70 @@ export default function (setupData) {
       merchantLogin.token,
     );
     assertStatus(updateMerchantLocationRes, 200, "update merchant location");
+
+    const discoveryValues = getRequiredDiscoveryValues(userLogin.token);
+
+    const getDiscoveryProfileRes = get(
+      "/api/v1/merchant/discovery-profile",
+      "full_get_merchant_discovery_profile",
+      merchantLogin.token,
+    );
+    assertStatus(
+      getDiscoveryProfileRes,
+      200,
+      "get merchant discovery profile",
+    );
+
+    const updateDiscoveryProfileRes = patch(
+      "/api/v1/merchant/discovery-profile",
+      {
+        discovery_category_id: discoveryValues.categoryID,
+        discovery_subcategory_id: discoveryValues.subcategoryID,
+        active_hub_id: null,
+        is_public: true,
+      },
+      "full_update_merchant_discovery_profile_public",
+      merchantLogin.token,
+    );
+    assertStatus(
+      updateDiscoveryProfileRes,
+      200,
+      "update merchant discovery profile public",
+    );
+    check(parseJSON(updateDiscoveryProfileRes), {
+      "merchant discovery profile is public": (body) =>
+        body && body.data && body.data.is_public === true,
+      "merchant discovery profile is eligible": (body) =>
+        body &&
+        body.data &&
+        body.data.is_verified === true &&
+        body.data.has_active_primary_location === true,
+    });
+
+    const categorySearchMerchant = assertSearchFindsMerchant(
+      "/api/v1/merchants?category_slug=food&page=1&page_size=20",
+      "full_search_merchants_by_category",
+      userLogin.token,
+      setupData.merchantID,
+    );
+    check(categorySearchMerchant, {
+      "category search has discovery category": (merchant) =>
+        merchant.discovery_category &&
+        merchant.discovery_category.slug === "food",
+      "category search has primary location": (merchant) =>
+        merchant.primary_location && merchant.primary_location.id,
+    });
+
+    const nearbySearchMerchant = assertSearchFindsMerchant(
+      "/api/v1/merchants?category_slug=food&subcategory_slug=meal&latitude=25.0478&longitude=121.5319&radius_meters=3000&page=1&page_size=20",
+      "full_search_merchants_nearby",
+      userLogin.token,
+      setupData.merchantID,
+    );
+    check(nearbySearchMerchant, {
+      "nearby search includes distance": (merchant) =>
+        typeof merchant.distance_meters === "number",
+    });
 
     const createMenuRes = post(
       "/api/v1/menus/merchant",
@@ -604,6 +755,20 @@ export default function (setupData) {
       merchantLogin.token,
     );
     assertStatus(historyRes, 200, "get notification history");
+
+    const privateDiscoveryProfileRes = patch(
+      "/api/v1/merchant/discovery-profile",
+      {
+        is_public: false,
+      },
+      "full_update_merchant_discovery_profile_private",
+      merchantLogin.token,
+    );
+    assertStatus(
+      privateDiscoveryProfileRes,
+      200,
+      "update merchant discovery profile private",
+    );
 
     const deleteMenuRes = del(
       `/api/v1/menus/merchant/${menuItemID}`,

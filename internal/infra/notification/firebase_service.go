@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"radar/config"
+	"radar/internal/domain/constants"
 	"radar/internal/domain/service"
 
 	firebase "firebase.google.com/go/v4"
@@ -24,6 +25,12 @@ type firebaseService struct {
 func NewFirebaseService(params FirebaseDependencies) (service.NotificationService, error) {
 	if params.Config.Firebase == nil {
 		return nil, errors.New("firebase config must be configured")
+	}
+
+	if shouldUseNoopNotificationService(params.Config) {
+		params.Logger.Warn("Using local no-op notification service")
+
+		return NewNoopNotificationService(), nil
 	}
 
 	if params.Config.Firebase.ProjectID == "" || params.Config.Firebase.ProjectID == "your-project-id" {
@@ -58,6 +65,18 @@ func NewFirebaseService(params FirebaseDependencies) (service.NotificationServic
 	return &firebaseService{
 		client: client,
 	}, nil
+}
+
+func shouldUseNoopNotificationService(cfg *config.Config) bool {
+	if cfg == nil || cfg.Firebase == nil {
+		return false
+	}
+	if cfg.Env.Env != constants.EnvLocal {
+		return false
+	}
+
+	return cfg.Firebase.ProjectID == "demo-project-id" &&
+		cfg.Firebase.CredentialsPath == "/path/to/demo-firebase-service-account.json"
 }
 
 type FirebaseDependencies struct {
