@@ -60,10 +60,11 @@ working.
 7. Subscription subscribe/list/unsubscribe.
 8. Merchant profile/verification.
 9. Merchant location create/list/update/delete.
-10. Menu create/list/update/reorder/public-menu/delete.
-11. Merchant QR generation.
-12. Merchant notification publish/history.
-13. Logout user + merchant session.
+10. Discovery value list, merchant discovery profile publish/private, and consumer merchant search.
+11. Menu create/list/update/reorder/public-menu/delete.
+12. Merchant QR generation.
+13. Merchant notification publish/history.
+14. Logout user + merchant session.
 
 Example:
 
