@@ -29,8 +29,8 @@ Required outcomes:
 
 - Add persistent platform-defined category, subcategory, and hub concepts.
 - Add merchant profile references needed for category, subcategory, public visibility, and one active hub.
-- Seed initial categories: `meal`, `snack`, `beverage`, `dessert`, `goods`, `experience`, `other`.
-- Seed initial subcategories from the current product notes: `coffee`, `tea`, `fried_food`, `grill`, `bakery`, `handmade`, `accessory`, `workshop`.
+- Seed initial categories: `food`, `experience`, `other`.
+- Seed initial subcategories: `meal`, `snack`, and `beverage` under `food`; `goods` and `performance` under `experience`; `other` under `other`.
 - Seed production hubs from the formal product/operations hub list when available. Do not invent production hub data.
 - Keep IDs and slugs stable enough for public API filters and future campaign/pass references.
 

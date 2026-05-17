@@ -60,8 +60,8 @@ Detailed implementation plan: [tier2-plan.md](./tier2-plan.md)
 Discovery interface notes:
 
 - Use stable IDs and slugs for discovery values: `category_id`, `category_slug`, `subcategory_id`, `subcategory_slug`, `hub_id`, and `hub_slug`.
-- Recommended initial main categories: `meal`, `snack`, `beverage`, `dessert`, `goods`, `experience`, `other`.
-- Subcategories are platform-defined and extensible, for example `coffee`, `tea`, `fried_food`, `grill`, `bakery`, `handmade`, `accessory`, and `workshop`.
+- Recommended initial main categories: `food`, `experience`, `other`.
+- Initial subcategories are `meal`, `snack`, and `beverage` under `food`; `goods` and `performance` under `experience`; `other` under `other`.
 - Merchants can choose only existing platform-defined categories and subcategories.
 - Search responses should include merchant summary data, discovery category data, the primary merchant location, and distance when the request includes coordinates.
 

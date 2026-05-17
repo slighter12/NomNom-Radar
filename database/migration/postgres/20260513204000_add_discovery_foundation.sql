@@ -108,53 +108,35 @@ CREATE INDEX idx_merchant_profiles_active_hub
 
 INSERT INTO discovery_categories (slug, name, display_order)
 VALUES
-    ('meal', 'Meal', 1),
-    ('snack', 'Snack', 2),
-    ('beverage', 'Beverage', 3),
-    ('dessert', 'Dessert', 4),
-    ('goods', 'Goods', 5),
-    ('experience', 'Experience', 6),
-    ('other', 'Other', 7);
-
-INSERT INTO discovery_subcategories (category_id, slug, name, display_order)
-SELECT id, 'grill', 'Grill', 1
-FROM discovery_categories
-WHERE slug = 'meal';
+    ('food', 'Food', 1),
+    ('experience', 'Experience', 2),
+    ('other', 'Other', 3);
 
 INSERT INTO discovery_subcategories (category_id, slug, name, display_order)
 SELECT id, seed.slug, seed.name, seed.display_order
 FROM discovery_categories
 CROSS JOIN (
     VALUES
-        ('fried_food', 'Fried Food', 1),
-        ('bakery', 'Bakery', 2)
+        ('meal', 'Meal', 1),
+        ('snack', 'Snack', 2),
+        ('beverage', 'Beverage', 3)
 ) AS seed(slug, name, display_order)
-WHERE discovery_categories.slug = 'snack';
+WHERE discovery_categories.slug = 'food';
 
 INSERT INTO discovery_subcategories (category_id, slug, name, display_order)
 SELECT id, seed.slug, seed.name, seed.display_order
 FROM discovery_categories
 CROSS JOIN (
     VALUES
-        ('coffee', 'Coffee', 1),
-        ('tea', 'Tea', 2)
+        ('goods', 'Goods', 1),
+        ('performance', 'Performance', 2)
 ) AS seed(slug, name, display_order)
-WHERE discovery_categories.slug = 'beverage';
+WHERE discovery_categories.slug = 'experience';
 
 INSERT INTO discovery_subcategories (category_id, slug, name, display_order)
-SELECT id, seed.slug, seed.name, seed.display_order
+SELECT id, 'other', 'Other', 1
 FROM discovery_categories
-CROSS JOIN (
-    VALUES
-        ('handmade', 'Handmade', 1),
-        ('accessory', 'Accessory', 2)
-) AS seed(slug, name, display_order)
-WHERE discovery_categories.slug = 'goods';
-
-INSERT INTO discovery_subcategories (category_id, slug, name, display_order)
-SELECT id, 'workshop', 'Workshop', 1
-FROM discovery_categories
-WHERE slug = 'experience';
+WHERE slug = 'other';
 
 COMMENT ON TABLE discovery_categories IS
 'Platform-defined main categories for public mobile vendor discovery.';
