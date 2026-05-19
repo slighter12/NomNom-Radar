@@ -91,7 +91,7 @@ func NewMenuHandler(params MenuHandlerParams) *MenuHandler {
 func (h *MenuHandler) GetMerchantMenuItems(c echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	input, err := h.parseListMerchantMenuItemsInput(c)
@@ -131,7 +131,7 @@ func (h *MenuHandler) GetPublicMerchantMenu(c echo.Context) error {
 func (h *MenuHandler) CreateMenuItem(c echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	var req CreateMenuItemRequest
@@ -165,7 +165,7 @@ func (h *MenuHandler) CreateMenuItem(c echo.Context) error {
 func (h *MenuHandler) UpdateMenuItem(c echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	itemID, err := h.parseMenuItemID(c)
@@ -204,7 +204,7 @@ func (h *MenuHandler) UpdateMenuItem(c echo.Context) error {
 func (h *MenuHandler) UpdateMenuItemStatus(c echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	itemID, err := h.parseMenuItemID(c)
@@ -231,7 +231,7 @@ func (h *MenuHandler) UpdateMenuItemStatus(c echo.Context) error {
 func (h *MenuHandler) ReorderMenuItems(c echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	var req ReorderMenuItemsRequest
@@ -252,7 +252,7 @@ func (h *MenuHandler) ReorderMenuItems(c echo.Context) error {
 func (h *MenuHandler) DeleteMenuItem(c echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	itemID, err := h.parseMenuItemID(c)

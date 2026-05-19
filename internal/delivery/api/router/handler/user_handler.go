@@ -210,7 +210,7 @@ func (h *UserHandler) CompleteMerchantOnboarding(c echo.Context) error {
 func (h *UserHandler) SubmitMerchantVerification(c echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	input, err := bindRequiredPayload[usecase.SubmitMerchantVerificationInput](c, "Invalid merchant verification input")
@@ -228,7 +228,7 @@ func (h *UserHandler) SubmitMerchantVerification(c echo.Context) error {
 func (h *UserHandler) GetMerchantDiscoveryProfile(c echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	result, err := h.profileUC.GetMerchantDiscoveryProfile(c.Request().Context(), userID)
@@ -242,7 +242,7 @@ func (h *UserHandler) GetMerchantDiscoveryProfile(c echo.Context) error {
 func (h *UserHandler) UpdateMerchantDiscoveryProfile(c echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	var req UpdateMerchantDiscoveryProfileRequest
@@ -313,7 +313,7 @@ func (h *UserHandler) extractGoogleCallbackInput(c echo.Context) (*usecase.Googl
 func (h *UserHandler) GetProfile(c echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	user, err := h.profileUC.GetProfile(c.Request().Context(), userID)

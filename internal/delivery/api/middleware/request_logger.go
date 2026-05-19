@@ -9,7 +9,7 @@ import (
 
 	"radar/config"
 	"radar/internal/delivery/api/response"
-	deliverycontext "radar/internal/delivery/context"
+	"radar/internal/platform/observability"
 
 	"github.com/labstack/echo/v4"
 )
@@ -57,7 +57,7 @@ func (m *RequestLoggerMiddleware) logRequest(c echo.Context, start time.Time) {
 
 	req := c.Request()
 	attrs := []slog.Attr{
-		slog.String("request_id", deliverycontext.GetRequestID(c)),
+		slog.String("request_id", requestIDForLog(c)),
 		slog.String("method", req.Method),
 		slog.String("path", req.URL.Path),
 		slog.Int("status", status),
@@ -86,6 +86,14 @@ func (m *RequestLoggerMiddleware) logRequest(c echo.Context, start time.Time) {
 	}
 
 	m.logger.LogAttrs(c.Request().Context(), level, "HTTP request", attrs...)
+}
+
+func requestIDForLog(c echo.Context) string {
+	if id := observability.CorrelationIDFromContext(c.Request().Context()); id != "" {
+		return id
+	}
+
+	return ""
 }
 
 func setSourceErrorLog(c echo.Context, err error) {

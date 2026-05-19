@@ -51,7 +51,7 @@ type UpdateFCMTokenRequest struct {
 func (h *DeviceHandler) RegisterDevice(c echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	var req RegisterDeviceRequest
@@ -77,7 +77,7 @@ func (h *DeviceHandler) RegisterDevice(c echo.Context) error {
 func (h *DeviceHandler) GetUserDevices(c echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	devices, err := h.deviceUC.GetUserDevices(c.Request().Context(), userID)
@@ -92,7 +92,7 @@ func (h *DeviceHandler) GetUserDevices(c echo.Context) error {
 func (h *DeviceHandler) GetDeviceHealth(c echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	devices, err := h.deviceUC.GetDeviceHealth(c.Request().Context(), userID)
@@ -107,7 +107,7 @@ func (h *DeviceHandler) GetDeviceHealth(c echo.Context) error {
 func (h *DeviceHandler) UpdateFCMToken(c echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	deviceID, err := h.parseDeviceID(c)
@@ -131,7 +131,7 @@ func (h *DeviceHandler) UpdateFCMToken(c echo.Context) error {
 func (h *DeviceHandler) DeactivateDevice(c echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	deviceID, err := h.parseDeviceID(c)

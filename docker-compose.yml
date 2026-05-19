@@ -102,6 +102,13 @@ services:
     ports:
       - "8081:8081"
     environment:
+      - HTTP_PORT=8081
+      - POSTGRES_DATABASE=auth_db
+      - POSTGRES_SSLMODE=disable
+      - POSTGRES_MASTER_HOST=postgres-master
+      - POSTGRES_MASTER_PORT=5432
+      - POSTGRES_MASTER_USERNAME=user
+      - POSTGRES_MASTER_PASSWORD=password
       - PUBSUB_PROVIDER=local
       - PMTILES_SOURCE=/app/data/map.pmtiles
       - PMTILES_ENABLED=true

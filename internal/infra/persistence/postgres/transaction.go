@@ -16,41 +16,70 @@ type gormTransactionManager struct {
 	logger *slog.Logger
 }
 
-// gormRepositoryFactory implements the domain's RepositoryFactory interface.
-// It holds a specific GORM transaction object (*gorm.Tx) and uses it to create
-// repository instances that are bound to that single transaction.
+// gormRepositoryFactory implements the domain's transaction-scoped Unit of Work.
 type gormRepositoryFactory struct {
 	tx *gorm.DB // In GORM, a transaction object *gorm.Tx is also a *gorm.DB
+
+	userRepo         repository.UserRepository
+	authRepo         repository.AuthRepository
+	addressRepo      repository.AddressRepository
+	refreshTokenRepo repository.RefreshTokenRepository
+	loginAttemptRepo repository.LoginAttemptRepository
+	discoveryRepo    repository.DiscoveryRepository
 }
 
-// UserRepo creates a new user repository instance bound to the transaction.
+// UserRepo returns a user repository instance bound to the transaction.
 func (f *gormRepositoryFactory) UserRepo() repository.UserRepository {
-	return NewUserRepository(f.tx)
+	if f.userRepo == nil {
+		f.userRepo = NewUserRepository(f.tx)
+	}
+
+	return f.userRepo
 }
 
-// AuthRepo creates a new auth repository instance bound to the transaction.
+// AuthRepo returns an auth repository instance bound to the transaction.
 func (f *gormRepositoryFactory) AuthRepo() repository.AuthRepository {
-	return NewAuthRepository(f.tx)
+	if f.authRepo == nil {
+		f.authRepo = NewAuthRepository(f.tx)
+	}
+
+	return f.authRepo
 }
 
-// AddressRepo creates a new address repository instance bound to the transaction.
+// AddressRepo returns an address repository instance bound to the transaction.
 func (f *gormRepositoryFactory) AddressRepo() repository.AddressRepository {
-	return NewAddressRepository(f.tx)
+	if f.addressRepo == nil {
+		f.addressRepo = NewAddressRepository(f.tx)
+	}
+
+	return f.addressRepo
 }
 
-// RefreshTokenRepo creates a new refresh token repository instance bound to the transaction.
+// RefreshTokenRepo returns a refresh token repository instance bound to the transaction.
 func (f *gormRepositoryFactory) RefreshTokenRepo() repository.RefreshTokenRepository {
-	return NewRefreshTokenRepository(f.tx)
+	if f.refreshTokenRepo == nil {
+		f.refreshTokenRepo = NewRefreshTokenRepository(f.tx)
+	}
+
+	return f.refreshTokenRepo
 }
 
-// LoginAttemptRepo creates a new login attempt repository instance bound to the transaction.
+// LoginAttemptRepo returns a login attempt repository instance bound to the transaction.
 func (f *gormRepositoryFactory) LoginAttemptRepo() repository.LoginAttemptRepository {
-	return NewLoginAttemptRepository(f.tx)
+	if f.loginAttemptRepo == nil {
+		f.loginAttemptRepo = NewLoginAttemptRepository(f.tx)
+	}
+
+	return f.loginAttemptRepo
 }
 
-// DiscoveryRepo creates a new discovery repository instance bound to the transaction.
+// DiscoveryRepo returns a discovery repository instance bound to the transaction.
 func (f *gormRepositoryFactory) DiscoveryRepo() repository.DiscoveryRepository {
-	return NewDiscoveryRepository(f.tx)
+	if f.discoveryRepo == nil {
+		f.discoveryRepo = NewDiscoveryRepository(f.tx)
+	}
+
+	return f.discoveryRepo
 }
 
 // NewTransactionManager is the constructor for gormTransactionManager.

@@ -8,12 +8,12 @@ import (
 	"slices"
 	"time"
 
-	deliverycontext "radar/internal/delivery/context"
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/policy"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
+	"radar/internal/platform/observability"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
@@ -68,7 +68,7 @@ func NewNotificationService(params NotificationServiceParams) usecase.Notificati
 
 // log returns a request-scoped logger if available, otherwise falls back to the service's logger.
 func (s *notificationService) log(ctx context.Context) *slog.Logger {
-	return deliverycontext.GetLoggerOrDefault(ctx, s.logger)
+	return observability.LoggerFromContextOrDefault(ctx, s.logger)
 }
 
 // PublishLocationNotification publishes a location notification to nearby subscribers
@@ -157,7 +157,7 @@ func (s *notificationService) publishAsync(
 
 	// Create and publish event
 	event := &service.NotificationEvent{
-		RequestID:      deliverycontext.GetRequestIDFromContext(ctx),
+		RequestID:      observability.CorrelationIDFromContext(ctx),
 		NotificationID: notification.ID.String(),
 		MerchantID:     merchantID.String(),
 		Latitude:       latitude,

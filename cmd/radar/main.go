@@ -17,6 +17,7 @@ import (
 	"radar/internal/infra/persistence/postgres"
 	"radar/internal/infra/pubsub"
 	"radar/internal/infra/qrcode"
+	"radar/internal/infra/routing/pmtiles"
 	"radar/internal/usecase/impl"
 
 	"go.uber.org/fx"
@@ -48,14 +49,13 @@ func main() {
 func injectInfra() fx.Option {
 	return fx.Provide(
 		config.New,
-		// Expose routing config as a separate dependency to satisfy RoutingUsecase
-		func(cfg *config.Config) *config.RoutingConfig {
-			if cfg == nil || cfg.Routing == nil {
-				// Provide an empty config to keep Fx wiring intact even if the section is missing
-				return &config.RoutingConfig{}
+		// Expose PMTiles config for notification routing fallback.
+		func(cfg *config.Config) *config.PMTilesConfig {
+			if cfg == nil || cfg.PMTiles == nil {
+				return &config.PMTilesConfig{}
 			}
 
-			return cfg.Routing
+			return cfg.PMTiles
 		},
 		logs.New,
 		context.Background,
@@ -90,6 +90,7 @@ func injectService() fx.Option {
 			notification.NewFirebaseService,
 			qrcode.NewQRCodeService,
 			pubsub.NewEventPublisher,
+			pmtiles.NewPMTilesRoutingService,
 		),
 	)
 }
@@ -106,7 +107,6 @@ func injectUsecase() fx.Option {
 			impl.NewDeviceService,
 			impl.NewSubscriptionService,
 			impl.NewNotificationService,
-			impl.NewRoutingService,
 		),
 	)
 }

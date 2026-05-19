@@ -31,7 +31,7 @@ func (srv *userService) checkLoginThrottle(ctx context.Context, email string) (*
 		return nil, err
 	}
 
-	userID, err := srv.resolveLoginAttemptUserID(ctx, attemptKey)
+	userID, err := srv.resolveLoginAttemptUserID(ctx, srv.authRepo, attemptKey)
 	if err != nil {
 		return nil, err
 	}
@@ -56,21 +56,30 @@ func (srv *userService) checkLoginThrottle(ctx context.Context, email string) (*
 
 func (srv *userService) recordLoginFailure(ctx context.Context, email string, userID *uuid.UUID) error {
 	attemptKey := entity.NormalizeEmail(email)
+	var attempt *entity.LoginAttempt
+	lockedBefore := false
 
-	attempt, err := srv.loginAttemptRepo.IncrementFailedCount(
-		ctx,
-		attemptKey,
-		srv.loginThrottleCfg.MaxAttempts,
-		srv.loginThrottlePolicy,
-	)
-	if err != nil {
-		if errors.Is(err, repository.ErrLoginAttemptLocked) && attempt != nil && attempt.LockedUntil != nil {
-			return &usecase.LockoutError{
-				RetryAfterSeconds: retryAfterSeconds(*attempt.LockedUntil),
-				Err:               domainerrors.ErrInvalidCredentials,
-			}
+	err := srv.txManager.Execute(ctx, func(repoFactory repository.RepositoryFactory) error {
+		loginAttemptRepo := repoFactory.LoginAttemptRepo()
+
+		var err error
+		attempt, err = loginAttemptRepo.FindOrCreateByAttemptKeyForUpdate(ctx, attemptKey, userID)
+		if err != nil {
+			return err
 		}
 
+		now := time.Now()
+		if isLoginAttemptLocked(attempt, now) {
+			lockedBefore = true
+
+			return nil
+		}
+
+		srv.applyLoginFailure(attempt, userID, now)
+
+		return loginAttemptRepo.Save(ctx, attempt)
+	})
+	if err != nil {
 		return err
 	}
 
@@ -78,7 +87,7 @@ func (srv *userService) recordLoginFailure(ctx context.Context, email string, us
 		return nil
 	}
 
-	if userID != nil {
+	if userID != nil && !lockedBefore {
 		srv.sendLockoutNotification(ctx, *userID, *attempt.LockedUntil)
 	}
 
@@ -90,6 +99,38 @@ func (srv *userService) recordLoginFailure(ctx context.Context, email string, us
 
 func (srv *userService) recordLoginSuccess(ctx context.Context, email string) error {
 	return srv.loginAttemptRepo.ResetOnSuccess(ctx, entity.NormalizeEmail(email))
+}
+
+func firstNonNilUUID(current, next *uuid.UUID) *uuid.UUID {
+	if current != nil {
+		return current
+	}
+
+	return next
+}
+
+func isLoginAttemptLocked(attempt *entity.LoginAttempt, now time.Time) bool {
+	return attempt.LockedUntil != nil && attempt.LockedUntil.After(now)
+}
+
+func (srv *userService) applyLoginFailure(attempt *entity.LoginAttempt, userID *uuid.UUID, now time.Time) {
+	attempt.UserID = firstNonNilUUID(attempt.UserID, userID)
+	attempt.LastFailedAt = &now
+	attempt.UpdatedAt = now
+
+	if attempt.FailedCount+1 < srv.loginThrottleCfg.MaxAttempts {
+		attempt.FailedCount++
+
+		return
+	}
+
+	lockoutMinutes := srv.loginThrottlePolicy.LockoutMinutes(attempt.LockoutCount)
+	lockedUntil := now.Add(time.Duration(lockoutMinutes) * time.Minute)
+
+	attempt.LockoutCount++
+	attempt.LockedUntil = &lockedUntil
+	attempt.LastLockoutAt = &now
+	attempt.FailedCount = 0
 }
 
 func (srv *userService) sendLockoutNotification(ctx context.Context, userID uuid.UUID, lockedUntil time.Time) {
@@ -179,8 +220,8 @@ func (srv *userService) sendTokenReuseNotification(ctx context.Context, userID u
 	}()
 }
 
-func (srv *userService) resolveLoginAttemptUserID(ctx context.Context, attemptKey string) (*uuid.UUID, error) {
-	authRecord, err := srv.authRepo.FindAuthentication(ctx, entity.ProviderTypeEmail, attemptKey)
+func (srv *userService) resolveLoginAttemptUserID(ctx context.Context, authRepo repository.AuthRepository, attemptKey string) (*uuid.UUID, error) {
+	authRecord, err := authRepo.FindAuthentication(ctx, entity.ProviderTypeEmail, attemptKey)
 	if err == nil {
 		return &authRecord.UserID, nil
 	}

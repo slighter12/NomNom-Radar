@@ -56,20 +56,20 @@ func (m *AuthMiddleware) Authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		authHeader := c.Request().Header.Get("Authorization")
 		if authHeader == "" {
-			return response.Unauthorized(c, "UNAUTHORIZED", "Authorization header is missing")
+			return response.AuthRequired(c)
 		}
 
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		if tokenString == authHeader {
-			return response.Unauthorized(c, "INVALID_TOKEN", "Invalid token format, must be Bearer token")
+			return response.InvalidToken(c)
 		}
 
 		claims, err := m.tokenSvc.ValidateToken(tokenString)
 		if err != nil {
-			return response.Unauthorized(c, "INVALID_TOKEN", "Invalid or expired token")
+			return response.InvalidToken(c)
 		}
 		if claims.Type != service.TokenTypeAccess {
-			return response.Unauthorized(c, "INVALID_TOKEN", "Invalid token type")
+			return response.InvalidToken(c)
 		}
 
 		// Extract user ID
@@ -93,11 +93,11 @@ func (m *AuthMiddleware) RequireRole(requiredRole entity.Role) echo.MiddlewareFu
 		return func(c echo.Context) error {
 			roles, ok := GetRoles(c)
 			if !ok {
-				return response.Forbidden(c, "FORBIDDEN", "Permission denied: role information missing")
+				return response.ForbiddenAccess(c)
 			}
 
 			if !roles.Contains(requiredRole) {
-				return response.Forbidden(c, "FORBIDDEN", "Permission denied: require '"+requiredRole.String()+"' role")
+				return response.ForbiddenAccess(c)
 			}
 
 			return next(c)

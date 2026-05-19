@@ -51,7 +51,7 @@ type ProcessQRRequest struct {
 func (h *SubscriptionHandler) SubscribeToMerchant(c echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	var req SubscribeRequest
@@ -71,7 +71,7 @@ func (h *SubscriptionHandler) SubscribeToMerchant(c echo.Context) error {
 func (h *SubscriptionHandler) UnsubscribeFromMerchant(c echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	merchantID, err := h.parseMerchantID(c)
@@ -90,7 +90,7 @@ func (h *SubscriptionHandler) UnsubscribeFromMerchant(c echo.Context) error {
 func (h *SubscriptionHandler) GetUserSubscriptions(c echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	subscriptions, err := h.subscriptionUC.GetUserSubscriptions(c.Request().Context(), userID)
@@ -105,7 +105,7 @@ func (h *SubscriptionHandler) GetUserSubscriptions(c echo.Context) error {
 func (h *SubscriptionHandler) GenerateSubscriptionQR(c echo.Context) error {
 	authenticatedMerchantID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	qrCode, err := h.subscriptionUC.GenerateSubscriptionQR(c.Request().Context(), authenticatedMerchantID)
@@ -124,7 +124,7 @@ func (h *SubscriptionHandler) GenerateSubscriptionQR(c echo.Context) error {
 func (h *SubscriptionHandler) ProcessQRSubscription(c echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	var req ProcessQRRequest

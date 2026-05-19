@@ -12,6 +12,7 @@ var (
 	ErrForbidden              = NewBaseError(http.StatusForbidden, "FORBIDDEN", "存取被拒絕", "")
 	ErrForbiddenResourceOwner = NewBaseError(http.StatusForbidden, "FORBIDDEN_RESOURCE_OWNER", "您沒有權限存取此資源", "")
 	ErrUnauthorized           = NewBaseError(http.StatusUnauthorized, "UNAUTHORIZED", "未授權的操作", "")
+	ErrInvalidToken           = NewBaseError(http.StatusUnauthorized, "INVALID_TOKEN", "無效或已過期的權杖", "")
 	ErrNotFound               = NewBaseError(http.StatusNotFound, "NOT_FOUND", "找不到資源", "")
 	ErrConflict               = NewBaseError(http.StatusConflict, "CONFLICT", "資源衝突", "")
 	ErrForbiddenHost          = NewBaseError(http.StatusForbidden, "FORBIDDEN_HOST", "不允許的網域", "")

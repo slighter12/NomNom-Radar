@@ -12,7 +12,6 @@ import (
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
-	"radar/internal/domain/policy"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
 	"radar/internal/usecase"
@@ -355,8 +354,12 @@ func (r *sessionLimitTestLoginAttemptRepo) FindOrCreateByAttemptKey(_ context.Co
 	}, nil
 }
 
-func (r *sessionLimitTestLoginAttemptRepo) IncrementFailedCount(_ context.Context, attemptKey string, _ int, _ policy.LoginThrottlePolicy) (*entity.LoginAttempt, error) {
+func (r *sessionLimitTestLoginAttemptRepo) FindOrCreateByAttemptKeyForUpdate(_ context.Context, attemptKey string, userID *uuid.UUID) (*entity.LoginAttempt, error) {
 	return &entity.LoginAttempt{AttemptKey: attemptKey, FailedCount: 1}, nil
+}
+
+func (r *sessionLimitTestLoginAttemptRepo) Save(_ context.Context, _ *entity.LoginAttempt) error {
+	return nil
 }
 
 func (r *sessionLimitTestLoginAttemptRepo) ResetOnSuccess(_ context.Context, _ string) error {

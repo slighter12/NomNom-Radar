@@ -3,7 +3,7 @@ package middleware
 import (
 	"log/slog"
 
-	deliverycontext "radar/internal/delivery/context"
+	"radar/internal/platform/observability"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -25,26 +25,23 @@ func NewRequestIDMiddleware(logger *slog.Logger) *RequestIDMiddleware {
 func (m *RequestIDMiddleware) Process(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		// Attempt to get Request ID from request headers
-		requestID := c.Request().Header.Get(deliverycontext.HeaderXRequestID)
+		requestID := c.Request().Header.Get(observability.HeaderXRequestID)
 
 		// Generate a new Request ID if not provided by the client
 		if requestID == "" {
 			requestID = uuid.New().String()
 		}
 
-		// Store Request ID in echo.Context for response use
-		deliverycontext.SetRequestID(c, requestID)
-
 		// Add Request ID to response headers
-		c.Response().Header().Set(deliverycontext.HeaderXRequestID, requestID)
+		c.Response().Header().Set(observability.HeaderXRequestID, requestID)
 
 		// Create a child logger with requestID
 		reqLogger := m.logger.With(slog.String("request_id", requestID))
 
 		// Store requestID and logger in context.Context for service layer use
 		ctx := c.Request().Context()
-		ctx = deliverycontext.WithRequestID(ctx, requestID)
-		ctx = deliverycontext.WithLogger(ctx, reqLogger)
+		ctx = observability.WithCorrelationID(ctx, requestID)
+		ctx = observability.WithLogger(ctx, reqLogger)
 		c.SetRequest(c.Request().WithContext(ctx))
 
 		return next(c)

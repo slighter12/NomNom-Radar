@@ -83,9 +83,6 @@ type Config struct {
 	// QRCode configuration for subscription QR codes
 	QRCode *QRCodeConfig `json:"qrcode" yaml:"qrcode"`
 
-	// Routing configuration for the routing engine
-	Routing *RoutingConfig `json:"routing" yaml:"routing"`
-
 	// PubSub configuration for event publishing
 	PubSub *PubSubConfig `json:"pubsub" yaml:"pubsub"`
 
@@ -165,33 +162,6 @@ type QRCodeConfig struct {
 	ErrorCorrectionLevel string `json:"errorCorrectionLevel" yaml:"errorCorrectionLevel"`
 }
 
-// RoutingConfig defines routing engine configuration
-type RoutingConfig struct {
-	// Maximum distance in meters for GPS coordinate snapping to road network
-	MaxSnapDistanceM float64 `json:"maxSnapDistanceM" yaml:"maxSnapDistanceM"`
-
-	// Default vehicle speed in km/h for duration estimation when routing data is unavailable
-	DefaultSpeedKmh float64 `json:"defaultSpeedKmh" yaml:"defaultSpeedKmh"`
-
-	// Path to routing data directory containing CH graph files
-	DataPath string `json:"dataPath" yaml:"dataPath"`
-
-	// Enable routing engine (set to false to use Haversine fallback only)
-	Enabled bool `json:"enabled" yaml:"enabled"`
-
-	// Maximum query radius in meters for One-to-Many queries
-	MaxQueryRadiusM float64 `json:"maxQueryRadiusM" yaml:"maxQueryRadiusM"`
-
-	// Number of concurrent workers for One-to-Many queries
-	OneToManyWorkers int `json:"oneToManyWorkers" yaml:"oneToManyWorkers"`
-
-	// Haversine pre-filter radius multiplier (e.g., 1.3 = filter targets beyond 1.3x max radius)
-	PreFilterRadiusMultiplier float64 `json:"preFilterRadiusMultiplier" yaml:"preFilterRadiusMultiplier"`
-
-	// Grid cell size in kilometers for spatial index
-	GridCellSizeKm float64 `json:"gridCellSizeKm" yaml:"gridCellSizeKm"`
-}
-
 // PubSubConfig defines Pub/Sub configuration for event publishing
 type PubSubConfig struct {
 	// Provider type: "local" for local HTTP or "google" for Google Pub/Sub
@@ -207,7 +177,7 @@ type PubSubConfig struct {
 	LocalEndpoint string `json:"localEndpoint" yaml:"localEndpoint"`
 }
 
-// PMTilesConfig defines PMTiles routing configuration
+// PMTilesConfig defines PMTiles routing configuration for notification runtime routing.
 type PMTilesConfig struct {
 	// Enable PMTiles-based routing
 	Enabled bool `json:"enabled" yaml:"enabled"`

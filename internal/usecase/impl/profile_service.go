@@ -7,20 +7,17 @@ import (
 	"strings"
 	"time"
 
-	deliverycontext "radar/internal/delivery/context"
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
+	"radar/internal/platform/observability"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"go.uber.org/fx"
 )
 
 // profileService implements the ProfileUsecase interface.
 type profileService struct {
-	fx.In
-
 	txManager repository.TransactionManager
 	logger    *slog.Logger
 }
@@ -38,7 +35,7 @@ func NewProfileService(
 
 // log returns a request-scoped logger if available, otherwise falls back to the service's logger.
 func (srv *profileService) log(ctx context.Context) *slog.Logger {
-	return deliverycontext.GetLoggerOrDefault(ctx, srv.logger)
+	return observability.LoggerFromContextOrDefault(ctx, srv.logger)
 }
 
 // GetProfile retrieves the complete user profile including role-specific data.
