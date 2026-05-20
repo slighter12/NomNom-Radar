@@ -42,7 +42,7 @@ func (m *ErrorMiddleware) HandleHTTPError(err error, c echo.Context) {
 
 	// Check if it is an Echo HTTPError
 	if httpErr, ok := errors.AsType[*echo.HTTPError](err); ok {
-		_ = response.Error(c, httpErr.Code, "HTTP_ERROR", fallbackHTTPErrorMessage(httpErr.Code), nil)
+		_ = response.AppError(c, httpErrorAppError(httpErr.Code))
 
 		return
 	}
@@ -69,23 +69,31 @@ func (m *ErrorMiddleware) HandleErrors(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
-func fallbackHTTPErrorMessage(statusCode int) string {
+func httpErrorAppError(statusCode int) domainerrors.AppError {
 	switch statusCode {
 	case 400:
-		return domainerrors.ErrInvalidInput.Message()
+		return domainerrors.ErrInvalidInput
 	case 401:
-		return domainerrors.ErrUnauthorized.Message()
+		return domainerrors.ErrUnauthorized
 	case 403:
-		return domainerrors.ErrForbidden.Message()
+		return domainerrors.ErrForbidden
 	case 404:
-		return domainerrors.ErrNotFound.Message()
+		return domainerrors.ErrNotFound
 	case 409:
-		return domainerrors.ErrConflict.Message()
+		return domainerrors.ErrConflict
 	default:
 		if statusCode >= 500 {
-			return domainerrors.ErrInternalError.Message()
+			return domainerrors.ErrInternalError
+		}
+		if statusCode < 400 {
+			return domainerrors.ErrInternalError
 		}
 
-		return "請求處理失敗"
+		return domainerrors.NewBaseError(
+			statusCode,
+			domainerrors.ErrRequestFailed.ErrorCode(),
+			domainerrors.ErrRequestFailed.Message(),
+			"",
+		)
 	}
 }

@@ -79,6 +79,57 @@ func TestErrorMiddleware_HandleHTTPError_IgnoresHandledResponseSentinel(t *testi
 	assert.Empty(t, rec.Body.String())
 }
 
+func TestErrorMiddleware_HandleHTTPError_MapsEchoHTTPErrorToCanonicalAppError(t *testing.T) {
+	testCases := []struct {
+		name        string
+		statusCode  int
+		wantCode    string
+		wantMessage string
+	}{
+		{
+			name:        "bad_request",
+			statusCode:  http.StatusBadRequest,
+			wantCode:    domainerrors.ErrInvalidInput.ErrorCode(),
+			wantMessage: domainerrors.ErrInvalidInput.Message(),
+		},
+		{
+			name:        "not_found",
+			statusCode:  http.StatusNotFound,
+			wantCode:    domainerrors.ErrNotFound.ErrorCode(),
+			wantMessage: domainerrors.ErrNotFound.Message(),
+		},
+		{
+			name:        "unmapped_client_error",
+			statusCode:  http.StatusTeapot,
+			wantCode:    domainerrors.ErrRequestFailed.ErrorCode(),
+			wantMessage: domainerrors.ErrRequestFailed.Message(),
+		},
+		{
+			name:        "server_error",
+			statusCode:  http.StatusInternalServerError,
+			wantCode:    domainerrors.ErrInternalError.ErrorCode(),
+			wantMessage: domainerrors.ErrInternalError.Message(),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			e := echo.New()
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+			middleware := NewErrorMiddleware(slog.Default())
+
+			middleware.HandleHTTPError(echo.NewHTTPError(tc.statusCode, "echo detail should not leak"), c)
+
+			resp := decodeMiddlewareErrorResponse(t, rec)
+			assert.Equal(t, tc.statusCode, rec.Code)
+			assert.Equal(t, tc.wantCode, resp.Error.Code)
+			assert.Equal(t, tc.wantMessage, resp.Error.Message)
+		})
+	}
+}
+
 func TestErrorMiddleware_HandleHTTPError_LogsSanitizedRequestAndResponseError(t *testing.T) {
 	e := echo.New()
 	body := strings.NewReader(`{
@@ -486,4 +537,14 @@ func decodeLogRecord(t *testing.T, output string) map[string]any {
 	require.NoError(t, json.Unmarshal([]byte(output), &record))
 
 	return record
+}
+
+func decodeMiddlewareErrorResponse(t *testing.T, rec *httptest.ResponseRecorder) response.ErrorResponse {
+	t.Helper()
+
+	var resp response.ErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Error)
+
+	return resp
 }

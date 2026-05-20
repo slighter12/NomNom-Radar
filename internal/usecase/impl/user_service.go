@@ -35,7 +35,7 @@ type userService struct {
 	googleAuthService   service.OAuthAuthService
 	notificationSvc     service.NotificationService
 	maxActiveSessions   int
-	loginThrottleCfg    *config.LoginThrottleConfig
+	loginThrottleCfg    config.LoginThrottleConfig
 	loginThrottlePolicy policy.LoginThrottlePolicy
 	notificationTimeout time.Duration
 	logger              *slog.Logger
@@ -79,7 +79,7 @@ func NewUserService(params UserServiceParams) usecase.UserUsecase {
 	config.ApplyDefaults(cfg)
 
 	maxActiveSessions := cfg.Auth.MaxActiveSessions
-	loginThrottleCfg := cfg.LoginThrottle
+	loginThrottleCfg := *cfg.LoginThrottle
 	notificationTimeout := cfg.Notification.Timeout
 
 	return &userService{
