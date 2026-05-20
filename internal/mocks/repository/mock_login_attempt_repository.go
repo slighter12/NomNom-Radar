@@ -7,7 +7,6 @@ package repository
 import (
 	"context"
 	"radar/internal/domain/entity"
-	"radar/internal/domain/policy"
 
 	"github.com/google/uuid"
 	mock "github.com/stretchr/testify/mock"
@@ -171,49 +170,48 @@ func (_c *MockLoginAttemptRepository_FindOrCreateByAttemptKey_Call) RunAndReturn
 	return _c
 }
 
-// IncrementFailedCount provides a mock function for the type MockLoginAttemptRepository
-func (_mock *MockLoginAttemptRepository) IncrementFailedCount(ctx context.Context, attemptKey string, maxAttempts int, lockoutPolicy policy.LoginThrottlePolicy) (*entity.LoginAttempt, error) {
-	ret := _mock.Called(ctx, attemptKey, maxAttempts, lockoutPolicy)
+// FindOrCreateByAttemptKeyForUpdate provides a mock function for the type MockLoginAttemptRepository
+func (_mock *MockLoginAttemptRepository) FindOrCreateByAttemptKeyForUpdate(ctx context.Context, attemptKey string, userID *uuid.UUID) (*entity.LoginAttempt, error) {
+	ret := _mock.Called(ctx, attemptKey, userID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for IncrementFailedCount")
+		panic("no return value specified for FindOrCreateByAttemptKeyForUpdate")
 	}
 
 	var r0 *entity.LoginAttempt
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, policy.LoginThrottlePolicy) (*entity.LoginAttempt, error)); ok {
-		return returnFunc(ctx, attemptKey, maxAttempts, lockoutPolicy)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *uuid.UUID) (*entity.LoginAttempt, error)); ok {
+		return returnFunc(ctx, attemptKey, userID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, policy.LoginThrottlePolicy) *entity.LoginAttempt); ok {
-		r0 = returnFunc(ctx, attemptKey, maxAttempts, lockoutPolicy)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *uuid.UUID) *entity.LoginAttempt); ok {
+		r0 = returnFunc(ctx, attemptKey, userID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*entity.LoginAttempt)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, policy.LoginThrottlePolicy) error); ok {
-		r1 = returnFunc(ctx, attemptKey, maxAttempts, lockoutPolicy)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *uuid.UUID) error); ok {
+		r1 = returnFunc(ctx, attemptKey, userID)
 	} else {
 		r1 = ret.Error(1)
 	}
 	return r0, r1
 }
 
-// MockLoginAttemptRepository_IncrementFailedCount_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IncrementFailedCount'
-type MockLoginAttemptRepository_IncrementFailedCount_Call struct {
+// MockLoginAttemptRepository_FindOrCreateByAttemptKeyForUpdate_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FindOrCreateByAttemptKeyForUpdate'
+type MockLoginAttemptRepository_FindOrCreateByAttemptKeyForUpdate_Call struct {
 	*mock.Call
 }
 
-// IncrementFailedCount is a helper method to define mock.On call
+// FindOrCreateByAttemptKeyForUpdate is a helper method to define mock.On call
 //   - ctx context.Context
 //   - attemptKey string
-//   - maxAttempts int
-//   - lockoutPolicy policy.LoginThrottlePolicy
-func (_e *MockLoginAttemptRepository_Expecter) IncrementFailedCount(ctx interface{}, attemptKey interface{}, maxAttempts interface{}, lockoutPolicy interface{}) *MockLoginAttemptRepository_IncrementFailedCount_Call {
-	return &MockLoginAttemptRepository_IncrementFailedCount_Call{Call: _e.mock.On("IncrementFailedCount", ctx, attemptKey, maxAttempts, lockoutPolicy)}
+//   - userID *uuid.UUID
+func (_e *MockLoginAttemptRepository_Expecter) FindOrCreateByAttemptKeyForUpdate(ctx interface{}, attemptKey interface{}, userID interface{}) *MockLoginAttemptRepository_FindOrCreateByAttemptKeyForUpdate_Call {
+	return &MockLoginAttemptRepository_FindOrCreateByAttemptKeyForUpdate_Call{Call: _e.mock.On("FindOrCreateByAttemptKeyForUpdate", ctx, attemptKey, userID)}
 }
 
-func (_c *MockLoginAttemptRepository_IncrementFailedCount_Call) Run(run func(ctx context.Context, attemptKey string, maxAttempts int, lockoutPolicy policy.LoginThrottlePolicy)) *MockLoginAttemptRepository_IncrementFailedCount_Call {
+func (_c *MockLoginAttemptRepository_FindOrCreateByAttemptKeyForUpdate_Call) Run(run func(ctx context.Context, attemptKey string, userID *uuid.UUID)) *MockLoginAttemptRepository_FindOrCreateByAttemptKeyForUpdate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -223,30 +221,25 @@ func (_c *MockLoginAttemptRepository_IncrementFailedCount_Call) Run(run func(ctx
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 int
+		var arg2 *uuid.UUID
 		if args[2] != nil {
-			arg2 = args[2].(int)
-		}
-		var arg3 policy.LoginThrottlePolicy
-		if args[3] != nil {
-			arg3 = args[3].(policy.LoginThrottlePolicy)
+			arg2 = args[2].(*uuid.UUID)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
-			arg3,
 		)
 	})
 	return _c
 }
 
-func (_c *MockLoginAttemptRepository_IncrementFailedCount_Call) Return(loginAttempt *entity.LoginAttempt, err error) *MockLoginAttemptRepository_IncrementFailedCount_Call {
+func (_c *MockLoginAttemptRepository_FindOrCreateByAttemptKeyForUpdate_Call) Return(loginAttempt *entity.LoginAttempt, err error) *MockLoginAttemptRepository_FindOrCreateByAttemptKeyForUpdate_Call {
 	_c.Call.Return(loginAttempt, err)
 	return _c
 }
 
-func (_c *MockLoginAttemptRepository_IncrementFailedCount_Call) RunAndReturn(run func(ctx context.Context, attemptKey string, maxAttempts int, lockoutPolicy policy.LoginThrottlePolicy) (*entity.LoginAttempt, error)) *MockLoginAttemptRepository_IncrementFailedCount_Call {
+func (_c *MockLoginAttemptRepository_FindOrCreateByAttemptKeyForUpdate_Call) RunAndReturn(run func(ctx context.Context, attemptKey string, userID *uuid.UUID) (*entity.LoginAttempt, error)) *MockLoginAttemptRepository_FindOrCreateByAttemptKeyForUpdate_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -367,6 +360,63 @@ func (_c *MockLoginAttemptRepository_ResetOnSuccess_Call) Return(err error) *Moc
 }
 
 func (_c *MockLoginAttemptRepository_ResetOnSuccess_Call) RunAndReturn(run func(ctx context.Context, attemptKey string) error) *MockLoginAttemptRepository_ResetOnSuccess_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Save provides a mock function for the type MockLoginAttemptRepository
+func (_mock *MockLoginAttemptRepository) Save(ctx context.Context, attempt *entity.LoginAttempt) error {
+	ret := _mock.Called(ctx, attempt)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Save")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *entity.LoginAttempt) error); ok {
+		r0 = returnFunc(ctx, attempt)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockLoginAttemptRepository_Save_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Save'
+type MockLoginAttemptRepository_Save_Call struct {
+	*mock.Call
+}
+
+// Save is a helper method to define mock.On call
+//   - ctx context.Context
+//   - attempt *entity.LoginAttempt
+func (_e *MockLoginAttemptRepository_Expecter) Save(ctx interface{}, attempt interface{}) *MockLoginAttemptRepository_Save_Call {
+	return &MockLoginAttemptRepository_Save_Call{Call: _e.mock.On("Save", ctx, attempt)}
+}
+
+func (_c *MockLoginAttemptRepository_Save_Call) Run(run func(ctx context.Context, attempt *entity.LoginAttempt)) *MockLoginAttemptRepository_Save_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *entity.LoginAttempt
+		if args[1] != nil {
+			arg1 = args[1].(*entity.LoginAttempt)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockLoginAttemptRepository_Save_Call) Return(err error) *MockLoginAttemptRepository_Save_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockLoginAttemptRepository_Save_Call) RunAndReturn(run func(ctx context.Context, attempt *entity.LoginAttempt) error) *MockLoginAttemptRepository_Save_Call {
 	_c.Call.Return(run)
 	return _c
 }

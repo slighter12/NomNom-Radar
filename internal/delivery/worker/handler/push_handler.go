@@ -11,11 +11,11 @@ import (
 	"slices"
 	"time"
 
-	deliverycontext "radar/internal/delivery/context"
 	"radar/internal/domain/entity"
 	"radar/internal/domain/policy"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
+	"radar/internal/platform/observability"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
@@ -129,8 +129,8 @@ func (h *PushHandler) HandlePush(c echo.Context) error {
 	reqLogger := h.logger.With(slog.String("request_id", requestID))
 
 	// Update context with requestID and logger
-	ctx = deliverycontext.WithRequestID(ctx, requestID)
-	ctx = deliverycontext.WithLogger(ctx, reqLogger)
+	ctx = observability.WithCorrelationID(ctx, requestID)
+	ctx = observability.WithLogger(ctx, reqLogger)
 
 	reqLogger.Info("[Worker] Processing notification event",
 		slog.String("notification_id", event.NotificationID),
@@ -174,7 +174,7 @@ func (h *PushHandler) extractRequestID(ctx context.Context, pushMsg *PubSubMessa
 	}
 
 	// 3. Try existing context (from RequestIDMiddleware via X-Request-Id header)
-	if requestID := deliverycontext.GetRequestIDFromContext(ctx); requestID != "" {
+	if requestID := observability.CorrelationIDFromContext(ctx); requestID != "" {
 		return requestID
 	}
 

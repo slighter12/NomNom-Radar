@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"radar/config"
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
-	"radar/internal/domain/policy"
 	"radar/internal/domain/repository"
 	mockRepo "radar/internal/mocks/repository"
 	mockSvc "radar/internal/mocks/service"
@@ -78,6 +78,33 @@ func createTestUserService(t *testing.T) *userServiceFixtures {
 		tokenService:      tokenService,
 		googleAuthService: googleAuthService,
 		notificationSvc:   notificationSvc,
+	}
+}
+
+func TestNewUserService_UsesLoginThrottleDefaultsWhenConfigIsMissing(t *testing.T) {
+	testCases := []struct {
+		name string
+		cfg  *config.Config
+	}{
+		{
+			name: "nil_config",
+		},
+		{
+			name: "nil_login_throttle_config",
+			cfg:  &config.Config{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			service, ok := NewUserService(UserServiceParams{
+				Config: tc.cfg,
+				Logger: newDiscardLogger(),
+			}).(*userService)
+			require.True(t, ok)
+
+			assert.Equal(t, config.DefaultLoginThrottleConfig(), service.loginThrottleCfg)
+		})
 	}
 }
 
@@ -270,9 +297,27 @@ func TestUserService_Login_InvalidCredentials_DoesNotLoadUser(t *testing.T) {
 		Check(input.Password, authRecord.PasswordHash).
 		Return(false).
 		Once()
-	fx.loginAttemptRepo.EXPECT().
-		IncrementFailedCount(ctx, attemptKey, 5, policy.DefaultLoginThrottlePolicy()).
-		Return(&entity.LoginAttempt{AttemptKey: attemptKey, UserID: &userID, FailedCount: 1}, nil).
+
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockFactory.EXPECT().LoginAttemptRepo().Return(fx.loginAttemptRepo)
+			fx.loginAttemptRepo.EXPECT().
+				FindOrCreateByAttemptKeyForUpdate(ctx, attemptKey, &userID).
+				Return(&entity.LoginAttempt{AttemptKey: attemptKey, UserID: &userID}, nil)
+			fx.loginAttemptRepo.EXPECT().
+				Save(ctx, mock.MatchedBy(func(attempt *entity.LoginAttempt) bool {
+					return attempt.AttemptKey == attemptKey &&
+						attempt.UserID != nil &&
+						*attempt.UserID == userID &&
+						attempt.FailedCount == 1 &&
+						attempt.LockedUntil == nil
+				})).
+				Return(nil)
+
+			return fn(mockFactory)
+		}).
 		Once()
 
 	output, err := fx.service.Login(ctx, input)
@@ -280,7 +325,7 @@ func TestUserService_Login_InvalidCredentials_DoesNotLoadUser(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, output)
 	assert.True(t, errors.Is(err, domainerrors.ErrInvalidCredentials))
-	fx.txManager.AssertNumberOfCalls(t, "Execute", 1)
+	fx.txManager.AssertNumberOfCalls(t, "Execute", 2)
 	fx.tokenService.AssertNotCalled(t, "GenerateTokens", mock.Anything, mock.Anything)
 	fx.refreshTokenRepo.AssertNotCalled(t, "CreateRefreshToken", mock.Anything, mock.Anything)
 }
@@ -294,7 +339,6 @@ func TestUserService_Login_LockoutTriggerReturnsLockoutError(t *testing.T) {
 		Password: "wrong-password",
 	}
 	attemptKey := entity.NormalizeEmail(input.Email)
-	lockedUntil := time.Now().Add(15 * time.Minute)
 
 	fx.loginAttemptRepo.EXPECT().
 		DecayLockoutCounts(ctx, 7).
@@ -325,13 +369,29 @@ func TestUserService_Login_LockoutTriggerReturnsLockoutError(t *testing.T) {
 		}).
 		Once()
 
-	fx.loginAttemptRepo.EXPECT().
-		IncrementFailedCount(ctx, attemptKey, 5, policy.DefaultLoginThrottlePolicy()).
-		Return(&entity.LoginAttempt{
-			AttemptKey:  attemptKey,
-			LockedUntil: &lockedUntil,
-			FailedCount: 0,
-		}, nil).
+	fx.txManager.EXPECT().
+		Execute(ctx, mock.AnythingOfType("func(repository.RepositoryFactory) error")).
+		RunAndReturn(func(ctx context.Context, fn func(repository.RepositoryFactory) error) error {
+			mockFactory := mockRepo.NewMockRepositoryFactory(t)
+			mockFactory.EXPECT().LoginAttemptRepo().Return(fx.loginAttemptRepo)
+			fx.loginAttemptRepo.EXPECT().
+				FindOrCreateByAttemptKeyForUpdate(ctx, attemptKey, (*uuid.UUID)(nil)).
+				Return(&entity.LoginAttempt{AttemptKey: attemptKey, FailedCount: 4}, nil)
+			fx.loginAttemptRepo.EXPECT().
+				Save(ctx, mock.MatchedBy(func(attempt *entity.LoginAttempt) bool {
+					if attempt.LockedUntil == nil {
+						return false
+					}
+
+					return attempt.AttemptKey == attemptKey &&
+						attempt.FailedCount == 0 &&
+						attempt.LockoutCount == 1 &&
+						attempt.LastLockoutAt != nil
+				})).
+				Return(nil)
+
+			return fn(mockFactory)
+		}).
 		Once()
 
 	output, err := fx.service.Login(ctx, input)

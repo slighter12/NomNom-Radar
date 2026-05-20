@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"radar/config"
-	deliverycontext "radar/internal/delivery/context"
 	"radar/internal/domain/entity"
 	"radar/internal/domain/service"
+	"radar/internal/platform/observability"
 
 	"google.golang.org/api/idtoken"
 )
@@ -38,7 +38,7 @@ func NewOAuthService(cfg *config.Config, logger *slog.Logger) (service.OAuthAuth
 
 // log returns a request-scoped logger if available, otherwise falls back to the service's logger.
 func (s *OAuthService) log(ctx context.Context) *slog.Logger {
-	return deliverycontext.GetLoggerOrDefault(ctx, s.logger)
+	return observability.LoggerFromContextOrDefault(ctx, s.logger)
 }
 
 // VerifyIDToken implements service.OAuthAuthService interface

@@ -12,6 +12,7 @@ import (
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/policy"
 	"radar/internal/domain/service"
+	"radar/internal/infra/routing/pmtiles"
 	mockRepo "radar/internal/mocks/repository"
 	mockSvc "radar/internal/mocks/service"
 	"radar/internal/usecase"
@@ -36,6 +37,26 @@ type fallbackEventPublisher struct {
 	err error
 }
 
+type failingRoutingService struct {
+	err error
+}
+
+func (s *failingRoutingService) OneToMany(context.Context, usecase.Coordinate, []usecase.Coordinate) (*usecase.OneToManyResult, error) {
+	return nil, s.err
+}
+
+func (s *failingRoutingService) FindNearestNode(context.Context, usecase.Coordinate) (*usecase.NodeInfo, bool, error) {
+	return nil, false, s.err
+}
+
+func (s *failingRoutingService) CalculateDistance(context.Context, usecase.Coordinate, usecase.Coordinate) (*usecase.RouteResult, error) {
+	return nil, s.err
+}
+
+func (s *failingRoutingService) IsReady() bool {
+	return false
+}
+
 func (p *fallbackEventPublisher) PublishNotificationEvent(ctx context.Context, event *service.NotificationEvent) error {
 	return p.err
 }
@@ -45,6 +66,20 @@ func (p *fallbackEventPublisher) Close() error {
 }
 
 func createTestNotificationService(t *testing.T) notificationServiceFixtures {
+	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	routingSvc, err := pmtiles.NewPMTilesRoutingService(pmtiles.PMTilesServiceParams{
+		Config: &config.PMTilesConfig{
+			Enabled: false, // Disabled to use PMTiles Haversine fallback
+		},
+		Logger: logger,
+	})
+	require.NoError(t, err)
+
+	return createTestNotificationServiceWithRouting(t, routingSvc)
+}
+
+func createTestNotificationServiceWithRouting(t *testing.T, routingSvc usecase.RoutingUsecase) notificationServiceFixtures {
 	notificationRepo := mockRepo.NewMockNotificationRepository(t)
 	subscriptionRepo := mockRepo.NewMockSubscriptionRepository(t)
 	deviceRepo := mockRepo.NewMockDeviceRepository(t)
@@ -52,16 +87,6 @@ func createTestNotificationService(t *testing.T) notificationServiceFixtures {
 	notificationSvc := mockSvc.NewMockNotificationService(t)
 	eventPublisher := &fallbackEventPublisher{err: errors.New("pubsub unavailable")}
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug}))
-
-	routingSvc := NewRoutingService(RoutingServiceParams{
-		Config: &config.RoutingConfig{
-			MaxSnapDistanceM: 1000.0,
-			DefaultSpeedKmh:  10.0,
-			DataPath:         "./data/routing",
-			Enabled:          false, // Disabled to use Haversine fallback
-		},
-		Logger: nil,
-	})
 
 	service := NewNotificationService(NotificationServiceParams{
 		Logger:           logger,
@@ -147,11 +172,9 @@ func TestNotificationService_PublishLocationNotification_NoSubscribers(t *testin
 }
 
 func TestNotificationService_PublishLocationNotification_RoutingFailure(t *testing.T) {
-	fx := createTestNotificationService(t)
+	fx := createTestNotificationServiceWithRouting(t, &failingRoutingService{err: errors.New("routing unavailable")})
 
-	// Use a canceled context to trigger routing failure
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately to trigger routing error
+	ctx := context.Background()
 
 	merchantID := uuid.New()
 	locationData := &usecase.LocationData{Latitude: 25.0, Longitude: 121.0}

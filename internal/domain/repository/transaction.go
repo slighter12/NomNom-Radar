@@ -11,8 +11,9 @@ type TransactionManager interface {
 	Execute(ctx context.Context, fn func(txRepoFactory RepositoryFactory) error) error
 }
 
-// RepositoryFactory provides a way to get repository instances that are bound to a specific transaction.
-// This ensures all repository operations within a transaction use the same database connection.
+// RepositoryFactory is a transaction-scoped Unit of Work.
+// Accessors return repositories bound to the same database transaction and
+// should reuse the same repository instances for the lifetime of Execute.
 type RepositoryFactory interface {
 	// UserRepo returns a UserRepo instance bound to the current transaction.
 	UserRepo() UserRepository

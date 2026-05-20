@@ -57,7 +57,7 @@ type NotificationHistoryQueryParams struct {
 func (h *NotificationHandler) PublishLocationNotification(c echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	var req PublishNotificationRequest
@@ -126,7 +126,7 @@ func (h *NotificationHandler) validateLocationData(data *usecase.LocationData) e
 func (h *NotificationHandler) GetMerchantNotificationHistory(c echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	query, err := h.parseNotificationHistoryQueryParams(c)

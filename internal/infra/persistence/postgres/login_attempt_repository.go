@@ -7,7 +7,6 @@ import (
 
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
-	"radar/internal/domain/policy"
 	"radar/internal/domain/repository"
 	"radar/internal/infra/persistence/model"
 	"radar/internal/infra/persistence/postgres/query"
@@ -32,6 +31,23 @@ func (repo *loginAttemptRepository) FindOrCreateByAttemptKey(
 	attemptKey string,
 	userID *uuid.UUID,
 ) (*entity.LoginAttempt, error) {
+	return repo.findOrCreateByAttemptKey(ctx, attemptKey, userID, false)
+}
+
+func (repo *loginAttemptRepository) FindOrCreateByAttemptKeyForUpdate(
+	ctx context.Context,
+	attemptKey string,
+	userID *uuid.UUID,
+) (*entity.LoginAttempt, error) {
+	return repo.findOrCreateByAttemptKey(ctx, attemptKey, userID, true)
+}
+
+func (repo *loginAttemptRepository) findOrCreateByAttemptKey(
+	ctx context.Context,
+	attemptKey string,
+	userID *uuid.UUID,
+	forUpdate bool,
+) (*entity.LoginAttempt, error) {
 	if err := repo.q.LoginAttemptModel.WithContext(ctx).
 		Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "attempt_key"}},
@@ -44,9 +60,12 @@ func (repo *loginAttemptRepository) FindOrCreateByAttemptKey(
 		return nil, domainerrors.ErrPersistenceFailed
 	}
 
-	attemptModel, err := repo.q.LoginAttemptModel.WithContext(ctx).
-		Where(repo.q.LoginAttemptModel.AttemptKey.Eq(attemptKey)).
-		Take()
+	queryDo := repo.q.LoginAttemptModel.WithContext(ctx)
+	if forUpdate {
+		queryDo = queryDo.Clauses(clause.Locking{Strength: rowLockStrengthUpdate})
+	}
+
+	attemptModel, err := queryDo.Where(repo.q.LoginAttemptModel.AttemptKey.Eq(attemptKey)).Take()
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, domainerrors.ErrPersistenceFailed
@@ -58,65 +77,12 @@ func (repo *loginAttemptRepository) FindOrCreateByAttemptKey(
 	return toLoginAttemptDomain(attemptModel), nil
 }
 
-func (repo *loginAttemptRepository) IncrementFailedCount(
-	ctx context.Context,
-	attemptKey string,
-	maxAttempts int,
-	lockoutPolicy policy.LoginThrottlePolicy,
-) (*entity.LoginAttempt, error) {
-	var updated *model.LoginAttemptModel
-	err := repo.q.Transaction(func(transactionQuery *query.Query) error {
-		attemptModel, err := transactionQuery.LoginAttemptModel.WithContext(ctx).
-			Clauses(clause.Locking{Strength: rowLockStrengthUpdate}).
-			Where(transactionQuery.LoginAttemptModel.AttemptKey.Eq(attemptKey)).
-			Take()
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return domainerrors.ErrPersistenceFailed
-			}
-
-			return domainerrors.ErrPersistenceFailed
-		}
-
-		now := time.Now()
-		if attemptModel.LockedUntil != nil && attemptModel.LockedUntil.After(now) {
-			updated = attemptModel
-
-			return repository.ErrLoginAttemptLocked
-		}
-
-		attemptModel.LastFailedAt = &now
-		attemptModel.UpdatedAt = now
-
-		if attemptModel.FailedCount+1 >= maxAttempts {
-			lockoutMinutes := lockoutPolicy.LockoutMinutes(attemptModel.LockoutCount)
-			lockedUntil := now.Add(time.Duration(lockoutMinutes) * time.Minute)
-
-			attemptModel.LockoutCount++
-			attemptModel.LockedUntil = &lockedUntil
-			attemptModel.LastLockoutAt = &now
-			attemptModel.FailedCount = 0
-		} else {
-			attemptModel.FailedCount++
-		}
-
-		if err := transactionQuery.LoginAttemptModel.WithContext(ctx).Save(attemptModel); err != nil {
-			return domainerrors.ErrPersistenceFailed
-		}
-
-		updated = attemptModel
-
-		return nil
-	})
-	if err != nil {
-		if errors.Is(err, repository.ErrLoginAttemptLocked) {
-			return toLoginAttemptDomain(updated), err
-		}
-
-		return nil, domainerrors.ErrPersistenceFailed
+func (repo *loginAttemptRepository) Save(ctx context.Context, attempt *entity.LoginAttempt) error {
+	if err := repo.q.LoginAttemptModel.WithContext(ctx).Save(toLoginAttemptModel(attempt)); err != nil {
+		return domainerrors.ErrPersistenceFailed
 	}
 
-	return toLoginAttemptDomain(updated), nil
+	return nil
 }
 
 func (repo *loginAttemptRepository) ResetOnSuccess(ctx context.Context, attemptKey string) error {
@@ -184,6 +150,25 @@ func toLoginAttemptDomain(data *model.LoginAttemptModel) *entity.LoginAttempt {
 	}
 
 	return &entity.LoginAttempt{
+		ID:            data.ID,
+		AttemptKey:    data.AttemptKey,
+		UserID:        data.UserID,
+		FailedCount:   data.FailedCount,
+		LockoutCount:  data.LockoutCount,
+		LockedUntil:   data.LockedUntil,
+		LastFailedAt:  data.LastFailedAt,
+		LastLockoutAt: data.LastLockoutAt,
+		CreatedAt:     data.CreatedAt,
+		UpdatedAt:     data.UpdatedAt,
+	}
+}
+
+func toLoginAttemptModel(data *entity.LoginAttempt) *model.LoginAttemptModel {
+	if data == nil {
+		return nil
+	}
+
+	return &model.LoginAttemptModel{
 		ID:            data.ID,
 		AttemptKey:    data.AttemptKey,
 		UserID:        data.UserID,

@@ -3,9 +3,10 @@ package response
 import (
 	"net/http"
 
-	deliverycontext "radar/internal/delivery/context"
 	domainerrors "radar/internal/domain/errors"
+	"radar/internal/platform/observability"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -47,7 +48,7 @@ func Success(c echo.Context, statusCode int, data any) error {
 	return c.JSON(statusCode, SuccessResponse{
 		Data: data,
 		Meta: &MetaInfo{
-			RequestID: deliverycontext.GetRequestID(c),
+			RequestID: requestID(c),
 		},
 	})
 }
@@ -73,9 +74,17 @@ func Error(c echo.Context, statusCode int, errorCode string, message string, det
 			Details: details,
 		},
 		Meta: &MetaInfo{
-			RequestID: deliverycontext.GetRequestID(c),
+			RequestID: requestID(c),
 		},
 	})
+}
+
+func requestID(c echo.Context) string {
+	if id := observability.CorrelationIDFromContext(c.Request().Context()); id != "" {
+		return id
+	}
+
+	return uuid.New().String()
 }
 
 func appErrorDetails(appErr domainerrors.AppError) any {
@@ -112,9 +121,24 @@ func Unauthorized(c echo.Context, errorCode string, message string) error {
 	return Error(c, http.StatusUnauthorized, errorCode, message, nil)
 }
 
+// AuthRequired returns the canonical 401 error for missing authentication.
+func AuthRequired(c echo.Context) error {
+	return AppError(c, domainerrors.ErrUnauthorized)
+}
+
+// InvalidToken returns the canonical 401 error for invalid authentication tokens.
+func InvalidToken(c echo.Context) error {
+	return AppError(c, domainerrors.ErrInvalidToken)
+}
+
 // Forbidden returns a 403 error
 func Forbidden(c echo.Context, errorCode string, message string) error {
 	return Error(c, http.StatusForbidden, errorCode, message, nil)
+}
+
+// ForbiddenAccess returns the canonical 403 error for failed authorization.
+func ForbiddenAccess(c echo.Context) error {
+	return AppError(c, domainerrors.ErrForbidden)
 }
 
 // NotFound returns a 404 error

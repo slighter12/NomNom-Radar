@@ -77,19 +77,25 @@ ALTER ROLE service_role SET search_path TO "$user", public, extensions;
 CREATE EXTENSION postgis SCHEMA extensions;
 ```
 
-4. **Configure environment variables:**
+4. **Configure local config:**
 
-Copy the example config and update with your settings:
+Copy the demo config and update with your database, OAuth, and Firebase settings:
 
 ```bash
-cp config.example.yaml config.yaml
-# Edit config.yaml with your database credentials and Firebase settings
+cp config/config_demo.yaml config/local.yaml
+# Edit config/local.yaml with your local credentials and service settings
 ```
 
 5. **Run the application:**
 
 ```bash
-go run cmd/server/main.go
+ENV=local go run ./cmd/radar
+```
+
+To run the local geo worker through Docker Compose, use the `dev` profile:
+
+```bash
+docker compose --profile dev up --build geoworker
 ```
 
 ### Build Road PMTiles (Taiwan example)
@@ -148,50 +154,32 @@ NomNom-Radar includes a high-performance road network routing engine for accurat
 * **GPS Snap Validation**: Detects GPS drift by validating snap distance to road network
 * **Haversine Fallback**: Gracefully degrades to straight-line distance when routing data is unavailable
 
-### CLI Tool
+### PMTiles Data
 
-The `cmd/routing` CLI tool handles OSM data preprocessing:
+Runtime route-aware filtering reads PMTiles through `pmtiles` config. The API and Geo Worker both use the PMTiles routing adapter; when PMTiles is disabled or unavailable, the adapter falls back to straight-line Haversine distance.
 
-```bash
-# Build the routing CLI
-go build -o bin/routing-cli ./cmd/routing
-
-# Download and prepare Taiwan routing data
-./bin/routing-cli prepare --region taiwan --output ./data/routing
-
-# Or step-by-step:
-./bin/routing-cli download --region taiwan --output /tmp
-./bin/routing-cli convert --input /tmp/taiwan-latest.osm.pbf --output ./data/routing
-
-# Validate data integrity
-./bin/routing-cli validate --dir ./data/routing
-```
+The older `cmd/routing` CH preprocessing CLI is retained as legacy/offline tooling and is not the notification runtime path.
 
 ### Configuration
 
 ```yaml
-routing:
+pmtiles:
   enabled: true
-  data_path: "./data/routing"
-  max_snap_distance_m: 500         # Max GPS snap distance to road
-  default_speed_kmh: 30            # Urban scooter speed for ETA
-  max_query_radius_m: 10000        # Max query radius for one-to-many
-  query_pool_size: 8               # Concurrent query workers
-  one_to_many_workers: 20          # Batch query workers
-  pre_filter_radius_multiplier: 1.3
+  source: "./data/pmtiles/map.pmtiles"
+  roadLayer: "transportation"
+  zoomLevel: 14
 ```
 
 ### Architecture
 
 ```text
 internal/infra/routing/
-├── ch/                     # CH algorithm implementation
-│   ├── engine.go           # Main routing engine (Dijkstra placeholder)
-│   ├── spatial.go          # Grid-based spatial index
-│   └── engine_test.go      # Comprehensive tests
-└── loader/                 # Data loading
-    ├── csv_loader.go       # CSV parsing (vertices, edges, shortcuts)
-    └── metadata.go         # Version tracking
+├── pmtiles/                # Runtime PMTiles + MVT routing adapter
+│   ├── service.go          # RoutingUsecase implementation
+│   ├── mvt_parser.go       # MVT road parsing
+│   └── pathfinder.go       # Local graph pathfinding
+├── ch/                     # Legacy CH implementation, not runtime-wired
+└── loader/                 # Legacy CH CSV loading
 ```
 
 ## 🤝 Contributing

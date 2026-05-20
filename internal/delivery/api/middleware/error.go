@@ -42,18 +42,13 @@ func (m *ErrorMiddleware) HandleHTTPError(err error, c echo.Context) {
 
 	// Check if it is an Echo HTTPError
 	if httpErr, ok := errors.AsType[*echo.HTTPError](err); ok {
-		message := "An error occurred"
-		if msg, ok := httpErr.Message.(string); ok {
-			message = msg
-		}
-
-		_ = response.Error(c, httpErr.Code, "HTTP_ERROR", message, nil)
+		_ = response.AppError(c, httpErrorAppError(httpErr.Code))
 
 		return
 	}
 
 	// For 500 errors, do not expose internal error details to the client
-	_ = response.InternalServerError(c, "INTERNAL_ERROR", "Internal server error, please try again later")
+	_ = response.AppError(c, domainerrors.ErrInternalError)
 }
 
 // HandleErrors converts returned Go errors into HTTP responses inside the
@@ -71,5 +66,34 @@ func (m *ErrorMiddleware) HandleErrors(next echo.HandlerFunc) echo.HandlerFunc {
 		m.HandleHTTPError(err, c)
 
 		return nil
+	}
+}
+
+func httpErrorAppError(statusCode int) domainerrors.AppError {
+	switch statusCode {
+	case 400:
+		return domainerrors.ErrInvalidInput
+	case 401:
+		return domainerrors.ErrUnauthorized
+	case 403:
+		return domainerrors.ErrForbidden
+	case 404:
+		return domainerrors.ErrNotFound
+	case 409:
+		return domainerrors.ErrConflict
+	default:
+		if statusCode >= 500 {
+			return domainerrors.ErrInternalError
+		}
+		if statusCode < 400 {
+			return domainerrors.ErrInternalError
+		}
+
+		return domainerrors.NewBaseError(
+			statusCode,
+			domainerrors.ErrRequestFailed.ErrorCode(),
+			domainerrors.ErrRequestFailed.Message(),
+			"",
+		)
 	}
 }

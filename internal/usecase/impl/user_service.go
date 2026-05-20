@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"radar/config"
-	deliverycontext "radar/internal/delivery/context"
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/policy"
 	"radar/internal/domain/repository"
 	"radar/internal/domain/service"
+	"radar/internal/platform/observability"
 	"radar/internal/usecase"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -35,7 +35,7 @@ type userService struct {
 	googleAuthService   service.OAuthAuthService
 	notificationSvc     service.NotificationService
 	maxActiveSessions   int
-	loginThrottleCfg    *config.LoginThrottleConfig
+	loginThrottleCfg    config.LoginThrottleConfig
 	loginThrottlePolicy policy.LoginThrottlePolicy
 	notificationTimeout time.Duration
 	logger              *slog.Logger
@@ -79,7 +79,10 @@ func NewUserService(params UserServiceParams) usecase.UserUsecase {
 	config.ApplyDefaults(cfg)
 
 	maxActiveSessions := cfg.Auth.MaxActiveSessions
-	loginThrottleCfg := cfg.LoginThrottle
+	loginThrottleCfg := config.DefaultLoginThrottleConfig()
+	if cfg.LoginThrottle != nil {
+		loginThrottleCfg = *cfg.LoginThrottle
+	}
 	notificationTimeout := cfg.Notification.Timeout
 
 	return &userService{
@@ -103,7 +106,7 @@ func NewUserService(params UserServiceParams) usecase.UserUsecase {
 
 // log returns a request-scoped logger if available, otherwise falls back to the service's logger.
 func (srv *userService) log(ctx context.Context) *slog.Logger {
-	return deliverycontext.GetLoggerOrDefault(ctx, srv.logger)
+	return observability.LoggerFromContextOrDefault(ctx, srv.logger)
 }
 
 // RegisterUser orchestrates the unified user registration flow.

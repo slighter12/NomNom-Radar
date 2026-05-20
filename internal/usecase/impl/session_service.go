@@ -7,21 +7,18 @@ import (
 	"log/slog"
 	"time"
 
-	deliverycontext "radar/internal/delivery/context"
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/policy"
 	"radar/internal/domain/repository"
+	"radar/internal/platform/observability"
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"go.uber.org/fx"
 )
 
 // sessionService implements the SessionUsecase interface.
 type sessionService struct {
-	fx.In
-
 	txManager          repository.TransactionManager
 	logger             *slog.Logger
 	refreshTokenPolicy policy.RefreshTokenPolicy
@@ -41,7 +38,7 @@ func NewSessionService(
 
 // log returns a request-scoped logger if available, otherwise falls back to the service's logger.
 func (srv *sessionService) log(ctx context.Context) *slog.Logger {
-	return deliverycontext.GetLoggerOrDefault(ctx, srv.logger)
+	return observability.LoggerFromContextOrDefault(ctx, srv.logger)
 }
 
 // GetActiveSessions retrieves all active sessions for a user.

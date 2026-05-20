@@ -59,7 +59,7 @@ type UpdateLocationRequest struct {
 func (h *LocationHandler) CreateUserLocation(c echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	var req CreateLocationRequest
@@ -79,7 +79,7 @@ func (h *LocationHandler) CreateUserLocation(c echo.Context) error {
 func (h *LocationHandler) GetUserLocations(c echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	locations, err := h.locationUC.GetUserLocations(c.Request().Context(), userID)
@@ -94,7 +94,7 @@ func (h *LocationHandler) GetUserLocations(c echo.Context) error {
 func (h *LocationHandler) UpdateUserLocation(c echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	locationID, err := h.parseLocationID(c)
@@ -119,7 +119,7 @@ func (h *LocationHandler) UpdateUserLocation(c echo.Context) error {
 func (h *LocationHandler) DeleteUserLocation(c echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	locationID, err := h.parseLocationID(c)
@@ -138,7 +138,7 @@ func (h *LocationHandler) DeleteUserLocation(c echo.Context) error {
 func (h *LocationHandler) CreateMerchantLocation(c echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	var req CreateLocationRequest
@@ -158,7 +158,7 @@ func (h *LocationHandler) CreateMerchantLocation(c echo.Context) error {
 func (h *LocationHandler) GetMerchantLocations(c echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	locations, err := h.locationUC.GetMerchantLocations(c.Request().Context(), merchantID)
@@ -173,7 +173,7 @@ func (h *LocationHandler) GetMerchantLocations(c echo.Context) error {
 func (h *LocationHandler) UpdateMerchantLocation(c echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	locationID, err := h.parseLocationID(c)
@@ -198,7 +198,7 @@ func (h *LocationHandler) UpdateMerchantLocation(c echo.Context) error {
 func (h *LocationHandler) DeleteMerchantLocation(c echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
-		return response.Unauthorized(c, "INVALID_TOKEN", "Invalid user ID in token")
+		return response.InvalidToken(c)
 	}
 
 	locationID, err := h.parseLocationID(c)
