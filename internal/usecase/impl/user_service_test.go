@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"radar/config"
 	"radar/internal/domain/entity"
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
@@ -77,6 +78,33 @@ func createTestUserService(t *testing.T) *userServiceFixtures {
 		tokenService:      tokenService,
 		googleAuthService: googleAuthService,
 		notificationSvc:   notificationSvc,
+	}
+}
+
+func TestNewUserService_UsesLoginThrottleDefaultsWhenConfigIsMissing(t *testing.T) {
+	testCases := []struct {
+		name string
+		cfg  *config.Config
+	}{
+		{
+			name: "nil_config",
+		},
+		{
+			name: "nil_login_throttle_config",
+			cfg:  &config.Config{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			service, ok := NewUserService(UserServiceParams{
+				Config: tc.cfg,
+				Logger: newDiscardLogger(),
+			}).(*userService)
+			require.True(t, ok)
+
+			assert.Equal(t, config.DefaultLoginThrottleConfig(), service.loginThrottleCfg)
+		})
 	}
 }
 

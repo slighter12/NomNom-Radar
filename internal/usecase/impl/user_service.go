@@ -79,7 +79,10 @@ func NewUserService(params UserServiceParams) usecase.UserUsecase {
 	config.ApplyDefaults(cfg)
 
 	maxActiveSessions := cfg.Auth.MaxActiveSessions
-	loginThrottleCfg := *cfg.LoginThrottle
+	loginThrottleCfg := config.DefaultLoginThrottleConfig()
+	if cfg.LoginThrottle != nil {
+		loginThrottleCfg = *cfg.LoginThrottle
+	}
 	notificationTimeout := cfg.Notification.Timeout
 
 	return &userService{

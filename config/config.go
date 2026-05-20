@@ -118,6 +118,14 @@ type LoginThrottleConfig struct {
 	LockoutDecayDays int `json:"lockoutDecayDays" yaml:"lockoutDecayDays"`
 }
 
+// DefaultLoginThrottleConfig returns the default progressive login throttling configuration.
+func DefaultLoginThrottleConfig() LoginThrottleConfig {
+	return LoginThrottleConfig{
+		MaxAttempts:      5,
+		LockoutDecayDays: 7,
+	}
+}
+
 // PasswordStrengthConfig defines password strength requirements
 type PasswordStrengthConfig struct {
 	MinLength        int  `json:"minLength" yaml:"minLength"`
@@ -342,14 +350,15 @@ func applyAuthDefaults(cfg *Config) {
 }
 
 func applyLoginThrottleDefaults(cfg *Config) {
+	defaults := DefaultLoginThrottleConfig()
 	if cfg.LoginThrottle == nil {
 		cfg.LoginThrottle = &LoginThrottleConfig{}
 	}
 	if cfg.LoginThrottle.MaxAttempts <= 0 {
-		cfg.LoginThrottle.MaxAttempts = 5
+		cfg.LoginThrottle.MaxAttempts = defaults.MaxAttempts
 	}
 	if cfg.LoginThrottle.LockoutDecayDays <= 0 {
-		cfg.LoginThrottle.LockoutDecayDays = 7
+		cfg.LoginThrottle.LockoutDecayDays = defaults.LockoutDecayDays
 	}
 }
 
