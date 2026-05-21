@@ -57,25 +57,40 @@ Make sure you have PostgreSQL 18+ with PostGIS extension installed and running. 
 
 **Supabase Deployment - Required PostGIS Setup:**
 
-If you're deploying on Supabase, run the following SQL in the SQL Editor to properly configure PostGIS in the `extensions` schema:
+If you're deploying on Supabase, enable `run_supabase_migration` in the deploy workflow. Supabase-specific database changes are managed by goose with separate version tables, so each Supabase migration is applied once per database:
+
+- `database/migration/supabase/pre` runs before the shared PostgreSQL migrations using `goose_supabase_pre_version`.
+- `database/migration/supabase/post` runs after the shared PostgreSQL migrations using `goose_supabase_post_version`.
+
+Database migrations should use a dedicated GCP Secret Manager secret named `postgres-migration-dsn`. For Supabase, this DSN must be a direct connection or Supavisor session-mode connection on port `5432`; do not use the transaction pooler on port `6543` for migrations because session-level settings such as `PGOPTIONS` / `search_path` are not reliable there. Runtime Cloud Run services still use `postgres-master-dsn`, which may point at the transaction pooler because `POSTGRES_PRESET=supabase_transaction` disables prepared statement behavior in the app connection.
+
+The pre-migrations configure the extension schema before shared migrations run. They perform the equivalent of:
 
 ```sql
--- 1. Drop existing PostGIS extension (WARNING: This will also drop geometry columns in your tables!)
-DROP EXTENSION IF EXISTS postgis CASCADE;
-
--- 2. Create a clean extensions schema
 CREATE SCHEMA IF NOT EXISTS extensions;
-GRANT USAGE ON SCHEMA extensions TO postgres, anon, authenticated, service_role;
-
--- 3. Set search path (so applications can find it without code changes)
-ALTER DATABASE postgres SET search_path TO "$user", public, extensions;
-ALTER ROLE authenticated SET search_path TO "$user", public, extensions;
-ALTER ROLE anon SET search_path TO "$user", public, extensions;
-ALTER ROLE service_role SET search_path TO "$user", public, extensions;
-
--- 4. Reinstall PostGIS in the new schema
-CREATE EXTENSION postgis SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS citext SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS postgis SCHEMA extensions;
+ALTER ROLE your_app_database_role SET search_path = public, extensions;
 ```
+
+The post-migrations apply Supabase function hardening with schema-qualified references and fixed function `search_path` values.
+
+Recommended workflow usage:
+
+- New Supabase database: enable `run_supabase_migration` and `run_migration`.
+- Normal schema migration: enable only `run_migration`.
+- Migration that adds or changes database functions and needs Supabase hardening: enable `run_supabase_migration` and `run_migration`.
+- Supabase-only fix on an already migrated database: enable only `run_supabase_migration`.
+
+The standard Supabase API roles are handled by the pre-migration. If you add a non-standard API role that needs direct access to extension objects, keep it aligned with the same runtime search path:
+
+```sql
+GRANT USAGE ON SCHEMA extensions TO your_api_role;
+ALTER ROLE your_api_role SET search_path TO "$user", public, extensions;
+```
+
+Do not run `DROP EXTENSION postgis CASCADE` on a migrated database. It drops dependent PostGIS objects such as `geometry` columns and spatial indexes.
+The Supabase pre-migration does not relocate an extension that already exists in another schema; use it on a new Supabase database or manually remediate an already-drifted database.
 
 4. **Configure local config:**
 
