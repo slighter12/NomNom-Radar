@@ -3,19 +3,40 @@
 
 -- +goose StatementBegin
 DO $$
+DECLARE
+    missing_object TEXT;
 BEGIN
-    IF to_regclass('public.users') IS NULL
-        OR to_regclass('public.user_authentications') IS NULL
-        OR to_regclass('public.merchant_profiles') IS NULL
-        OR to_regclass('public.addresses') IS NULL
-        OR to_regnamespace('extensions') IS NULL
-        OR to_regprocedure('public.update_updated_at_column()') IS NULL
-        OR to_regprocedure('public.uuid_generate_v7()') IS NULL
-        OR to_regprocedure('public.uuid_generate_v4()') IS NULL
-        OR to_regprocedure('public.update_location_from_lat_lng()') IS NULL
-        OR to_regprocedure('public.sync_user_soft_delete_dependents()') IS NULL
-    ) THEN
-        RAISE EXCEPTION 'shared PostgreSQL migrations and Supabase pre-migrations must be applied before Supabase function hardening';
+    SELECT object_name
+    INTO missing_object
+    FROM (
+        VALUES
+            ('schema extensions', to_regnamespace('extensions') IS NOT NULL),
+            ('table public.users', to_regclass('public.users') IS NOT NULL),
+            ('table public.user_profiles', to_regclass('public.user_profiles') IS NOT NULL),
+            ('table public.merchant_profiles', to_regclass('public.merchant_profiles') IS NOT NULL),
+            ('table public.user_authentications', to_regclass('public.user_authentications') IS NOT NULL),
+            ('table public.refresh_tokens', to_regclass('public.refresh_tokens') IS NOT NULL),
+            ('table public.addresses', to_regclass('public.addresses') IS NOT NULL),
+            ('table public.menu_items', to_regclass('public.menu_items') IS NOT NULL),
+            ('table public.login_attempts', to_regclass('public.login_attempts') IS NOT NULL),
+            ('table public.user_devices', to_regclass('public.user_devices') IS NOT NULL),
+            ('table public.user_merchant_subscriptions', to_regclass('public.user_merchant_subscriptions') IS NOT NULL),
+            ('table public.merchant_location_notifications', to_regclass('public.merchant_location_notifications') IS NOT NULL),
+            ('table public.notification_logs', to_regclass('public.notification_logs') IS NOT NULL),
+            ('table public.discovery_categories', to_regclass('public.discovery_categories') IS NOT NULL),
+            ('table public.discovery_subcategories', to_regclass('public.discovery_subcategories') IS NOT NULL),
+            ('table public.hubs', to_regclass('public.hubs') IS NOT NULL),
+            ('function public.update_updated_at_column()', to_regprocedure('public.update_updated_at_column()') IS NOT NULL),
+            ('function public.uuid_generate_v7()', to_regprocedure('public.uuid_generate_v7()') IS NOT NULL),
+            ('function public.uuid_generate_v4()', to_regprocedure('public.uuid_generate_v4()') IS NOT NULL),
+            ('function public.update_location_from_lat_lng()', to_regprocedure('public.update_location_from_lat_lng()') IS NOT NULL),
+            ('function public.sync_user_soft_delete_dependents()', to_regprocedure('public.sync_user_soft_delete_dependents()') IS NOT NULL)
+    ) AS required_objects(object_name, object_exists)
+    WHERE NOT object_exists
+    LIMIT 1;
+
+    IF missing_object IS NOT NULL THEN
+        RAISE EXCEPTION 'shared PostgreSQL migrations and Supabase pre-migrations must be applied before Supabase function hardening; missing %', missing_object;
     END IF;
 END;
 $$;
