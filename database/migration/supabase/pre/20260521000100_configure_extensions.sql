@@ -9,7 +9,7 @@ CREATE EXTENSION IF NOT EXISTS postgis SCHEMA extensions;
 -- +goose StatementBegin
 DO $$
 BEGIN
-    IF to_regprocedure('pg_catalog.uuidv7()') IS NULL THEN
+    IF pg_catalog.to_regprocedure('pg_catalog.uuidv7()') IS NULL THEN
         EXECUTE $compat$
             CREATE OR REPLACE FUNCTION public.uuidv7()
             RETURNS UUID

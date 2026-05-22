@@ -26,11 +26,11 @@ BEGIN
             ('table public.discovery_categories', to_regclass('public.discovery_categories') IS NOT NULL),
             ('table public.discovery_subcategories', to_regclass('public.discovery_subcategories') IS NOT NULL),
             ('table public.hubs', to_regclass('public.hubs') IS NOT NULL),
-            ('function public.update_updated_at_column()', to_regprocedure('public.update_updated_at_column()') IS NOT NULL),
-            ('function public.uuid_generate_v7()', to_regprocedure('public.uuid_generate_v7()') IS NOT NULL),
-            ('function public.uuidv7() compatibility', to_regprocedure('pg_catalog.uuidv7()') IS NOT NULL OR to_regprocedure('public.uuidv7()') IS NOT NULL),
-            ('function public.update_location_from_lat_lng()', to_regprocedure('public.update_location_from_lat_lng()') IS NOT NULL),
-            ('function public.sync_user_soft_delete_dependents()', to_regprocedure('public.sync_user_soft_delete_dependents()') IS NOT NULL)
+            ('function public.update_updated_at_column()', pg_catalog.to_regprocedure('public.update_updated_at_column()') IS NOT NULL),
+            ('function public.uuid_generate_v7()', pg_catalog.to_regprocedure('public.uuid_generate_v7()') IS NOT NULL),
+            ('function public.uuidv7() compatibility', pg_catalog.to_regprocedure('pg_catalog.uuidv7()') IS NOT NULL OR pg_catalog.to_regprocedure('public.uuidv7()') IS NOT NULL),
+            ('function public.update_location_from_lat_lng()', pg_catalog.to_regprocedure('public.update_location_from_lat_lng()') IS NOT NULL),
+            ('function public.sync_user_soft_delete_dependents()', pg_catalog.to_regprocedure('public.sync_user_soft_delete_dependents()') IS NOT NULL)
     ) AS required_objects(object_name, object_exists)
     WHERE NOT object_exists
     LIMIT 1;
@@ -55,7 +55,7 @@ $$ LANGUAGE plpgsql;
 -- +goose StatementBegin
 DO $$
 BEGIN
-    IF to_regprocedure('pg_catalog.uuidv7()') IS NULL THEN
+    IF pg_catalog.to_regprocedure('pg_catalog.uuidv7()') IS NULL THEN
         EXECUTE $create$
             CREATE OR REPLACE FUNCTION public.uuid_generate_v7()
             RETURNS UUID AS $function$
