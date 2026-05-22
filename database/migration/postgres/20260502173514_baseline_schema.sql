@@ -25,15 +25,6 @@ $$ LANGUAGE plpgsql;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
-CREATE OR REPLACE FUNCTION uuid_generate_v4()
-RETURNS UUID AS $$
-BEGIN
-    RETURN gen_random_uuid();
-END;
-$$ LANGUAGE plpgsql;
--- +goose StatementEnd
-
--- +goose StatementBegin
 CREATE OR REPLACE FUNCTION update_location_from_lat_lng()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -461,6 +452,5 @@ DROP TABLE IF EXISTS users;
 
 DROP FUNCTION IF EXISTS sync_user_soft_delete_dependents();
 DROP FUNCTION IF EXISTS update_location_from_lat_lng();
-DROP FUNCTION IF EXISTS uuid_generate_v4();
 DROP FUNCTION IF EXISTS uuid_generate_v7();
 DROP FUNCTION IF EXISTS update_updated_at_column();

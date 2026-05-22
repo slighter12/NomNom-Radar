@@ -64,7 +64,7 @@ If you're deploying on Supabase, enable `run_supabase_migration` in the deploy w
 
 Database migrations should use a dedicated GCP Secret Manager secret named `postgres-migration-dsn`. For Supabase, this DSN must be a direct connection or Supavisor session-mode connection on port `5432`; do not use the transaction pooler on port `6543` for migrations because session-level settings such as `PGOPTIONS` / `search_path` are not reliable there. Runtime Cloud Run services still use `postgres-master-dsn`, which may point at the transaction pooler because `POSTGRES_PRESET=supabase_transaction` disables prepared statement behavior in the app connection.
 
-The pre-migrations configure the extension schema before shared migrations run. They perform the equivalent of:
+The pre-migrations configure Supabase compatibility before shared migrations run, including the extension schema and a `public.uuidv7()` fallback when Supabase does not provide PostgreSQL's native `pg_catalog.uuidv7()` yet. For the extension schema, they perform the equivalent of:
 
 ```sql
 CREATE SCHEMA IF NOT EXISTS extensions;

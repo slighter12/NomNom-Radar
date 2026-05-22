@@ -28,7 +28,7 @@ BEGIN
             ('table public.hubs', to_regclass('public.hubs') IS NOT NULL),
             ('function public.update_updated_at_column()', to_regprocedure('public.update_updated_at_column()') IS NOT NULL),
             ('function public.uuid_generate_v7()', to_regprocedure('public.uuid_generate_v7()') IS NOT NULL),
-            ('function public.uuid_generate_v4()', to_regprocedure('public.uuid_generate_v4()') IS NOT NULL),
+            ('function public.uuidv7() compatibility', to_regprocedure('pg_catalog.uuidv7()') IS NOT NULL OR to_regprocedure('public.uuidv7()') IS NOT NULL),
             ('function public.update_location_from_lat_lng()', to_regprocedure('public.update_location_from_lat_lng()') IS NOT NULL),
             ('function public.sync_user_soft_delete_dependents()', to_regprocedure('public.sync_user_soft_delete_dependents()') IS NOT NULL)
     ) AS required_objects(object_name, object_exists)
@@ -56,16 +56,11 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION public.uuid_generate_v7()
 RETURNS UUID AS $$
 BEGIN
-    RETURN pg_catalog.uuidv7();
-END;
-$$ LANGUAGE plpgsql;
--- +goose StatementEnd
+    IF to_regprocedure('pg_catalog.uuidv7()') IS NOT NULL THEN
+        RETURN pg_catalog.uuidv7();
+    END IF;
 
--- +goose StatementBegin
-CREATE OR REPLACE FUNCTION public.uuid_generate_v4()
-RETURNS UUID AS $$
-BEGIN
-    RETURN pg_catalog.gen_random_uuid();
+    RETURN public.uuidv7();
 END;
 $$ LANGUAGE plpgsql;
 -- +goose StatementEnd
@@ -104,7 +99,6 @@ $$ LANGUAGE plpgsql;
 
 ALTER FUNCTION public.update_updated_at_column() SET search_path = '';
 ALTER FUNCTION public.sync_user_soft_delete_dependents() SET search_path = '';
-ALTER FUNCTION public.uuid_generate_v4() SET search_path = '';
 ALTER FUNCTION public.uuid_generate_v7() SET search_path = '';
 ALTER FUNCTION public.update_location_from_lat_lng() SET search_path = '';
 
