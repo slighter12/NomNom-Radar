@@ -165,12 +165,19 @@ jobs:
           set -euo pipefail
 
           MIGRATION_SECRET="postgres-migration-dsn"
-          if ! gcloud secrets describe "${MIGRATION_SECRET}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+          MIGRATION_SECRET_ERROR="$(mktemp)"
+          if PG_URI=$(gcloud secrets versions access latest --secret="${MIGRATION_SECRET}" --project="${PROJECT_ID}" 2>"${MIGRATION_SECRET_ERROR}"); then
+            :
+          elif grep -Eq "Secret \\[.*postgres-migration-dsn.*\\] not found|NOT_FOUND.*postgres-migration-dsn" "${MIGRATION_SECRET_ERROR}"; then
             MIGRATION_SECRET="postgres-master-dsn"
             echo "::warning::Secret postgres-migration-dsn was not found; falling back to postgres-master-dsn for migrations."
+            PG_URI=$(gcloud secrets versions access latest --secret="${MIGRATION_SECRET}" --project="${PROJECT_ID}")
+          else
+            echo "::error::Failed to access postgres-migration-dsn. Ensure the secret has an enabled latest version and the deploy service account has Secret Manager Secret Accessor."
+            exit 1
           fi
+          rm -f "${MIGRATION_SECRET_ERROR}"
 
-          PG_URI=$(gcloud secrets versions access latest --secret="${MIGRATION_SECRET}" --project="${PROJECT_ID}")
           if printf '%s' "${PG_URI}" | grep -Eq 'pooler\.supabase\.com' \
             && printf '%s' "${PG_URI}" | grep -Eq '(:6543|port=6543)([^0-9]|$)'; then
             echo "::error::Migration DSN secret ${MIGRATION_SECRET} points to the Supabase transaction pooler. Use a direct connection or Supavisor session-mode DSN for migrations."
