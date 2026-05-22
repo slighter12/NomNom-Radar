@@ -18,6 +18,11 @@ on:
         required: false
         type: boolean
         default: false
+      run_supabase_migration:
+        description: "Run Supabase-only pre/post database migrations."
+        required: false
+        type: boolean
+        default: false
       configure_scheduler:
         description: "Create or update Cloud Scheduler trigger. Leave off for image-only job deploys."
         required: false
@@ -53,6 +58,7 @@ jobs:
       target: ${{ inputs.target }}
       image_ref: ${{ inputs.image_ref }}
       run_migration: ${{ inputs.run_migration }}
+      run_supabase_migration: ${{ inputs.run_supabase_migration }}
       configure_scheduler: ${{ inputs.configure_scheduler }}
       execute_now: ${{ inputs.execute_now }}
       schedule: ${{ inputs.schedule }}

@@ -25,6 +25,11 @@ on:
         required: false
         default: false
         type: boolean
+      run_supabase_migration:
+        description: "Run Supabase-only pre/post database migrations."
+        required: false
+        default: false
+        type: boolean
       enable_cloudflare_sync:
         description: "Sync Cloudflare transform rule after deploy"
         required: false
@@ -128,7 +133,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Go version
-        if: ${{ inputs.run_migration }}
+        if: ${{ inputs.run_migration || inputs.run_supabase_migration }}
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -146,14 +151,72 @@ jobs:
         with:
           project_id: ${{ env.PROJECT_ID }}
 
+      - name: Install goose
+        if: ${{ inputs.run_migration || inputs.run_supabase_migration }}
+        run: |
+          set -euo pipefail
+
+          go install github.com/pressly/goose/v3/cmd/goose@latest
+
+      - name: Resolve migration database secret
+        if: ${{ inputs.run_migration || inputs.run_supabase_migration }}
+        id: migration_db
+        run: |
+          set -euo pipefail
+
+          MIGRATION_SECRET="postgres-migration-dsn"
+          if ! gcloud secrets describe "${MIGRATION_SECRET}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+            MIGRATION_SECRET="postgres-master-dsn"
+            echo "::warning::Secret postgres-migration-dsn was not found; falling back to postgres-master-dsn for migrations."
+          fi
+
+          PG_URI=$(gcloud secrets versions access latest --secret="${MIGRATION_SECRET}" --project="${PROJECT_ID}")
+          if printf '%s' "${PG_URI}" | grep -Eq 'pooler\.supabase\.com' \
+            && printf '%s' "${PG_URI}" | grep -Eq '(:6543|port=6543)([^0-9]|$)'; then
+            echo "::error::Migration DSN secret ${MIGRATION_SECRET} points to the Supabase transaction pooler. Use a direct connection or Supavisor session-mode DSN for migrations."
+            exit 1
+          fi
+
+          echo "secret=${MIGRATION_SECRET}" >> "${GITHUB_OUTPUT}"
+          echo "Using ${MIGRATION_SECRET} for database migrations."
+
+      - name: Run Supabase pre-migrations
+        if: ${{ inputs.run_supabase_migration }}
+        run: |
+          set -euo pipefail
+
+          PG_URI=$(gcloud secrets versions access latest --secret="${{ steps.migration_db.outputs.secret }}" --project="${PROJECT_ID}")
+          PGOPTIONS="-c search_path=public,extensions" "$(go env GOPATH)/bin/goose" \
+            -table goose_supabase_pre_version \
+            -dir ./database/migration/supabase/pre \
+            postgres "${PG_URI}" up
+
       - name: Run Database Migration
         if: ${{ inputs.run_migration }}
         run: |
           set -euo pipefail
 
-          go install github.com/pressly/goose/v3/cmd/goose@latest
-          PG_URI=$(gcloud secrets versions access latest --secret="postgres-master-dsn" --project="${PROJECT_ID}")
-          "$(go env GOPATH)/bin/goose" postgres "${PG_URI}" -dir ./database/migration/postgres up
+          PG_URI=$(gcloud secrets versions access latest --secret="${{ steps.migration_db.outputs.secret }}" --project="${PROJECT_ID}")
+          if [ "${{ inputs.run_supabase_migration }}" = "true" ]; then
+            PGOPTIONS="-c search_path=public,extensions" "$(go env GOPATH)/bin/goose" \
+              -dir ./database/migration/postgres \
+              postgres "${PG_URI}" up
+          else
+            "$(go env GOPATH)/bin/goose" \
+              -dir ./database/migration/postgres \
+              postgres "${PG_URI}" up
+          fi
+
+      - name: Run Supabase post-migrations
+        if: ${{ inputs.run_supabase_migration }}
+        run: |
+          set -euo pipefail
+
+          PG_URI=$(gcloud secrets versions access latest --secret="${{ steps.migration_db.outputs.secret }}" --project="${PROJECT_ID}")
+          PGOPTIONS="-c search_path=public,extensions" "$(go env GOPATH)/bin/goose" \
+            -table goose_supabase_post_version \
+            -dir ./database/migration/supabase/post \
+            postgres "${PG_URI}" up
 
       - name: Resolve image reference
         id: image

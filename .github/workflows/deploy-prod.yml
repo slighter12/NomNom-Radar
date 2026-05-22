@@ -19,6 +19,11 @@ on:
         required: false
         type: boolean
         default: false
+      run_supabase_migration:
+        description: "Run Supabase-only pre/post database migrations."
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   deploy:
@@ -29,5 +34,6 @@ jobs:
       target: ${{ inputs.target }}
       image_ref: ${{ inputs.image_ref }}
       run_migration: ${{ inputs.run_migration }}
+      run_supabase_migration: ${{ inputs.run_supabase_migration }}
       enable_cloudflare_sync: true
     secrets: inherit
