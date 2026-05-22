@@ -26,11 +26,11 @@ BEGIN
             ('table public.discovery_categories', to_regclass('public.discovery_categories') IS NOT NULL),
             ('table public.discovery_subcategories', to_regclass('public.discovery_subcategories') IS NOT NULL),
             ('table public.hubs', to_regclass('public.hubs') IS NOT NULL),
-            ('function public.update_updated_at_column()', to_regprocedure('public.update_updated_at_column()') IS NOT NULL),
-            ('function public.uuid_generate_v7()', to_regprocedure('public.uuid_generate_v7()') IS NOT NULL),
-            ('function public.uuid_generate_v4()', to_regprocedure('public.uuid_generate_v4()') IS NOT NULL),
-            ('function public.update_location_from_lat_lng()', to_regprocedure('public.update_location_from_lat_lng()') IS NOT NULL),
-            ('function public.sync_user_soft_delete_dependents()', to_regprocedure('public.sync_user_soft_delete_dependents()') IS NOT NULL)
+            ('function public.update_updated_at_column()', pg_catalog.to_regprocedure('public.update_updated_at_column()') IS NOT NULL),
+            ('function public.uuid_generate_v7()', pg_catalog.to_regprocedure('public.uuid_generate_v7()') IS NOT NULL),
+            ('function public.uuidv7() compatibility', pg_catalog.to_regprocedure('pg_catalog.uuidv7()') IS NOT NULL OR pg_catalog.to_regprocedure('public.uuidv7()') IS NOT NULL),
+            ('function public.update_location_from_lat_lng()', pg_catalog.to_regprocedure('public.update_location_from_lat_lng()') IS NOT NULL),
+            ('function public.sync_user_soft_delete_dependents()', pg_catalog.to_regprocedure('public.sync_user_soft_delete_dependents()') IS NOT NULL)
     ) AS required_objects(object_name, object_exists)
     WHERE NOT object_exists
     LIMIT 1;
@@ -53,21 +53,29 @@ $$ LANGUAGE plpgsql;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
-CREATE OR REPLACE FUNCTION public.uuid_generate_v7()
-RETURNS UUID AS $$
+DO $$
 BEGIN
-    RETURN pg_catalog.uuidv7();
+    IF pg_catalog.to_regprocedure('pg_catalog.uuidv7()') IS NULL THEN
+        EXECUTE $create$
+            CREATE OR REPLACE FUNCTION public.uuid_generate_v7()
+            RETURNS UUID AS $function$
+            BEGIN
+                RETURN public.uuidv7();
+            END;
+            $function$ LANGUAGE plpgsql
+        $create$;
+    ELSE
+        EXECUTE $create$
+            CREATE OR REPLACE FUNCTION public.uuid_generate_v7()
+            RETURNS UUID AS $function$
+            BEGIN
+                RETURN pg_catalog.uuidv7();
+            END;
+            $function$ LANGUAGE plpgsql
+        $create$;
+    END IF;
 END;
-$$ LANGUAGE plpgsql;
--- +goose StatementEnd
-
--- +goose StatementBegin
-CREATE OR REPLACE FUNCTION public.uuid_generate_v4()
-RETURNS UUID AS $$
-BEGIN
-    RETURN pg_catalog.gen_random_uuid();
-END;
-$$ LANGUAGE plpgsql;
+$$;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
@@ -104,7 +112,6 @@ $$ LANGUAGE plpgsql;
 
 ALTER FUNCTION public.update_updated_at_column() SET search_path = '';
 ALTER FUNCTION public.sync_user_soft_delete_dependents() SET search_path = '';
-ALTER FUNCTION public.uuid_generate_v4() SET search_path = '';
 ALTER FUNCTION public.uuid_generate_v7() SET search_path = '';
 ALTER FUNCTION public.update_location_from_lat_lng() SET search_path = '';
 
