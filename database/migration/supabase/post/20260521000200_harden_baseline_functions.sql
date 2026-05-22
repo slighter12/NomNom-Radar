@@ -53,16 +53,29 @@ $$ LANGUAGE plpgsql;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
-CREATE OR REPLACE FUNCTION public.uuid_generate_v7()
-RETURNS UUID AS $$
+DO $$
 BEGIN
-    IF to_regprocedure('pg_catalog.uuidv7()') IS NOT NULL THEN
-        RETURN pg_catalog.uuidv7();
+    IF to_regprocedure('pg_catalog.uuidv7()') IS NULL THEN
+        EXECUTE $create$
+            CREATE OR REPLACE FUNCTION public.uuid_generate_v7()
+            RETURNS UUID AS $function$
+            BEGIN
+                RETURN public.uuidv7();
+            END;
+            $function$ LANGUAGE plpgsql
+        $create$;
+    ELSE
+        EXECUTE $create$
+            CREATE OR REPLACE FUNCTION public.uuid_generate_v7()
+            RETURNS UUID AS $function$
+            BEGIN
+                RETURN pg_catalog.uuidv7();
+            END;
+            $function$ LANGUAGE plpgsql
+        $create$;
     END IF;
-
-    RETURN public.uuidv7();
 END;
-$$ LANGUAGE plpgsql;
+$$;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
