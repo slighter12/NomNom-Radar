@@ -9,7 +9,7 @@ CREATE EXTENSION IF NOT EXISTS postgis SCHEMA extensions;
 -- +goose StatementBegin
 DO $$
 BEGIN
-    EXECUTE format('ALTER ROLE %I SET search_path = public, extensions', CURRENT_USER);
+    EXECUTE format('ALTER ROLE %I SET search_path = "$user", public, extensions', CURRENT_USER);
 
     IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'postgres') THEN
         GRANT USAGE ON SCHEMA extensions TO postgres;

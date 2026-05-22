@@ -70,7 +70,7 @@ The pre-migrations configure the extension schema before shared migrations run. 
 CREATE SCHEMA IF NOT EXISTS extensions;
 CREATE EXTENSION IF NOT EXISTS citext SCHEMA extensions;
 CREATE EXTENSION IF NOT EXISTS postgis SCHEMA extensions;
-ALTER ROLE your_app_database_role SET search_path = public, extensions;
+ALTER ROLE your_app_database_role SET search_path TO "$user", public, extensions;
 ```
 
 The post-migrations apply Supabase function hardening with schema-qualified references and fixed function `search_path` values.
