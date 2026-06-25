@@ -20,7 +20,7 @@ http:
 postgres:
   database: "auth_db"
   schema: "public"
-  searchPath: "public"
+  searchPath: "public,extensions"
   sslMode: "disable"
   master:
     host: "localhost"
