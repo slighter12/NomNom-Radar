@@ -223,7 +223,7 @@ func newRouterTestEcho() *echo.Echo {
 }
 
 func newRouterTestRequest(method, target, token string) *http.Request {
-	req := httptest.NewRequest(method, target, nil)
+	req := httptest.NewRequestWithContext(context.Background(), method, target, nil)
 	req.Header.Set(echo.HeaderAuthorization, "Bearer "+token)
 
 	return req
