@@ -110,6 +110,11 @@ func (r *router) registerAPIV1Routes(e *echo.Echo) {
 }
 
 func (r *router) registerAPIV1UserRoutes(apiV1 *echo.Group) {
+	userGroup := apiV1.Group("/user")
+	{
+		userGroup.GET("/profile", r.userHandler.GetProfile)
+	}
+
 	locationsGroup := apiV1.Group("/locations")
 	{
 		locationsGroup.POST("/user", r.locationHandler.CreateUserLocation)
@@ -137,6 +142,13 @@ func (r *router) registerAPIV1UserRoutes(apiV1 *echo.Group) {
 }
 
 func (r *router) registerAPIV1SharedRoutes(apiV1 *echo.Group) {
+	discoveryGroup := apiV1.Group("/discovery")
+	{
+		discoveryGroup.GET("/categories", r.discoveryHandler.ListActiveCategories)
+		discoveryGroup.GET("/subcategories", r.discoveryHandler.ListActiveSubcategories)
+		discoveryGroup.GET("/hubs", r.discoveryHandler.ListActiveHubs)
+	}
+
 	locationsGroup := apiV1.Group("/locations/merchant")
 	locationsGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant))
 	{
@@ -155,14 +167,6 @@ func (r *router) registerAPIV1ConsumerRoutes(apiV1 *echo.Group) {
 	{
 		consumerMerchantsGroup.GET("", r.discoveryHandler.SearchPublicMerchants)
 		consumerMerchantsGroup.GET("/:merchantId/menu", r.menuHandler.GetPublicMerchantMenu)
-	}
-
-	discoveryGroup := apiV1.Group("/discovery")
-	discoveryGroup.Use(r.authMiddleware.RequireRole(entity.RoleUser))
-	{
-		discoveryGroup.GET("/categories", r.discoveryHandler.ListActiveCategories)
-		discoveryGroup.GET("/subcategories", r.discoveryHandler.ListActiveSubcategories)
-		discoveryGroup.GET("/hubs", r.discoveryHandler.ListActiveHubs)
 	}
 }
 

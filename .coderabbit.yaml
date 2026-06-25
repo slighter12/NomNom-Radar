@@ -1,0 +1,78 @@
+language: "en-US"
+tone_instructions: "Be concise and pragmatic. Prioritize correctness, security, maintainability, and test gaps over style nits."
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  review_details: false
+  commit_status: true
+  fail_commit_status: false
+  collapse_walkthrough: true
+  changed_files_summary: true
+  sequence_diagrams: false
+  estimate_code_review_effort: true
+  assess_linked_issues: true
+  related_issues: false
+  related_prs: false
+  suggested_labels: false
+  suggested_reviewers: false
+  in_progress_fortune: false
+  poem: false
+  enable_prompt_for_ai_agents: false
+  path_filters:
+    - "!**/.git/**"
+    - "!**/node_modules/**"
+    - "!**/dist/**"
+    - "!**/build/**"
+    - "!**/coverage/**"
+    - "!go.sum"
+    - "!internal/infra/persistence/postgres/query/**"
+    - "!internal/mocks/**"
+    - "!k6/**"
+  path_instructions:
+    - path: "**/*.go"
+      instructions: |
+        Focus on correctness, explicit error handling, context propagation, SQL safety, concurrency risks, and preserving existing package boundaries. Avoid cosmetic comments unless they hide a real bug.
+    - path: "internal/delivery/api/**"
+      instructions: |
+        Check API contract behavior: authn/authz boundaries, stable status codes, response envelope shape, request_id propagation, validation errors, and safe error details.
+    - path: "database/migration/**"
+      instructions: |
+        Check migration safety, reversible intent, Supabase compatibility, PostGIS extension schema usage, function search_path hardening, and rollback risk.
+    - path: "deploy/**"
+      instructions: |
+        Check Cloud Run runtime configuration, secret injection, service account usage, ingress/IAM exposure, and environment variable names.
+    - path: ".github/workflows/**"
+      instructions: |
+        Check workflow permissions, secret handling, path filters, deployment gates, and whether runtime config changes are reflected in Cloud Run service and job definitions.
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 5
+    ignore_title_keywords:
+      - "WIP"
+      - "DO NOT REVIEW"
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: false
+    simplify:
+      enabled: false
+  tools:
+    golangci-lint:
+      enabled: true
+      config_file: ".golangci.yaml"
+    markdownlint:
+      enabled: true
+    yamllint:
+      enabled: true
+    actionlint:
+      enabled: true
+    zizmor:
+      enabled: true
+    github-checks:
+      enabled: true

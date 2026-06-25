@@ -409,7 +409,7 @@ export default function (setupData) {
     );
 
     const userProfileRes = get(
-      "/user/profile",
+      "/api/v1/user/profile",
       "full_get_profile",
       userLogin.token,
     );
@@ -427,7 +427,7 @@ export default function (setupData) {
     assertStatus(authTestRes, 200, "authenticated test route");
 
     const merchantProfileRes = get(
-      "/user/profile",
+      "/api/v1/user/profile",
       "full_get_merchant_profile",
       merchantLogin.token,
     );
