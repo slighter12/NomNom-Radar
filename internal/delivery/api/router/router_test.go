@@ -159,6 +159,26 @@ func TestRouter_DiscoveryValuesAllowMerchantRole(t *testing.T) {
 	}
 }
 
+func TestRouter_DiscoveryValuesRequireAuthentication(t *testing.T) {
+	e := newRouterTestEcho()
+
+	for _, path := range []string{
+		"/api/v1/discovery/categories",
+		"/api/v1/discovery/subcategories",
+		"/api/v1/discovery/hubs",
+	} {
+		t.Run(path, func(t *testing.T) {
+			req := newRouterTestRequest(http.MethodGet, path, "")
+			rec := httptest.NewRecorder()
+
+			e.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusUnauthorized, rec.Code)
+			assert.Contains(t, rec.Body.String(), `"code":"UNAUTHORIZED"`)
+		})
+	}
+}
+
 func TestRouter_PublicMerchantSearchStillRequiresUserRole(t *testing.T) {
 	e := newRouterTestEcho()
 	req := newRouterTestRequest(http.MethodGet, "/api/v1/merchants", testMerchantToken)
@@ -224,7 +244,9 @@ func newRouterTestEcho() *echo.Echo {
 
 func newRouterTestRequest(method, target, token string) *http.Request {
 	req := httptest.NewRequestWithContext(context.Background(), method, target, nil)
-	req.Header.Set(echo.HeaderAuthorization, "Bearer "+token)
+	if token != "" {
+		req.Header.Set(echo.HeaderAuthorization, "Bearer "+token)
+	}
 
 	return req
 }
