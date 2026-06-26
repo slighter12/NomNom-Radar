@@ -125,12 +125,13 @@ func (s *menuService) CreateMenuItem(ctx context.Context, merchantID uuid.UUID, 
 		return nil, err
 	}
 
+	categoryID := input.CategoryID
 	item := &entity.MenuItem{
 		ID:          uuid.New(),
 		MerchantID:  merchantID,
 		Name:        name,
 		Description: description,
-		CategoryID:  &input.CategoryID,
+		CategoryID:  &categoryID,
 		Price:       input.Price,
 		Currency:    currency,
 		PrepMinutes: input.PrepMinutes,
@@ -172,9 +173,10 @@ func (s *menuService) UpdateMenuItem(ctx context.Context, merchantID, itemID uui
 		return nil, err
 	}
 
+	categoryID := input.CategoryID
 	item.Name = name
 	item.Description = description
-	item.CategoryID = &input.CategoryID
+	item.CategoryID = &categoryID
 	item.Price = input.Price
 	item.Currency = currency
 	item.PrepMinutes = input.PrepMinutes

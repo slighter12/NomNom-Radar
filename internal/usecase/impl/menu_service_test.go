@@ -111,13 +111,15 @@ func TestMenuService_CreateMenuItem_Success(t *testing.T) {
 	}
 
 	service := NewMenuService(MenuServiceParams{MenuRepo: repo, DiscoveryRepo: discoveryRepo})
-	item, err := service.CreateMenuItem(ctx, merchantID, &usecase.CreateMenuItemInput{
+	input := &usecase.CreateMenuItemInput{
 		Name:        "  Beef Noodles  ",
 		CategoryID:  categoryID,
 		Price:       180,
 		Currency:    "twd",
 		PrepMinutes: 15,
-	})
+	}
+	item, err := service.CreateMenuItem(ctx, merchantID, input)
+	input.CategoryID = uuid.New()
 
 	require.NoError(t, err)
 	require.NotNil(t, item)
@@ -231,7 +233,7 @@ func TestMenuService_UpdateMenuItem_PreservesDisplayOrder(t *testing.T) {
 	}
 
 	service := NewMenuService(MenuServiceParams{MenuRepo: repo, DiscoveryRepo: discoveryRepo})
-	item, err := service.UpdateMenuItem(ctx, merchantID, itemID, &usecase.UpdateMenuItemInput{
+	input := &usecase.UpdateMenuItemInput{
 		Name:        "New Name",
 		CategoryID:  categoryID,
 		Price:       70,
@@ -239,7 +241,9 @@ func TestMenuService_UpdateMenuItem_PreservesDisplayOrder(t *testing.T) {
 		PrepMinutes: 6,
 		IsAvailable: true,
 		IsPopular:   false,
-	})
+	}
+	item, err := service.UpdateMenuItem(ctx, merchantID, itemID, input)
+	input.CategoryID = uuid.New()
 
 	require.NoError(t, err)
 	assert.Equal(t, 4, item.DisplayOrder)
