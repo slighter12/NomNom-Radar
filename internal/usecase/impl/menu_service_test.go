@@ -90,6 +90,7 @@ func (s *userRepositoryStub) Update(context.Context, *entity.User) error {
 func TestMenuService_CreateMenuItem_Success(t *testing.T) {
 	ctx := context.Background()
 	merchantID := uuid.New()
+	categoryID := uuid.New()
 	now := time.Now()
 
 	repo := &menuRepositoryStub{
@@ -101,11 +102,18 @@ func TestMenuService_CreateMenuItem_Success(t *testing.T) {
 			return nil
 		},
 	}
+	discoveryRepo := &discoveryRepositoryStub{
+		findSubcategoryByIDFunc: func(_ context.Context, id uuid.UUID) (*entity.DiscoverySubcategory, error) {
+			assert.Equal(t, categoryID, id)
 
-	service := NewMenuService(MenuServiceParams{MenuRepo: repo})
+			return &entity.DiscoverySubcategory{ID: categoryID, Status: entity.DiscoveryStatusActive}, nil
+		},
+	}
+
+	service := NewMenuService(MenuServiceParams{MenuRepo: repo, DiscoveryRepo: discoveryRepo})
 	item, err := service.CreateMenuItem(ctx, merchantID, &usecase.CreateMenuItemInput{
 		Name:        "  Beef Noodles  ",
-		Category:    "main",
+		CategoryID:  categoryID,
 		Price:       180,
 		Currency:    "twd",
 		PrepMinutes: 15,
@@ -115,21 +123,30 @@ func TestMenuService_CreateMenuItem_Success(t *testing.T) {
 	require.NotNil(t, item)
 	assert.Equal(t, merchantID, item.MerchantID)
 	assert.Equal(t, "Beef Noodles", item.Name)
-	assert.Equal(t, entity.MenuCategoryMain, item.Category)
+	require.NotNil(t, item.CategoryID)
+	assert.Equal(t, categoryID, *item.CategoryID)
 	assert.Equal(t, entity.CurrencyTWD, item.Currency)
 	assert.Equal(t, 3, item.DisplayOrder)
 }
 
-func TestMenuService_CreateMenuItem_InvalidCategory(t *testing.T) {
+func TestMenuService_CreateMenuItem_InactiveCategory(t *testing.T) {
+	categoryID := uuid.New()
 	service := NewMenuService(MenuServiceParams{
 		MenuRepo: &menuRepositoryStub{
 			createMenuItemFunc: func(_ context.Context, _ *entity.MenuItem) error { return nil },
+		},
+		DiscoveryRepo: &discoveryRepositoryStub{
+			findSubcategoryByIDFunc: func(_ context.Context, id uuid.UUID) (*entity.DiscoverySubcategory, error) {
+				assert.Equal(t, categoryID, id)
+
+				return &entity.DiscoverySubcategory{ID: categoryID, Status: entity.DiscoveryStatusInactive}, nil
+			},
 		},
 	})
 
 	item, err := service.CreateMenuItem(context.Background(), uuid.New(), &usecase.CreateMenuItemInput{
 		Name:        "Combo",
-		Category:    "combo",
+		CategoryID:  categoryID,
 		Price:       120,
 		Currency:    "TWD",
 		PrepMinutes: 10,
@@ -137,18 +154,19 @@ func TestMenuService_CreateMenuItem_InvalidCategory(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Nil(t, item)
-	assert.ErrorIs(t, err, domainerrors.ErrInvalidMenuCategory)
+	assert.ErrorIs(t, err, domainerrors.ErrValidationFailed)
 }
 
 func TestMenuService_UpdateMenuItem_PreservesDisplayOrder(t *testing.T) {
 	ctx := context.Background()
 	merchantID := uuid.New()
 	itemID := uuid.New()
+	categoryID := uuid.New()
 	existingItem := &entity.MenuItem{
 		ID:           itemID,
 		MerchantID:   merchantID,
 		Name:         "Old Name",
-		Category:     entity.MenuCategoryDrink,
+		CategoryID:   nil,
 		Currency:     entity.CurrencyTWD,
 		Price:        60,
 		PrepMinutes:  5,
@@ -168,11 +186,18 @@ func TestMenuService_UpdateMenuItem_PreservesDisplayOrder(t *testing.T) {
 			return nil
 		},
 	}
+	discoveryRepo := &discoveryRepositoryStub{
+		findSubcategoryByIDFunc: func(_ context.Context, id uuid.UUID) (*entity.DiscoverySubcategory, error) {
+			assert.Equal(t, categoryID, id)
 
-	service := NewMenuService(MenuServiceParams{MenuRepo: repo})
+			return &entity.DiscoverySubcategory{ID: categoryID, Status: entity.DiscoveryStatusActive}, nil
+		},
+	}
+
+	service := NewMenuService(MenuServiceParams{MenuRepo: repo, DiscoveryRepo: discoveryRepo})
 	item, err := service.UpdateMenuItem(ctx, merchantID, itemID, &usecase.UpdateMenuItemInput{
 		Name:        "New Name",
-		Category:    "drink",
+		CategoryID:  categoryID,
 		Price:       70,
 		Currency:    "TWD",
 		PrepMinutes: 6,
@@ -183,6 +208,8 @@ func TestMenuService_UpdateMenuItem_PreservesDisplayOrder(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 4, item.DisplayOrder)
 	assert.Equal(t, "New Name", item.Name)
+	require.NotNil(t, item.CategoryID)
+	assert.Equal(t, categoryID, *item.CategoryID)
 }
 
 func TestMenuService_ReorderMenuItems_RequiresCompleteSnapshot(t *testing.T) {
@@ -256,6 +283,7 @@ func TestMenuService_ReorderMenuItems_Success(t *testing.T) {
 func TestMenuService_GetPublicMerchantMenu_Success(t *testing.T) {
 	ctx := context.Background()
 	merchantID := uuid.New()
+	categoryID := uuid.New()
 	expectedItems := []*entity.MenuItem{
 		{ID: uuid.New(), MerchantID: merchantID, Name: "Beef Noodles", IsAvailable: true},
 	}
@@ -265,8 +293,8 @@ func TestMenuService_GetPublicMerchantMenu_Success(t *testing.T) {
 			assert.Equal(t, merchantID, id)
 			require.NotNil(t, filter.IsAvailable)
 			assert.True(t, *filter.IsAvailable)
-			require.NotNil(t, filter.Category)
-			assert.Equal(t, entity.MenuCategoryMain, *filter.Category)
+			require.NotNil(t, filter.CategoryID)
+			assert.Equal(t, categoryID, *filter.CategoryID)
 			assert.Equal(t, "beef", filter.Keyword)
 			assert.Equal(t, 20, filter.Limit)
 			assert.Equal(t, 0, filter.Offset)
@@ -284,17 +312,25 @@ func TestMenuService_GetPublicMerchantMenu_Success(t *testing.T) {
 			}, nil
 		},
 	}
+	discoveryRepo := &discoveryRepositoryStub{
+		findSubcategoryByIDFunc: func(_ context.Context, id uuid.UUID) (*entity.DiscoverySubcategory, error) {
+			assert.Equal(t, categoryID, id)
+
+			return &entity.DiscoverySubcategory{ID: categoryID, Status: entity.DiscoveryStatusActive}, nil
+		},
+	}
 
 	service := NewMenuService(MenuServiceParams{
-		MenuRepo: menuRepo,
-		UserRepo: userRepo,
+		MenuRepo:      menuRepo,
+		UserRepo:      userRepo,
+		DiscoveryRepo: discoveryRepo,
 	})
 
 	result, err := service.GetPublicMerchantMenu(ctx, merchantID, &usecase.ListMerchantMenuItemsInput{
-		Category: "  main  ",
-		Keyword:  "  beef  ",
-		Page:     1,
-		PageSize: 20,
+		CategoryID: &categoryID,
+		Keyword:    "  beef  ",
+		Page:       1,
+		PageSize:   20,
 	})
 
 	require.NoError(t, err)
@@ -371,6 +407,7 @@ func TestMenuService_GetPublicMerchantMenu_MerchantNotFound(t *testing.T) {
 func TestMenuService_ListMerchantMenuItems_Success(t *testing.T) {
 	ctx := context.Background()
 	merchantID := uuid.New()
+	categoryID := uuid.New()
 	isAvailable := true
 	expectedItems := []*entity.MenuItem{
 		{ID: uuid.New(), MerchantID: merchantID, Name: "Beef Noodles"},
@@ -381,8 +418,8 @@ func TestMenuService_ListMerchantMenuItems_Success(t *testing.T) {
 			assert.Equal(t, merchantID, id)
 			require.NotNil(t, filter.IsAvailable)
 			assert.True(t, *filter.IsAvailable)
-			require.NotNil(t, filter.Category)
-			assert.Equal(t, entity.MenuCategoryMain, *filter.Category)
+			require.NotNil(t, filter.CategoryID)
+			assert.Equal(t, categoryID, *filter.CategoryID)
 			assert.Equal(t, "beef", filter.Keyword)
 			assert.Equal(t, 5, filter.Limit)
 			assert.Equal(t, 5, filter.Offset)
@@ -390,10 +427,17 @@ func TestMenuService_ListMerchantMenuItems_Success(t *testing.T) {
 			return expectedItems, 7, nil
 		},
 	}
+	discoveryRepo := &discoveryRepositoryStub{
+		findSubcategoryByIDFunc: func(_ context.Context, id uuid.UUID) (*entity.DiscoverySubcategory, error) {
+			assert.Equal(t, categoryID, id)
 
-	service := NewMenuService(MenuServiceParams{MenuRepo: repo})
+			return &entity.DiscoverySubcategory{ID: categoryID, Status: entity.DiscoveryStatusActive}, nil
+		},
+	}
+
+	service := NewMenuService(MenuServiceParams{MenuRepo: repo, DiscoveryRepo: discoveryRepo})
 	result, err := service.ListMerchantMenuItems(ctx, merchantID, &usecase.ListMerchantMenuItemsInput{
-		Category:    "  main  ",
+		CategoryID:  &categoryID,
 		IsAvailable: &isAvailable,
 		Keyword:     "  beef  ",
 		Page:        2,
@@ -408,7 +452,8 @@ func TestMenuService_ListMerchantMenuItems_Success(t *testing.T) {
 	assert.EqualValues(t, 7, result.Pagination.Total)
 }
 
-func TestMenuService_ListMerchantMenuItems_InvalidCategory(t *testing.T) {
+func TestMenuService_ListMerchantMenuItems_InactiveCategory(t *testing.T) {
+	categoryID := uuid.New()
 	service := NewMenuService(MenuServiceParams{
 		MenuRepo: &menuRepositoryStub{
 			listMenuItemsByMerchantFunc: func(context.Context, uuid.UUID, repository.MenuItemListFilter) ([]*entity.MenuItem, int64, error) {
@@ -417,17 +462,51 @@ func TestMenuService_ListMerchantMenuItems_InvalidCategory(t *testing.T) {
 				return nil, 0, nil
 			},
 		},
+		DiscoveryRepo: &discoveryRepositoryStub{
+			findSubcategoryByIDFunc: func(_ context.Context, id uuid.UUID) (*entity.DiscoverySubcategory, error) {
+				assert.Equal(t, categoryID, id)
+
+				return &entity.DiscoverySubcategory{ID: categoryID, Status: entity.DiscoveryStatusInactive}, nil
+			},
+		},
 	})
 
 	result, err := service.ListMerchantMenuItems(context.Background(), uuid.New(), &usecase.ListMerchantMenuItemsInput{
-		Category: "combo",
-		Page:     1,
-		PageSize: 10,
+		CategoryID: &categoryID,
+		Page:       1,
+		PageSize:   10,
 	})
 
 	require.Error(t, err)
 	assert.Nil(t, result)
-	assert.ErrorIs(t, err, domainerrors.ErrInvalidMenuCategory)
+	assert.ErrorIs(t, err, domainerrors.ErrValidationFailed)
+}
+
+func TestMenuService_ListMerchantMenuItems_AllowsLegacyRowsWithoutCategoryFilter(t *testing.T) {
+	ctx := context.Background()
+	merchantID := uuid.New()
+	expectedItems := []*entity.MenuItem{
+		{ID: uuid.New(), MerchantID: merchantID, Name: "Legacy Item", CategoryID: nil},
+	}
+
+	repo := &menuRepositoryStub{
+		listMenuItemsByMerchantFunc: func(_ context.Context, id uuid.UUID, filter repository.MenuItemListFilter) ([]*entity.MenuItem, int64, error) {
+			assert.Equal(t, merchantID, id)
+			assert.Nil(t, filter.CategoryID)
+
+			return expectedItems, 1, nil
+		},
+	}
+
+	service := NewMenuService(MenuServiceParams{MenuRepo: repo})
+	result, err := service.ListMerchantMenuItems(ctx, merchantID, &usecase.ListMerchantMenuItemsInput{
+		Page:     1,
+		PageSize: 20,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, expectedItems, result.Items)
 }
 
 func TestMenuService_UpdateMenuItemStatus_Success(t *testing.T) {

@@ -17,21 +17,24 @@ import (
 )
 
 type menuService struct {
-	menuRepo repository.MenuRepository
-	userRepo repository.UserRepository
+	menuRepo      repository.MenuRepository
+	userRepo      repository.UserRepository
+	discoveryRepo repository.DiscoveryRepository
 }
 
 type MenuServiceParams struct {
 	fx.In
 
-	MenuRepo repository.MenuRepository
-	UserRepo repository.UserRepository
+	MenuRepo      repository.MenuRepository
+	UserRepo      repository.UserRepository
+	DiscoveryRepo repository.DiscoveryRepository
 }
 
 func NewMenuService(params MenuServiceParams) usecase.MenuUsecase {
 	return &menuService{
-		menuRepo: params.MenuRepo,
-		userRepo: params.UserRepo,
+		menuRepo:      params.MenuRepo,
+		userRepo:      params.UserRepo,
+		discoveryRepo: params.DiscoveryRepo,
 	}
 }
 
@@ -72,12 +75,11 @@ func (s *menuService) ListMerchantMenuItems(ctx context.Context, merchantID uuid
 	if keyword := strings.TrimSpace(input.Keyword); keyword != "" {
 		filter.Keyword = keyword
 	}
-	if input.Category != "" {
-		category := entity.MenuCategory(strings.TrimSpace(input.Category))
-		if !category.IsValid() {
-			return nil, domainerrors.ErrInvalidMenuCategory
+	if input.CategoryID != nil {
+		if err := s.validateActiveMenuCategory(ctx, *input.CategoryID); err != nil {
+			return nil, err
 		}
-		filter.Category = &category
+		filter.CategoryID = input.CategoryID
 	}
 
 	items, total, err := s.menuRepo.ListMenuItemsByMerchant(ctx, merchantID, filter)
@@ -110,14 +112,16 @@ func (s *menuService) CreateMenuItem(ctx context.Context, merchantID uuid.UUID, 
 		isPopular = *input.IsPopular
 	}
 
-	category := entity.MenuCategory(strings.TrimSpace(input.Category))
 	currency := strings.ToUpper(strings.TrimSpace(input.Currency))
 	name := strings.TrimSpace(input.Name)
 	description := normalizeOptionalString(input.Description)
 	imageURL := normalizeOptionalString(input.ImageURL)
 	externalURL := normalizeOptionalString(input.ExternalURL)
 
-	if err := validateMenuItemFields(name, description, category, input.Price, currency, input.PrepMinutes); err != nil {
+	if err := validateMenuItemFields(name, description, input.CategoryID, input.Price, currency, input.PrepMinutes); err != nil {
+		return nil, err
+	}
+	if err := s.validateActiveMenuCategory(ctx, input.CategoryID); err != nil {
 		return nil, err
 	}
 
@@ -126,7 +130,7 @@ func (s *menuService) CreateMenuItem(ctx context.Context, merchantID uuid.UUID, 
 		MerchantID:  merchantID,
 		Name:        name,
 		Description: description,
-		Category:    category,
+		CategoryID:  &input.CategoryID,
 		Price:       input.Price,
 		Currency:    currency,
 		PrepMinutes: input.PrepMinutes,
@@ -157,18 +161,20 @@ func (s *menuService) UpdateMenuItem(ctx context.Context, merchantID, itemID uui
 
 	name := strings.TrimSpace(input.Name)
 	description := normalizeOptionalString(input.Description)
-	category := entity.MenuCategory(strings.TrimSpace(input.Category))
 	currency := strings.ToUpper(strings.TrimSpace(input.Currency))
 	imageURL := normalizeOptionalString(input.ImageURL)
 	externalURL := normalizeOptionalString(input.ExternalURL)
 
-	if err := validateMenuItemFields(name, description, category, input.Price, currency, input.PrepMinutes); err != nil {
+	if err := validateMenuItemFields(name, description, input.CategoryID, input.Price, currency, input.PrepMinutes); err != nil {
+		return nil, err
+	}
+	if err := s.validateActiveMenuCategory(ctx, input.CategoryID); err != nil {
 		return nil, err
 	}
 
 	item.Name = name
 	item.Description = description
-	item.Category = category
+	item.CategoryID = &input.CategoryID
 	item.Price = input.Price
 	item.Currency = currency
 	item.PrepMinutes = input.PrepMinutes
@@ -266,6 +272,22 @@ func (s *menuService) validatePublicMerchant(ctx context.Context, merchantID uui
 	return nil
 }
 
+func (s *menuService) validateActiveMenuCategory(ctx context.Context, categoryID uuid.UUID) error {
+	if categoryID == uuid.Nil {
+		return domainerrors.ErrValidationFailed.WithDetails("category_id is required")
+	}
+
+	subcategory, err := s.discoveryRepo.FindSubcategoryByID(ctx, categoryID)
+	if err != nil {
+		return err
+	}
+	if subcategory.Status != entity.DiscoveryStatusActive {
+		return domainerrors.ErrValidationFailed.WithDetails("category_id must reference an active discovery subcategory")
+	}
+
+	return nil
+}
+
 func normalizeOptionalString(value *string) *string {
 	if value == nil {
 		return nil
@@ -279,7 +301,7 @@ func normalizeOptionalString(value *string) *string {
 	return &trimmed
 }
 
-func validateMenuItemFields(name string, description *string, category entity.MenuCategory, price int, currency string, prepMinutes int) error {
+func validateMenuItemFields(name string, description *string, categoryID uuid.UUID, price int, currency string, prepMinutes int) error {
 	if name == "" {
 		return domainerrors.ErrValidationFailed.WithDetails("name is required")
 	}
@@ -289,8 +311,8 @@ func validateMenuItemFields(name string, description *string, category entity.Me
 	if description != nil && utf8.RuneCountInString(*description) > 500 {
 		return domainerrors.ErrValidationFailed.WithDetails("description must be 500 characters or fewer")
 	}
-	if !category.IsValid() {
-		return domainerrors.ErrInvalidMenuCategory
+	if categoryID == uuid.Nil {
+		return domainerrors.ErrValidationFailed.WithDetails("category_id is required")
 	}
 	if price < 0 {
 		return domainerrors.ErrValidationFailed.WithDetails("price must be greater than or equal to zero")

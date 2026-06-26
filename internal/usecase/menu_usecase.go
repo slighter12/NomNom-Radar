@@ -9,7 +9,7 @@ import (
 )
 
 type ListMerchantMenuItemsInput struct {
-	Category    string
+	CategoryID  *uuid.UUID
 	IsAvailable *bool
 	Keyword     string
 	Page        int
@@ -19,7 +19,7 @@ type ListMerchantMenuItemsInput struct {
 type CreateMenuItemInput struct {
 	Name        string
 	Description *string
-	Category    string
+	CategoryID  uuid.UUID
 	Price       int
 	Currency    string
 	PrepMinutes int
@@ -32,7 +32,7 @@ type CreateMenuItemInput struct {
 type UpdateMenuItemInput struct {
 	Name        string
 	Description *string
-	Category    string
+	CategoryID  uuid.UUID
 	Price       int
 	Currency    string
 	PrepMinutes int
