@@ -184,9 +184,30 @@ or:
 }
 ```
 
+or:
+
+```json
+{
+  "status": "linking_required",
+  "linking_token": "short-lived-jwt"
+}
+```
+
 Registration is not an account-linking flow. If an email is already present on an existing account, `/auth/register/user` and `/auth/register/merchant` must return `409 conflict` instead of attaching a new login method.
 
+OAuth login by email match is not an account-linking flow either. When a verified OAuth email matches an existing local account that does not already have the provider identity attached, the backend returns `status=linking_required`. The client must re-authenticate the existing account and then call `/auth/link-provider` with the short-lived linking token.
+
 Role order in JWT claims is not a primary-role contract. Clients must treat roles as a set; if the product needs a primary role later, add an explicit field instead of inferring it from array position.
+
+## Merchant OAuth Workflow
+
+Merchant OAuth has two separate completion steps:
+
+1. OAuth login or provider linking verifies the identity provider account.
+2. If the requested merchant role still lacks required merchant profile data, the auth response returns `status=onboarding_required`.
+3. The client calls `/auth/onboarding/merchant` with the `onboarding_token` and required profile fields such as `store_name`.
+4. After onboarding completes, the client receives an authenticated merchant session.
+5. Business license verification is a later authenticated merchant action through `/api/v1/merchant/verification`; it is not part of the OAuth linking or onboarding token flow.
 
 ## API Endpoints
 
@@ -218,6 +239,27 @@ Role order in JWT claims is not a primary-role contract. Clients must treat role
 - **Output**:
   - `status=authenticated` when the account is fully ready
   - `status=onboarding_required` when merchant profile data is still missing
+  - `status=linking_required` when a verified OAuth email matches an existing local account and re-authentication is required before linking
+
+### POST /auth/link-provider
+
+- **Purpose**: Link an OAuth provider to an existing account after the user re-authenticates.
+- **Input**:
+
+```json
+{
+  "linking_token": "short-lived-jwt",
+  "password": "current-password"
+}
+```
+
+- **Output**:
+  - `status=authenticated` with `access_token`, `refresh_token`, and `user`
+  - `status=onboarding_required` when the linking token carries merchant intent and required merchant onboarding fields are still missing
+- **Security behavior**:
+  - The linking token alone is not enough to attach the provider.
+  - The existing account must be re-authenticated.
+  - Reused or expired linking tokens must be rejected.
 
 ### POST /auth/onboarding/merchant
 
