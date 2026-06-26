@@ -1,181 +1,90 @@
-# NomNom-Radar 🍔📡
+# NomNom-Radar
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/slighter12/NomNom-Radar)
-[![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-orange.svg)](https://github.com/slighter12/NomNom-Radar/issues)
+NomNom-Radar is a backend for mobile-vendor and market discovery. It helps consumers find nearby mobile vendors and market-style vendor clusters, and it lets vendors notify subscribed users when they are nearby.
 
-Your personal foodie radar! Automatically detects nearby food trucks and sends out a "Nom Nom" alert.
+## Documentation
 
-NomNom-Radar is a real-time notification backend service. It utilizes PostgreSQL with PostGIS for high-performance geospatial queries to track mobile food vendors and notify users when deliciousness is near.
+Start here:
 
-## ✨ Core Features
+- `AGENTS.md` - instructions for coding agents working in this repository.
+- `docs/product.md` - product definition, v1 scope, non-goals, and future direction.
+- `docs/architecture.md` - current runtime architecture and service boundaries.
+- `docs/roadmap.md` - completed backend foundation, remaining verification, and next directions.
+- `docs/operations.md` - deployment and runtime reference index.
 
-* **Real-time Vendor Tracking**: Allows food truck owners to update their location instantly via a simple API endpoint.
-* **Dynamic Geofencing**: Users can define a custom notification radius (e.g., 500 meters, 1 km).
-* **High-Performance Geospatial Queries**: Leverages the power of PostGIS (`ST_DWithin`) for efficient, low-latency proximity checks.
-* **Route-Aware Distance Filtering**: Uses a PMTiles-based routing engine for route-aware distance checks, with straight-line fallback when route data is unavailable.
-* **Push Notification System**: Integrates with services like Firebase Cloud Messaging (FCM) to deliver instant alerts to users' devices.
-* **Open & Share-Alike**: Licensed under AGPL-3.0 to encourage community contribution while protecting the project from being used in proprietary, closed-source commercial services.
+Active reference docs:
 
-## 🛠️ Tech Stack
+- `docs/reference/google-oauth-api.md` - Google OAuth mobile ID-token API contract.
+- `docs/reference/device-health-api.md` - device health and rebind API contract.
+- `docs/reference/cloud-run-jobs.md` - Cloud Run Job deployment and scheduling.
 
-* **Backend**: **Go** with **Echo** framework
-* **Database**: PostgreSQL 18+ + PostGIS extension for geospatial data
-* **Database Driver/ORM**: **GORM**
-* **Routing Engine**: PMTiles-based routing with MVT parsing, local pathfinding, and Haversine fallback
-* **Push Notifications**: Firebase Cloud Messaging (FCM)
-* **Containerization**: Docker & Docker Compose
+Historical playbooks:
 
-## 🚀 Getting Started
+- `docs/history/tier1-reliability.md`
+- `docs/history/tier2-discovery.md`
+- `docs/history/routing-engine.md`
+- `docs/history/serverless-geo-notification.md`
 
-Follow these instructions to get a local copy up and running for development and testing purposes.
+## Tech Stack
+
+- Go with Echo and Fx.
+- PostgreSQL/PostGIS.
+- GORM and generated query helpers.
+- Firebase Cloud Messaging.
+- Google Pub/Sub or local HTTP event publishing.
+- PMTiles/MVT routing with Haversine fallback.
+- Docker, Docker Compose, Cloud Run, and Cloud Run Jobs.
+
+## Getting Started
 
 ### Prerequisites
 
-* [Go](https://go.dev/doc/install) (e.g., v1.26 or later)
-* [Docker](https://www.docker.com/) and [Docker Compose](https://docs.docker.com/compose/)
-* A [Firebase](https://firebase.google.com/) project for push notifications.
+- Go.
+- Docker and Docker Compose.
+- PostgreSQL with PostGIS.
+- Firebase project credentials for push notifications.
 
-### Installation & Setup
+### Install Dependencies
 
-1. **Clone the repository:**
-
-```bash
-git clone https://github.com/slighter12/NomNom-Radar.git
-cd NomNom-Radar
-```
-
-2. **Install dependencies:**
-
-```bash
+```sh
 go mod download
 ```
 
-3. **Set up the database:**
+### Configure Local Runtime
 
-Make sure you have PostgreSQL 18+ with PostGIS extension installed and running. The baseline migration uses PostgreSQL's built-in `uuidv7()` function.
-
-**Supabase Deployment - Required PostGIS Setup:**
-
-If you're deploying on Supabase, enable `run_supabase_migration` in the deploy workflow. Supabase-specific database changes are managed by goose with separate version tables, so each Supabase migration is applied once per database:
-
-- `database/migration/supabase/pre` runs before the shared PostgreSQL migrations using `goose_supabase_pre_version`.
-- `database/migration/supabase/post` runs after the shared PostgreSQL migrations using `goose_supabase_post_version`.
-
-Database migrations should use a dedicated GCP Secret Manager secret named `postgres-migration-dsn`. For Supabase, this DSN must be a direct connection or Supavisor session-mode connection on port `5432`; do not use the transaction pooler on port `6543` for migrations because session-level settings such as `PGOPTIONS` / `search_path` are not reliable there. Runtime Cloud Run services still use `postgres-master-dsn`, which may point at the transaction pooler because `POSTGRES_PRESET=supabase_transaction` disables prepared statement behavior in the app connection.
-
-The pre-migrations configure Supabase compatibility before shared migrations run, including the extension schema and a `public.uuidv7()` fallback when Supabase does not provide PostgreSQL's native `pg_catalog.uuidv7()` yet. For the extension schema, they perform the equivalent of:
-
-```sql
-CREATE SCHEMA IF NOT EXISTS extensions;
-CREATE EXTENSION IF NOT EXISTS citext SCHEMA extensions;
-CREATE EXTENSION IF NOT EXISTS postgis SCHEMA extensions;
-ALTER ROLE your_app_database_role SET search_path TO "$user", public, extensions;
-```
-
-The post-migrations apply Supabase function hardening with schema-qualified references and fixed function `search_path` values.
-
-Recommended workflow usage:
-
-- New Supabase database: enable `run_supabase_migration` and `run_migration`.
-- Normal schema migration: enable only `run_migration`.
-- Migration that adds or changes database functions and needs Supabase hardening: enable `run_supabase_migration` and `run_migration`.
-- Supabase-only fix on an already migrated database: enable only `run_supabase_migration`.
-
-The standard Supabase API roles are handled by the pre-migration. If you add a non-standard API role that needs direct access to extension objects, keep it aligned with the same runtime search path:
-
-```sql
-GRANT USAGE ON SCHEMA extensions TO your_api_role;
-ALTER ROLE your_api_role SET search_path TO "$user", public, extensions;
-```
-
-Do not run `DROP EXTENSION postgis CASCADE` on a migrated database. It drops dependent PostGIS objects such as `geometry` columns and spatial indexes.
-The Supabase pre-migration does not relocate an extension that already exists in another schema; use it on a new Supabase database or manually remediate an already-drifted database.
-
-4. **Configure local config:**
-
-Copy the demo config and update with your database, OAuth, and Firebase settings:
-
-```bash
+```sh
 cp config/config_demo.yaml config/local.yaml
-# Edit config/local.yaml with your local credentials and service settings
 ```
 
-5. **Run the application:**
+Edit `config/local.yaml` with local database, OAuth, Firebase, Pub/Sub, and PMTiles settings.
 
-```bash
+### Database Setup
+
+The baseline PostgreSQL migration expects PostGIS and UUID support. Supabase deployments need the Supabase pre/post migration workflow when preparing a new database or changing database functions.
+
+Use a dedicated migration DSN secret named `postgres-migration-dsn` when deploying. For Supabase, this DSN must be a direct connection or Supavisor session-mode connection on port `5432`; do not use the transaction pooler on port `6543` for migrations.
+
+Runtime Cloud Run services may still use `postgres-master-dsn` with `POSTGRES_PRESET=supabase_transaction`.
+
+Do not run `DROP EXTENSION postgis CASCADE` on a migrated database.
+
+### Run the API
+
+```sh
 ENV=local go run ./cmd/radar
 ```
 
-To run the local geo worker through Docker Compose, use the `dev` profile:
+### Run the Local Geo Worker
 
-```bash
+```sh
 docker compose --profile dev up --build geoworker
 ```
 
-### Build Road PMTiles (Taiwan example)
+## Routing Data
 
-Install the required tools:
+Runtime route-aware notification filtering reads PMTiles through the `pmtiles` config block. When PMTiles is disabled or unavailable, the routing adapter falls back to Haversine distance.
 
-```bash
-brew install osmium-tool tippecanoe
-```
-
-Then generate a road-only GeoJSON and PMTiles:
-
-```bash
-# 1) Filter: keep only ways with the "highway" tag (w/highway = ways with highway tag)
-# This produces a smaller .pbf containing only roads.
-osmium tags-filter taiwan-latest.osm.pbf w/highway -o filtered-roads.osm.pbf --overwrite
-
-# 2) Convert: turn the filtered PBF into GeoJSON
-# osmium export converts OSM ways to LineString and preserves all tags.
-osmium export filtered-roads.osm.pbf -o roads.geojson --overwrite
-
-# 3) Build PMTiles (same parameters as before)
-tippecanoe -o walking.pmtiles \
-  -z15 -Z15 \
-  --buffer=100 \
-  --no-clipping \
-  --layer=roads \
-  roads.geojson
-```
-
-## 🧪 Testing
-
-This project uses [mockery](https://github.com/vektra/mockery) to generate mocks. To regenerate mocks after interface changes:
-
-```bash
-mockery
-```
-
-## 🤔 How It Works
-
-1. **Merchant Publishes Location**: A food truck owner sends a `POST` request with their current coordinates and location details to the notification endpoint.
-2. **Subscriber Pre-filtering**: The API server queries PostGIS (`ST_DWithin`) to find subscribed users within range, keeping the routing workload bounded.
-3. **Event Published**: The filtered subscriber list is published as an event to Google Cloud Pub/Sub (or a local HTTP endpoint in development).
-4. **Geo Worker Processes Event**: A separate Geo Worker service receives the event, calculates route-aware distances using the PMTiles-based routing engine, and falls back to straight-line distance when route data is unavailable.
-5. **Notification Sent**: The Geo Worker sends push notifications via FCM to eligible users, letting them know a favorite food truck is nearby.
-
-## 🗺️ Routing Engine
-
-NomNom-Radar includes a high-performance road network routing engine for accurate distance and ETA calculations.
-
-### Features
-
-* **Road Network Distance**: Calculate real driving distances instead of straight-line (Haversine) approximations
-* **Route-Aware Filtering**: Uses PMTiles-based routing when available and falls back to straight-line distance when route data is unavailable
-* **One-to-Many Queries**: Efficiently calculate distances from one merchant to thousands of users
-* **GPS Snap Validation**: Detects GPS drift by validating snap distance to road network
-* **Haversine Fallback**: Gracefully degrades to straight-line distance when routing data is unavailable
-
-### PMTiles Data
-
-Runtime route-aware filtering reads PMTiles through `pmtiles` config. The API and Geo Worker both use the PMTiles routing adapter; when PMTiles is disabled or unavailable, the adapter falls back to straight-line Haversine distance.
-
-The older `cmd/routing` CH preprocessing CLI is retained as legacy/offline tooling and is not the notification runtime path.
-
-### Configuration
+Example PMTiles config:
 
 ```yaml
 pmtiles:
@@ -185,36 +94,20 @@ pmtiles:
   zoomLevel: 14
 ```
 
-### Architecture
+The older CH routing CLI under `cmd/routing` is legacy/offline tooling, not the notification runtime path.
 
-```text
-internal/infra/routing/
-├── pmtiles/                # Runtime PMTiles + MVT routing adapter
-│   ├── service.go          # RoutingUsecase implementation
-│   ├── mvt_parser.go       # MVT road parsing
-│   └── pathfinder.go       # Local graph pathfinding
-├── ch/                     # Legacy CH implementation, not runtime-wired
-└── loader/                 # Legacy CH CSV loading
+See `docs/operations.md` for the minimal PMTiles data preparation workflow.
+
+## Testing
+
+This project uses mockery for generated mocks:
+
+```sh
+mockery
 ```
 
-## 🤝 Contributing
+Run focused Go tests for the package or behavior you changed. Do not run broad suites for docs-only changes.
 
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/slighter12/NomNom-Radar/issues).
+## License
 
-Please adhere to this project's `code of conduct`.
-
-## 📄 License
-
-This project, `NomNom-Radar`, is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
-
-In simple terms, this means:
-
-* **✓ Freedom to Use**: You are free to run, study, share, and modify the software.
-* **🔗 Share Alike**: If you modify this project's code and make it available as a public network service (e.g., a website or API), you **must** also release your modified source code to all users of that service under the same AGPL-3.0 license.
-
-The choice of AGPL-3.0 is intended to foster community collaboration while preventing this project from being used to create proprietary, closed-source commercial services. We welcome all contributions, but please ensure you understand and agree to the terms of this license.
-
-See the [LICENSE](LICENSE) file for the full legal text.
-
----
-*Copyright (c) 2025, [slighter12]*
+NomNom-Radar is licensed under AGPL-3.0. See `LICENSE` for the full legal text.
