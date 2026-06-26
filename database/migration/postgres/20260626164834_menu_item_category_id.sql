@@ -21,5 +21,10 @@ DROP INDEX IF EXISTS idx_menu_items_category_id;
 ALTER TABLE menu_items
     DROP COLUMN IF EXISTS category_id;
 
+-- Original menu category values cannot be recovered after category is dropped.
+-- Use a valid legacy value only to restore the old NOT NULL schema shape.
 ALTER TABLE menu_items
-    ADD COLUMN category TEXT;
+    ADD COLUMN category TEXT NOT NULL DEFAULT 'main';
+
+ALTER TABLE menu_items
+    ALTER COLUMN category DROP DEFAULT;

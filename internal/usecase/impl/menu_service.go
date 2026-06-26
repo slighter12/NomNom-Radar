@@ -279,6 +279,10 @@ func (s *menuService) validateActiveMenuCategory(ctx context.Context, categoryID
 
 	subcategory, err := s.discoveryRepo.FindSubcategoryByID(ctx, categoryID)
 	if err != nil {
+		if errors.Is(err, domainerrors.ErrDiscoverySubcategoryNotFound) {
+			return domainerrors.ErrValidationFailed.WithDetails("category_id must reference an active discovery subcategory")
+		}
+
 		return err
 	}
 	if subcategory.Status != entity.DiscoveryStatusActive {

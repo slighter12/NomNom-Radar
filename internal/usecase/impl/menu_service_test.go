@@ -133,13 +133,49 @@ func TestMenuService_CreateMenuItem_InactiveCategory(t *testing.T) {
 	categoryID := uuid.New()
 	service := NewMenuService(MenuServiceParams{
 		MenuRepo: &menuRepositoryStub{
-			createMenuItemFunc: func(_ context.Context, _ *entity.MenuItem) error { return nil },
+			createMenuItemFunc: func(_ context.Context, _ *entity.MenuItem) error {
+				t.Fatal("repository should not be called for invalid category")
+
+				return nil
+			},
 		},
 		DiscoveryRepo: &discoveryRepositoryStub{
 			findSubcategoryByIDFunc: func(_ context.Context, id uuid.UUID) (*entity.DiscoverySubcategory, error) {
 				assert.Equal(t, categoryID, id)
 
 				return &entity.DiscoverySubcategory{ID: categoryID, Status: entity.DiscoveryStatusInactive}, nil
+			},
+		},
+	})
+
+	item, err := service.CreateMenuItem(context.Background(), uuid.New(), &usecase.CreateMenuItemInput{
+		Name:        "Combo",
+		CategoryID:  categoryID,
+		Price:       120,
+		Currency:    "TWD",
+		PrepMinutes: 10,
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, item)
+	assert.ErrorIs(t, err, domainerrors.ErrValidationFailed)
+}
+
+func TestMenuService_CreateMenuItem_MissingCategory(t *testing.T) {
+	categoryID := uuid.New()
+	service := NewMenuService(MenuServiceParams{
+		MenuRepo: &menuRepositoryStub{
+			createMenuItemFunc: func(_ context.Context, _ *entity.MenuItem) error {
+				t.Fatal("repository should not be called for invalid category")
+
+				return nil
+			},
+		},
+		DiscoveryRepo: &discoveryRepositoryStub{
+			findSubcategoryByIDFunc: func(_ context.Context, id uuid.UUID) (*entity.DiscoverySubcategory, error) {
+				assert.Equal(t, categoryID, id)
+
+				return nil, domainerrors.ErrDiscoverySubcategoryNotFound
 			},
 		},
 	})
@@ -210,6 +246,47 @@ func TestMenuService_UpdateMenuItem_PreservesDisplayOrder(t *testing.T) {
 	assert.Equal(t, "New Name", item.Name)
 	require.NotNil(t, item.CategoryID)
 	assert.Equal(t, categoryID, *item.CategoryID)
+}
+
+func TestMenuService_UpdateMenuItem_InactiveCategory(t *testing.T) {
+	merchantID := uuid.New()
+	itemID := uuid.New()
+	categoryID := uuid.New()
+	service := NewMenuService(MenuServiceParams{
+		MenuRepo: &menuRepositoryStub{
+			findMenuItemByIDFunc: func(_ context.Context, id uuid.UUID) (*entity.MenuItem, error) {
+				assert.Equal(t, itemID, id)
+
+				return &entity.MenuItem{ID: itemID, MerchantID: merchantID}, nil
+			},
+			updateMenuItemFunc: func(_ context.Context, _ *entity.MenuItem) error {
+				t.Fatal("repository should not be called for invalid category")
+
+				return nil
+			},
+		},
+		DiscoveryRepo: &discoveryRepositoryStub{
+			findSubcategoryByIDFunc: func(_ context.Context, id uuid.UUID) (*entity.DiscoverySubcategory, error) {
+				assert.Equal(t, categoryID, id)
+
+				return &entity.DiscoverySubcategory{ID: categoryID, Status: entity.DiscoveryStatusInactive}, nil
+			},
+		},
+	})
+
+	item, err := service.UpdateMenuItem(context.Background(), merchantID, itemID, &usecase.UpdateMenuItemInput{
+		Name:        "Combo",
+		CategoryID:  categoryID,
+		Price:       120,
+		Currency:    "TWD",
+		PrepMinutes: 10,
+		IsAvailable: true,
+		IsPopular:   false,
+	})
+
+	require.Error(t, err)
+	assert.Nil(t, item)
+	assert.ErrorIs(t, err, domainerrors.ErrValidationFailed)
 }
 
 func TestMenuService_ReorderMenuItems_RequiresCompleteSnapshot(t *testing.T) {
