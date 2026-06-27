@@ -10,7 +10,6 @@ var (
 	ErrMenuItemCreateFailed      = NewBaseError(http.StatusInternalServerError, "MENU_ITEM_CREATE_FAILED", "建立菜單品項失敗", "")
 	ErrMenuItemUpdateFailed      = NewBaseError(http.StatusInternalServerError, "MENU_ITEM_UPDATE_FAILED", "更新菜單品項失敗", "")
 	ErrMenuItemOrderConflict     = NewBaseError(http.StatusConflict, "MENU_ITEM_ORDER_CONFLICT", "菜單排序衝突", "")
-	ErrInvalidMenuCategory       = NewBaseError(http.StatusBadRequest, "INVALID_MENU_CATEGORY", "無效的菜單分類", "")
 	ErrSubscriptionNotFound      = NewBaseError(http.StatusNotFound, "SUBSCRIPTION_NOT_FOUND", "找不到訂閱資料", "")
 	ErrSubscriptionAlreadyExists = NewBaseError(
 		http.StatusConflict,

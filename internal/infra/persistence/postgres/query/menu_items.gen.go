@@ -31,7 +31,7 @@ func newMenuItemModel(db *gorm.DB, opts ...gen.DOOption) menuItemModel {
 	_menuItemModel.MerchantID = field.NewField(tableName, "merchant_id")
 	_menuItemModel.Name = field.NewString(tableName, "name")
 	_menuItemModel.Description = field.NewString(tableName, "description")
-	_menuItemModel.Category = field.NewString(tableName, "category")
+	_menuItemModel.CategoryID = field.NewField(tableName, "category_id")
 	_menuItemModel.Price = field.NewInt(tableName, "price")
 	_menuItemModel.Currency = field.NewString(tableName, "currency")
 	_menuItemModel.PrepMinutes = field.NewInt(tableName, "prep_minutes")
@@ -57,7 +57,7 @@ type menuItemModel struct {
 	MerchantID   field.Field
 	Name         field.String
 	Description  field.String
-	Category     field.String
+	CategoryID   field.Field
 	Price        field.Int
 	Currency     field.String
 	PrepMinutes  field.Int
@@ -89,7 +89,7 @@ func (m *menuItemModel) updateTableName(table string) *menuItemModel {
 	m.MerchantID = field.NewField(table, "merchant_id")
 	m.Name = field.NewString(table, "name")
 	m.Description = field.NewString(table, "description")
-	m.Category = field.NewString(table, "category")
+	m.CategoryID = field.NewField(table, "category_id")
 	m.Price = field.NewInt(table, "price")
 	m.Currency = field.NewString(table, "currency")
 	m.PrepMinutes = field.NewInt(table, "prep_minutes")
@@ -134,7 +134,7 @@ func (m *menuItemModel) fillFieldMap() {
 	m.fieldMap["merchant_id"] = m.MerchantID
 	m.fieldMap["name"] = m.Name
 	m.fieldMap["description"] = m.Description
-	m.fieldMap["category"] = m.Category
+	m.fieldMap["category_id"] = m.CategoryID
 	m.fieldMap["price"] = m.Price
 	m.fieldMap["currency"] = m.Currency
 	m.fieldMap["prep_minutes"] = m.PrepMinutes

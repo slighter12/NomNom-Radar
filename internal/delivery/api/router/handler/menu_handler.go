@@ -31,7 +31,7 @@ type MenuHandler struct {
 type CreateMenuItemRequest struct {
 	Name        string  `json:"name" validate:"required"`
 	Description *string `json:"description"`
-	Category    string  `json:"category" validate:"required,oneof=main snack drink dessert"`
+	CategoryID  string  `json:"category_id" validate:"required,uuid"`
 	Price       int     `json:"price" validate:"gte=0"`
 	Currency    string  `json:"currency" validate:"required"`
 	PrepMinutes int     `json:"prep_minutes" validate:"gt=0"`
@@ -44,7 +44,7 @@ type CreateMenuItemRequest struct {
 type UpdateMenuItemRequest struct {
 	Name        string  `json:"name" validate:"required"`
 	Description *string `json:"description"`
-	Category    string  `json:"category" validate:"required,oneof=main snack drink dessert"`
+	CategoryID  string  `json:"category_id" validate:"required,uuid"`
 	Price       int     `json:"price" validate:"gte=0"`
 	Currency    string  `json:"currency" validate:"required"`
 	PrepMinutes int     `json:"prep_minutes" validate:"gt=0"`
@@ -70,15 +70,15 @@ const (
 
 type ListMerchantMenuItemsQueryParams struct {
 	PaginationQueryParams
-	Category    string `query:"category"`
+	CategoryID  string `query:"category_id" validate:"omitempty,uuid"`
 	IsAvailable *bool  `query:"is_available"`
 	Keyword     string `query:"keyword"`
 }
 
 type ListPublicMerchantMenuItemsQueryParams struct {
 	PaginationQueryParams
-	Category string `query:"category"`
-	Keyword  string `query:"keyword"`
+	CategoryID string `query:"category_id" validate:"omitempty,uuid"`
+	Keyword    string `query:"keyword"`
 }
 
 func NewMenuHandler(params MenuHandlerParams) *MenuHandler {
@@ -142,11 +142,15 @@ func (h *MenuHandler) CreateMenuItem(c echo.Context) error {
 	if err := h.validateCreateMenuItemRequest(c, &req); err != nil {
 		return err
 	}
+	categoryID, err := uuid.Parse(req.CategoryID)
+	if err != nil {
+		return validationFailedError("category_id must be a valid UUID")
+	}
 
 	item, err := h.menuUC.CreateMenuItem(c.Request().Context(), merchantID, &usecase.CreateMenuItemInput{
 		Name:        req.Name,
 		Description: req.Description,
-		Category:    req.Category,
+		CategoryID:  categoryID,
 		Price:       req.Price,
 		Currency:    req.Currency,
 		PrepMinutes: req.PrepMinutes,
@@ -181,11 +185,15 @@ func (h *MenuHandler) UpdateMenuItem(c echo.Context) error {
 	if err := h.validateUpdateMenuItemRequest(c, &req); err != nil {
 		return err
 	}
+	categoryID, err := uuid.Parse(req.CategoryID)
+	if err != nil {
+		return validationFailedError("category_id must be a valid UUID")
+	}
 
 	item, err := h.menuUC.UpdateMenuItem(c.Request().Context(), merchantID, itemID, &usecase.UpdateMenuItemInput{
 		Name:        req.Name,
 		Description: req.Description,
-		Category:    req.Category,
+		CategoryID:  categoryID,
 		Price:       req.Price,
 		Currency:    req.Currency,
 		PrepMinutes: req.PrepMinutes,
@@ -289,11 +297,15 @@ func (h *MenuHandler) parseListMerchantMenuItemsInput(c echo.Context) (*usecase.
 	if err := validatePaginationQueryParams(c, &query.PaginationQueryParams); err != nil {
 		return nil, err
 	}
+	categoryID, err := parseOptionalUUIDQueryValue(c, "category_id", query.CategoryID)
+	if err != nil {
+		return nil, err
+	}
 
 	query.PageSize = min(query.PageSize, maxMenuItemsPageSize)
 
 	return &usecase.ListMerchantMenuItemsInput{
-		Category:    strings.TrimSpace(query.Category),
+		CategoryID:  categoryID,
 		IsAvailable: query.IsAvailable,
 		Keyword:     strings.TrimSpace(query.Keyword),
 		Page:        query.Page,
@@ -312,14 +324,18 @@ func (h *MenuHandler) parseListPublicMerchantMenuItemsInput(c echo.Context) (*us
 	if err := validatePaginationQueryParams(c, &query.PaginationQueryParams); err != nil {
 		return nil, err
 	}
+	categoryID, err := parseOptionalUUIDQueryValue(c, "category_id", query.CategoryID)
+	if err != nil {
+		return nil, err
+	}
 
 	query.PageSize = min(query.PageSize, maxMenuItemsPageSize)
 
 	return &usecase.ListMerchantMenuItemsInput{
-		Category: strings.TrimSpace(query.Category),
-		Keyword:  strings.TrimSpace(query.Keyword),
-		Page:     query.Page,
-		PageSize: query.PageSize,
+		CategoryID: categoryID,
+		Keyword:    strings.TrimSpace(query.Keyword),
+		Page:       query.Page,
+		PageSize:   query.PageSize,
 	}, nil
 }
 
@@ -346,20 +362,20 @@ func normalizePaginationQueryParams(c echo.Context, params *PaginationQueryParam
 }
 
 func (h *MenuHandler) validateCreateMenuItemRequest(c echo.Context, req *CreateMenuItemRequest) error {
-	return h.validateMenuItemRequest(c, req, &req.Name, &req.Category, &req.Currency, req.ImageURL, req.ExternalURL)
+	return h.validateMenuItemRequest(c, req, &req.Name, &req.CategoryID, &req.Currency, req.ImageURL, req.ExternalURL)
 }
 
 func (h *MenuHandler) validateUpdateMenuItemRequest(c echo.Context, req *UpdateMenuItemRequest) error {
-	return h.validateMenuItemRequest(c, req, &req.Name, &req.Category, &req.Currency, req.ImageURL, req.ExternalURL)
+	return h.validateMenuItemRequest(c, req, &req.Name, &req.CategoryID, &req.Currency, req.ImageURL, req.ExternalURL)
 }
 
 func (h *MenuHandler) validateMenuItemRequest(
 	c echo.Context,
 	req any,
-	name, category, currency *string,
+	name, categoryID, currency *string,
 	imageURL, externalURL *string,
 ) error {
-	normalizeMenuItemRequestFields(name, category, currency)
+	normalizeMenuItemRequestFields(name, categoryID, currency)
 	if err := validateRequest(c, req); err != nil {
 		return err
 	}
@@ -367,12 +383,12 @@ func (h *MenuHandler) validateMenuItemRequest(
 	return h.validateMenuItemRequestURLs(imageURL, externalURL)
 }
 
-func normalizeMenuItemRequestFields(name, category, currency *string) {
+func normalizeMenuItemRequestFields(name, categoryID, currency *string) {
 	if name != nil {
 		*name = strings.TrimSpace(*name)
 	}
-	if category != nil {
-		*category = strings.TrimSpace(*category)
+	if categoryID != nil {
+		*categoryID = strings.TrimSpace(*categoryID)
 	}
 	if currency != nil {
 		*currency = strings.TrimSpace(*currency)

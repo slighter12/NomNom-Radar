@@ -9,7 +9,7 @@ import (
 )
 
 type MenuItemListFilter struct {
-	Category    *entity.MenuCategory
+	CategoryID  *uuid.UUID
 	IsAvailable *bool
 	Keyword     string
 	Limit       int

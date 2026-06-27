@@ -98,8 +98,8 @@ func (repo *menuRepository) ListMenuItemsByMerchant(ctx context.Context, merchan
 	menuItem := repo.q.MenuItemModel
 	conditions := []gen.Condition{menuItem.MerchantID.Eq(merchantID)}
 
-	if filter.Category != nil {
-		conditions = append(conditions, menuItem.Category.Eq(filter.Category.String()))
+	if filter.CategoryID != nil {
+		conditions = append(conditions, menuItem.CategoryID.Eq(*filter.CategoryID))
 	}
 	if filter.IsAvailable != nil {
 		conditions = append(conditions, menuItem.IsAvailable.Is(*filter.IsAvailable))
@@ -146,7 +146,7 @@ func (repo *menuRepository) UpdateMenuItem(ctx context.Context, item *entity.Men
 	assignments := []field.AssignExpr{
 		menuItem.Name.Value(item.Name),
 		nullableStringAssign(&menuItem.Description, item.Description),
-		menuItem.Category.Value(item.Category.String()),
+		menuItem.CategoryID.Value(item.CategoryID),
 		menuItem.Price.Value(item.Price),
 		menuItem.Currency.Value(item.Currency),
 		menuItem.PrepMinutes.Value(item.PrepMinutes),
@@ -454,7 +454,7 @@ func toMenuItemDomain(data *model.MenuItemModel) *entity.MenuItem {
 		MerchantID:   data.MerchantID,
 		Name:         data.Name,
 		Description:  data.Description,
-		Category:     entity.MenuCategory(data.Category),
+		CategoryID:   data.CategoryID,
 		Price:        data.Price,
 		Currency:     data.Currency,
 		PrepMinutes:  data.PrepMinutes,
@@ -478,7 +478,7 @@ func fromMenuItemDomain(data *entity.MenuItem) *model.MenuItemModel {
 		MerchantID:   data.MerchantID,
 		Name:         data.Name,
 		Description:  data.Description,
-		Category:     data.Category.String(),
+		CategoryID:   data.CategoryID,
 		Price:        data.Price,
 		Currency:     data.Currency,
 		PrepMinutes:  data.PrepMinutes,
