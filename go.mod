@@ -24,7 +24,7 @@ require (
 	github.com/yeqown/go-qrcode/writer/standard v1.3.0
 	go.uber.org/fx v1.24.0
 	gocloud.dev v0.45.0
-	golang.org/x/crypto v0.51.0
+	golang.org/x/crypto v0.52.0
 	golang.org/x/net v0.55.0
 	google.golang.org/api v0.279.0
 	gorm.io/driver/postgres v1.6.0
