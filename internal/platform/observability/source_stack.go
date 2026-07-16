@@ -30,6 +30,7 @@ func (e *sourceStackError) Unwrap() error { return e.err }
 
 func (e *sourceStackError) SourceStack() string {
 	e.once.Do(func() { e.stack = formatSourceStack(e.pcs) })
+
 	return e.stack
 }
 
@@ -43,21 +44,22 @@ func withSourceStack(err error, skip int) error {
 	if err == nil {
 		return nil
 	}
+
 	if _, ok := stderrors.AsType[SourceStackProvider](err); ok {
 		return err
 	}
+
 	return &sourceStackError{err: err, pcs: captureSourcePCs(skip)}
 }
 
 // UnwrapSourceStack removes only top-level source stack wrappers for cleaner logs.
 func UnwrapSourceStack(err error) error {
-	for {
-		sourceErr, ok := err.(*sourceStackError)
-		if !ok {
-			return err
-		}
-		err = sourceErr.Unwrap()
+	sourceErr, ok := err.(*sourceStackError) //nolint:errorlint // intentionally inspect only the top-level wrapper
+	if !ok {
+		return err
 	}
+
+	return sourceErr.Unwrap()
 }
 
 // CaptureSourceStack captures the current stack for fallback logging.
@@ -69,6 +71,7 @@ func captureSourcePCs(skip int) []uintptr {
 	if callersCount == 0 {
 		return nil
 	}
+
 	return pcs[:callersCount]
 }
 
@@ -88,5 +91,6 @@ func formatSourceStack(pcs []uintptr) string {
 		}
 		builder.WriteByte('\n')
 	}
+
 	return builder.String()
 }
