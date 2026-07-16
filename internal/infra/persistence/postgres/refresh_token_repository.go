@@ -36,13 +36,13 @@ func (repo *refreshTokenRepository) CreateRefreshToken(ctx context.Context, toke
 			return domainerrors.ErrRefreshTokenAlreadyExists
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrRefreshTokenCreateFailed
+			return withSourceStack(domainerrors.ErrRefreshTokenCreateFailed)
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrRefreshTokenCreateFailed
+			return withSourceStack(domainerrors.ErrRefreshTokenCreateFailed)
 		}
 
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	// Update the entity with generated values
@@ -66,7 +66,7 @@ func (repo *refreshTokenRepository) FindRefreshTokenByHash(ctx context.Context, 
 			return nil, domainerrors.ErrRefreshTokenNotFound
 		}
 
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	token := toRefreshTokenDomain(tokenM)
@@ -93,7 +93,7 @@ func (repo *refreshTokenRepository) FindRefreshTokenByHashIncludingRevoked(
 			return nil, domainerrors.ErrRefreshTokenNotFound
 		}
 
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return toRefreshTokenDomain(tokenM), nil
@@ -110,7 +110,7 @@ func (repo *refreshTokenRepository) FindRefreshTokenByID(ctx context.Context, id
 			return nil, domainerrors.ErrRefreshTokenNotFound
 		}
 
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	token := toRefreshTokenDomain(tokenM)
@@ -137,7 +137,7 @@ func (repo *refreshTokenRepository) FindRefreshTokensByUserID(ctx context.Contex
 		Find()
 
 	if err != nil {
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	tokens := make([]*entity.RefreshToken, 0, len(tokenModels))
@@ -157,13 +157,13 @@ func (repo *refreshTokenRepository) UpdateRefreshToken(ctx context.Context, toke
 			return domainerrors.ErrRefreshTokenAlreadyExists
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrRefreshTokenUpdateFailed
+			return withSourceStack(domainerrors.ErrRefreshTokenUpdateFailed)
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrRefreshTokenUpdateFailed
+			return withSourceStack(domainerrors.ErrRefreshTokenUpdateFailed)
 		}
 
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return nil
@@ -176,7 +176,7 @@ func (repo *refreshTokenRepository) DeleteRefreshToken(ctx context.Context, id u
 		Delete()
 
 	if err != nil {
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	// If no rows were affected, it means the token was not found.
@@ -194,7 +194,7 @@ func (repo *refreshTokenRepository) DeleteRefreshTokenByHash(ctx context.Context
 		Delete()
 
 	if err != nil {
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	// If no rows were affected, it means the token was not found.
@@ -210,7 +210,7 @@ func (repo *refreshTokenRepository) DeleteRefreshTokensByUserID(ctx context.Cont
 	if _, err := repo.q.RefreshTokenModel.WithContext(ctx).
 		Where(repo.q.RefreshTokenModel.UserID.Eq(userID)).
 		Delete(); err != nil {
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return nil
@@ -222,7 +222,7 @@ func (repo *refreshTokenRepository) DeleteExpiredRefreshTokens(ctx context.Conte
 	revokedCutoff := now.AddDate(0, 0, -revokedRetentionDays)
 
 	if err := deleteExpiredRefreshTokensQuery(repo.q.RefreshTokenModel.WithContext(ctx).UnderlyingDB(), now, revokedCutoff).Error; err != nil {
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return nil
@@ -242,7 +242,7 @@ func (repo *refreshTokenRepository) RevokeTokenFamily(ctx context.Context, famil
 			repo.q.RefreshTokenModel.IsRevoked.Is(false),
 		).
 		Update(repo.q.RefreshTokenModel.IsRevoked, true); err != nil {
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return nil
@@ -256,7 +256,7 @@ func (repo *refreshTokenRepository) RevokeTokenFamiliesByUserID(ctx context.Cont
 			repo.q.RefreshTokenModel.IsRevoked.Is(false),
 		).
 		Update(repo.q.RefreshTokenModel.IsRevoked, true); err != nil {
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return nil
@@ -275,7 +275,7 @@ func (repo *refreshTokenRepository) CountActiveSessionsByUserID(ctx context.Cont
 		Count()
 
 	if err != nil {
-		return 0, domainerrors.ErrPersistenceFailed
+		return 0, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return int(count), nil

@@ -17,6 +17,7 @@ import (
 	"radar/internal/delivery"
 	"radar/internal/delivery/api/response"
 	domainerrors "radar/internal/domain/errors"
+	"radar/internal/platform/observability"
 
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -30,12 +31,14 @@ type closeTrackingBody struct {
 
 type panicSourceStackProvider struct{}
 
+func (p panicSourceStackProvider) Error() string { return "source stack provider" }
+
 func (p panicSourceStackProvider) SourceStack() string {
 	panic("source stack should not be formatted")
 }
 
 func sourceStackTestError() error {
-	return WithSourceStack(errors.New("database failed for owner@example.com authorization=Bearer secret-token"))
+	return observability.WithSourceStack(errors.New("database failed for owner@example.com authorization=Bearer secret-token"))
 }
 
 func (b *closeTrackingBody) Read(p []byte) (int, error) {

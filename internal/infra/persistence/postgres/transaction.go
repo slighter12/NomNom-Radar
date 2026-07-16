@@ -6,6 +6,7 @@ import (
 
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/domain/repository"
+	"radar/internal/platform/observability"
 
 	"gorm.io/gorm"
 )
@@ -83,7 +84,7 @@ func (tm *gormTransactionManager) Execute(ctx context.Context, fn func(repoFacto
 	// Begin a new transaction
 	tx := tm.db.WithContext(ctx).Begin()
 	if tx.Error != nil {
-		return tx.Error
+		return observability.WithSourceStack(tx.Error)
 	}
 
 	// This defer block ensures that if a panic occurs within the callback function,
@@ -113,7 +114,7 @@ func (tm *gormTransactionManager) Execute(ctx context.Context, fn func(repoFacto
 
 	// If the business logic completes without error, commit the transaction.
 	if err := tx.Commit().Error; err != nil {
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return nil

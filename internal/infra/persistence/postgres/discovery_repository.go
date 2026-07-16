@@ -126,7 +126,7 @@ func (repo *discoveryRepository) ListActiveCategories(ctx context.Context) ([]*e
 		Order(repo.q.DiscoveryCategoryModel.DisplayOrder.Asc(), repo.q.DiscoveryCategoryModel.Name.Asc()).
 		Find()
 	if err != nil {
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	result := make([]*entity.DiscoveryCategory, 0, len(categories))
@@ -151,7 +151,7 @@ func (repo *discoveryRepository) ListActiveSubcategories(ctx context.Context) ([
 		Order(subcategory.CategoryID.Asc(), subcategory.DisplayOrder.Asc(), subcategory.Name.Asc()).
 		Find()
 	if err != nil {
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	result := make([]*entity.DiscoverySubcategory, 0, len(subcategories))
@@ -168,7 +168,7 @@ func (repo *discoveryRepository) ListActiveHubs(ctx context.Context) ([]*entity.
 		Order(repo.q.HubModel.City.Asc(), repo.q.HubModel.AreaName.Asc(), repo.q.HubModel.Type.Asc(), repo.q.HubModel.Name.Asc()).
 		Find()
 	if err != nil {
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	result := make([]*entity.Hub, 0, len(hubs))
@@ -185,7 +185,7 @@ func (repo *discoveryRepository) SearchPublicMerchants(
 ) ([]*entity.PublicMerchantSearchItem, int64, error) {
 	total, err := repo.buildPublicMerchantSearchQuery(ctx, filter).Count()
 	if err != nil {
-		return nil, 0, domainerrors.ErrPersistenceFailed
+		return nil, 0, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	var rows []publicMerchantSearchRow
@@ -211,7 +211,7 @@ func (repo *discoveryRepository) SearchPublicMerchants(
 	}
 
 	if err := dataQuery.Scan(&rows); err != nil {
-		return nil, 0, domainerrors.ErrPersistenceFailed
+		return nil, 0, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	merchants := make([]*entity.PublicMerchantSearchItem, 0, len(rows))
@@ -351,7 +351,7 @@ func discoveryCategoryLookupError(err error) error {
 		return domainerrors.ErrDiscoveryCategoryNotFound
 	}
 
-	return domainerrors.ErrPersistenceFailed
+	return withSourceStack(domainerrors.ErrPersistenceFailed)
 }
 
 func discoverySubcategoryLookupError(err error) error {
@@ -359,7 +359,7 @@ func discoverySubcategoryLookupError(err error) error {
 		return domainerrors.ErrDiscoverySubcategoryNotFound
 	}
 
-	return domainerrors.ErrPersistenceFailed
+	return withSourceStack(domainerrors.ErrPersistenceFailed)
 }
 
 func hubLookupError(err error) error {
@@ -367,7 +367,7 @@ func hubLookupError(err error) error {
 		return domainerrors.ErrHubNotFound
 	}
 
-	return domainerrors.ErrPersistenceFailed
+	return withSourceStack(domainerrors.ErrPersistenceFailed)
 }
 
 func normalizeDiscoverySlug(slug string) string {

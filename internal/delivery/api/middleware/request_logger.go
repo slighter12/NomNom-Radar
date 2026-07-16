@@ -19,7 +19,7 @@ const sourceErrorLogContextKey = "source_error_for_log"
 type sourceErrorLog struct {
 	Type    string
 	Message string
-	Stack   sourceStackProvider
+	Stack   observability.SourceStackProvider
 }
 
 // RequestLoggerMiddleware logs one request lifecycle entry after the response is finalized.
@@ -101,14 +101,13 @@ func setSourceErrorLog(c echo.Context, err error) {
 		return
 	}
 
-	logErr := unwrapSourceStackError(err)
+	logErr := observability.UnwrapSourceStack(err)
 	sourceErr := sourceErrorLog{
 		Type:    fmt.Sprintf("%T", logErr),
 		Message: sanitizeFreeTextLogValue(logErr.Error()),
 	}
 
-	var stackProvider sourceStackProvider
-	if errors.As(err, &stackProvider) {
+	if stackProvider, ok := errors.AsType[observability.SourceStackProvider](err); ok {
 		sourceErr.Stack = stackProvider
 	}
 
@@ -122,17 +121,7 @@ func stackForInternalServerError(c echo.Context) string {
 		}
 	}
 
-	return captureSourceStack(0)
-}
-
-func unwrapSourceStackError(err error) error {
-	for {
-		sourceErr, ok := errors.AsType[*sourceStackError](err)
-		if !ok {
-			return err
-		}
-		err = sourceErr.Unwrap()
-	}
+	return observability.CaptureSourceStack(0)
 }
 
 func responseErrorLogFromContext(c echo.Context, status int) responseErrorLog {

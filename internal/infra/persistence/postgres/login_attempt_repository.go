@@ -57,7 +57,7 @@ func (repo *loginAttemptRepository) findOrCreateByAttemptKey(
 			AttemptKey: attemptKey,
 			UserID:     userID,
 		}); err != nil {
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	queryDo := repo.q.LoginAttemptModel.WithContext(ctx)
@@ -68,10 +68,10 @@ func (repo *loginAttemptRepository) findOrCreateByAttemptKey(
 	attemptModel, err := queryDo.Where(repo.q.LoginAttemptModel.AttemptKey.Eq(attemptKey)).Take()
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, domainerrors.ErrPersistenceFailed
+			return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 		}
 
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return toLoginAttemptDomain(attemptModel), nil
@@ -79,7 +79,7 @@ func (repo *loginAttemptRepository) findOrCreateByAttemptKey(
 
 func (repo *loginAttemptRepository) Save(ctx context.Context, attempt *entity.LoginAttempt) error {
 	if err := repo.q.LoginAttemptModel.WithContext(ctx).Save(toLoginAttemptModel(attempt)); err != nil {
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return nil
@@ -95,7 +95,7 @@ func (repo *loginAttemptRepository) ResetOnSuccess(ctx context.Context, attemptK
 			repo.q.LoginAttemptModel.LastFailedAt.Null(),
 			repo.q.LoginAttemptModel.LastLockoutAt.Null(),
 		); err != nil {
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return nil
@@ -115,7 +115,7 @@ func (repo *loginAttemptRepository) ResetForAccountCreation(ctx context.Context,
 			repo.q.LoginAttemptModel.LastFailedAt.Null(),
 			repo.q.LoginAttemptModel.LastLockoutAt.Null(),
 		); err != nil {
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return nil
@@ -138,7 +138,7 @@ func (repo *loginAttemptRepository) DecayLockoutCounts(ctx context.Context, deca
 			repo.q.LoginAttemptModel.LockedUntil.Null(),
 			repo.q.LoginAttemptModel.LastLockoutAt.Null(),
 		); err != nil {
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return nil

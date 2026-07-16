@@ -1,7 +1,17 @@
 package handler
 
-import "radar/internal/delivery/api/middleware"
+import (
+	"errors"
+	"net/http"
+
+	domainerrors "radar/internal/domain/errors"
+	"radar/internal/platform/observability"
+)
 
 func withSourceStack(err error) error {
-	return middleware.WithSourceStack(err)
+	if appErr, ok := errors.AsType[domainerrors.AppError](err); ok && appErr.HTTPCode() < http.StatusInternalServerError {
+		return err
+	}
+
+	return observability.WithSourceStackSkip(err, 1)
 }
