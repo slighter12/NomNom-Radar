@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -39,6 +40,10 @@ func (p panicSourceStackProvider) SourceStack() string {
 
 func sourceStackTestError() error {
 	return observability.WithSourceStack(errors.New("database failed for owner@example.com authorization=Bearer secret-token"))
+}
+
+func reclassifiedSourceStackTestError() error {
+	return fmt.Errorf("%w: %w", domainerrors.ErrPersistenceFailed, observability.WithSourceStack(domainerrors.ErrMerchantNotFound))
 }
 
 func (b *closeTrackingBody) Read(p []byte) (int, error) {
@@ -284,6 +289,29 @@ func TestErrorMiddleware_HandleHTTPError_LogsStackForInternalError(t *testing.T)
 	assert.Contains(t, stack, "sourceStackTestError")
 	assert.Contains(t, stack, "RequestLoggerMiddleware")
 	assert.Less(t, strings.Index(stack, "sourceStackTestError"), strings.Index(stack, "RequestLoggerMiddleware"))
+}
+
+func TestErrorMiddleware_HandleHTTPError_LogsInnerStackForReclassifiedError(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/broken", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
+	errorMiddleware := NewErrorMiddleware(logger)
+	handler := requestLogger.Log(errorMiddleware.HandleErrors(func(echo.Context) error {
+		return reclassifiedSourceStackTestError()
+	}))
+
+	require.NoError(t, handler(c))
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+
+	record := decodeLogRecord(t, logs.String())
+	stack, ok := record["stack"].(string)
+	require.True(t, ok)
+	assert.Contains(t, stack, "reclassifiedSourceStackTestError")
 }
 
 func TestRequestLoggerMiddleware_LogsFallbackStackForUnwrappedInternalError(t *testing.T) {

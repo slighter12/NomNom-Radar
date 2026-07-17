@@ -10,11 +10,11 @@ import (
 	"radar/internal/platform/observability"
 )
 
-func TestWithSourceStackSkipsClientAppError(t *testing.T) {
+func TestWithSourceStackWrapsClientAppError(t *testing.T) {
 	err := withSourceStack(fmt.Errorf("invalid request: %w", domainerrors.ErrInvalidInput))
 
-	if _, ok := errors.AsType[observability.SourceStackProvider](err); ok {
-		t.Fatal("4xx app error should not capture source stack")
+	if _, ok := errors.AsType[observability.SourceStackProvider](err); !ok {
+		t.Fatal("4xx app error should capture source stack")
 	}
 	if !errors.Is(err, domainerrors.ErrInvalidInput) {
 		t.Fatal("4xx app error should preserve errors.Is")

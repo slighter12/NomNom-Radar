@@ -34,11 +34,11 @@ func TestWithSourceStackWrapsInternalAppError(t *testing.T) {
 	}
 }
 
-func TestWithSourceStackLeavesClientAppErrorUnwrapped(t *testing.T) {
-	err := domainerrors.ErrAddressNotFound
+func TestWithSourceStackWrapsClientAppError(t *testing.T) {
+	err := withSourceStack(domainerrors.ErrAddressNotFound)
 
-	if _, ok := stderrors.AsType[observability.SourceStackProvider](err); ok {
-		t.Fatal("client app error should not expose source stack")
+	if _, ok := stderrors.AsType[observability.SourceStackProvider](err); !ok {
+		t.Fatal("client app error should expose source stack")
 	}
 	if !stderrors.Is(err, domainerrors.ErrAddressNotFound) {
 		t.Fatal("client app error should preserve errors.Is")

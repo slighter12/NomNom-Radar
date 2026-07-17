@@ -168,7 +168,7 @@ func (repo *menuRepository) UpdateMenuItem(ctx context.Context, item *entity.Men
 
 	updatedItem, err := repo.FindMenuItemByID(ctx, item.ID)
 	if err != nil {
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return err
 	}
 	item.CreatedAt = updatedItem.CreatedAt
 	item.UpdatedAt = updatedItem.UpdatedAt
@@ -266,7 +266,7 @@ func (repo *menuRepository) lockMerchantProfileForMenuWrite(ctx context.Context,
 		Take()
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return withSourceStack(domainerrors.ErrMenuItemCreateFailed)
+			return withSourceStack(domainerrors.ErrMerchantNotFound)
 		}
 
 		return withSourceStack(domainerrors.ErrPersistenceFailed)
