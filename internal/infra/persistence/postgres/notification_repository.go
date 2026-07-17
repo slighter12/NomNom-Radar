@@ -31,10 +31,7 @@ func (repo *notificationRepository) CreateNotification(ctx context.Context, noti
 	notificationM := fromNotificationDomain(notification)
 
 	if err := repo.q.MerchantLocationNotificationModel.WithContext(ctx).Create(notificationM); err != nil {
-		if isForeignKeyConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrNotificationCreateFailed)
-		}
-		if isNotNullConstraintViolation(err) {
+		if isForeignKeyConstraintViolation(err) || isNotNullConstraintViolation(err) {
 			return withSourceStack(domainerrors.ErrNotificationCreateFailed)
 		}
 
@@ -118,10 +115,7 @@ func (repo *notificationRepository) CreateNotificationLog(ctx context.Context, l
 	logM := fromNotificationLogDomain(log)
 
 	if err := repo.q.NotificationLogModel.WithContext(ctx).Create(logM); err != nil {
-		if isForeignKeyConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrNotificationLogCreateFailed)
-		}
-		if isNotNullConstraintViolation(err) {
+		if isForeignKeyConstraintViolation(err) || isNotNullConstraintViolation(err) {
 			return withSourceStack(domainerrors.ErrNotificationLogCreateFailed)
 		}
 
@@ -149,10 +143,7 @@ func (repo *notificationRepository) BatchCreateNotificationLogs(ctx context.Cont
 	// Use GORM's CreateInBatches for efficient batch insertion
 	// Default batch size is 100, which is a good balance between performance and memory
 	if err := repo.q.NotificationLogModel.WithContext(ctx).CreateInBatches(logModels, 100); err != nil {
-		if isForeignKeyConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrNotificationLogCreateFailed)
-		}
-		if isNotNullConstraintViolation(err) {
+		if isForeignKeyConstraintViolation(err) || isNotNullConstraintViolation(err) {
 			return withSourceStack(domainerrors.ErrNotificationLogCreateFailed)
 		}
 

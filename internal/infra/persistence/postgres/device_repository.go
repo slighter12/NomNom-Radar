@@ -37,10 +37,7 @@ func (repo *deviceRepository) CreateDevice(ctx context.Context, device *entity.U
 		if isUniqueConstraintViolation(err) {
 			return domainerrors.ErrDeviceAlreadyExists
 		}
-		if isForeignKeyConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrDeviceCreateFailed)
-		}
-		if isNotNullConstraintViolation(err) {
+		if isForeignKeyConstraintViolation(err) || isNotNullConstraintViolation(err) {
 			return withSourceStack(domainerrors.ErrDeviceCreateFailed)
 		}
 
