@@ -10,6 +10,7 @@ import (
 	"radar/internal/domain/repository"
 	"radar/internal/infra/persistence/model"
 	"radar/internal/infra/persistence/postgres/query"
+	"radar/internal/platform/observability"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -35,13 +36,13 @@ func (repo *addressRepository) CreateAddress(ctx context.Context, address *entit
 			return domainerrors.ErrPrimaryAddressConflict
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrAddressCreateFailed
+			return withSourceStack(domainerrors.ErrAddressCreateFailed)
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrAddressCreateFailed
+			return withSourceStack(domainerrors.ErrAddressCreateFailed)
 		}
 
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	// Update the entity with generated values
@@ -63,7 +64,7 @@ func (repo *addressRepository) FindAddressByID(ctx context.Context, id uuid.UUID
 			return nil, domainerrors.ErrAddressNotFound
 		}
 
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return toAddressDomain(addressM), nil
@@ -80,7 +81,7 @@ func (repo *addressRepository) FindAddressesByOwner(ctx context.Context, ownerID
 	case entity.OwnerTypeMerchantProfile:
 		query = query.Where(repo.q.AddressModel.MerchantProfileID.Eq(ownerID))
 	default:
-		return nil, fmt.Errorf("unsupported owner type: %s", ownerType)
+		return nil, observability.WithSourceStack(fmt.Errorf("unsupported owner type: %s", ownerType))
 	}
 
 	// Filter out soft-deleted addresses
@@ -91,7 +92,7 @@ func (repo *addressRepository) FindAddressesByOwner(ctx context.Context, ownerID
 		Find()
 
 	if err != nil {
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	addresses := make([]*entity.Address, 0, len(addressModels))
@@ -114,7 +115,7 @@ func (repo *addressRepository) FindPrimaryAddressByOwner(ctx context.Context, ow
 	case entity.OwnerTypeMerchantProfile:
 		query = query.Where(repo.q.AddressModel.MerchantProfileID.Eq(ownerID))
 	default:
-		return nil, fmt.Errorf("unsupported owner type: %s", ownerType)
+		return nil, observability.WithSourceStack(fmt.Errorf("unsupported owner type: %s", ownerType))
 	}
 
 	addressM, err := query.First()
@@ -124,7 +125,7 @@ func (repo *addressRepository) FindPrimaryAddressByOwner(ctx context.Context, ow
 			return nil, domainerrors.ErrAddressNotFound
 		}
 
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return toAddressDomain(addressM), nil
@@ -139,13 +140,13 @@ func (repo *addressRepository) UpdateAddress(ctx context.Context, address *entit
 			return domainerrors.ErrPrimaryAddressConflict
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrAddressUpdateFailed
+			return withSourceStack(domainerrors.ErrAddressUpdateFailed)
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrAddressUpdateFailed
+			return withSourceStack(domainerrors.ErrAddressUpdateFailed)
 		}
 
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	// Update the entity with updated timestamp
@@ -161,7 +162,7 @@ func (repo *addressRepository) DeleteAddress(ctx context.Context, id uuid.UUID) 
 		Delete()
 
 	if err != nil {
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	// If no rows were affected, it means the address was not found.
@@ -183,7 +184,7 @@ func (repo *addressRepository) CountAddressesByOwner(ctx context.Context, ownerI
 	case entity.OwnerTypeMerchantProfile:
 		query = query.Where(repo.q.AddressModel.MerchantProfileID.Eq(ownerID))
 	default:
-		return 0, fmt.Errorf("unsupported owner type: %s", ownerType)
+		return 0, observability.WithSourceStack(fmt.Errorf("unsupported owner type: %s", ownerType))
 	}
 
 	// Filter out soft-deleted addresses
@@ -191,7 +192,7 @@ func (repo *addressRepository) CountAddressesByOwner(ctx context.Context, ownerI
 
 	count, err := query.Count()
 	if err != nil {
-		return 0, domainerrors.ErrPersistenceFailed
+		return 0, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return count, nil
@@ -208,7 +209,7 @@ func (repo *addressRepository) FindActiveAddressesByOwner(ctx context.Context, o
 	case entity.OwnerTypeMerchantProfile:
 		query = query.Where(repo.q.AddressModel.MerchantProfileID.Eq(ownerID))
 	default:
-		return nil, fmt.Errorf("unsupported owner type: %s", ownerType)
+		return nil, observability.WithSourceStack(fmt.Errorf("unsupported owner type: %s", ownerType))
 	}
 
 	// Filter for active addresses and exclude soft-deleted
@@ -222,7 +223,7 @@ func (repo *addressRepository) FindActiveAddressesByOwner(ctx context.Context, o
 		Find()
 
 	if err != nil {
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	addresses := make([]*entity.Address, 0, len(addressModels))

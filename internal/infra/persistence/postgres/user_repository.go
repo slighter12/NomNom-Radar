@@ -45,7 +45,7 @@ func (repo *userRepository) FindByID(ctx context.Context, id uuid.UUID) (*entity
 			return nil, domainerrors.ErrUserNotFound
 		}
 
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	// Map the persistence model back to a pure domain entity before returning.
@@ -64,7 +64,7 @@ func (repo *userRepository) AcquireSessionMutex(ctx context.Context, id uuid.UUI
 			return domainerrors.ErrUserNotFound
 		}
 
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return nil
@@ -83,7 +83,7 @@ func (repo *userRepository) FindByEmail(ctx context.Context, email string) (*ent
 			return nil, domainerrors.ErrUserNotFound
 		}
 
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return toUserDomain(userM), nil
@@ -106,13 +106,13 @@ func (repo *userRepository) Create(ctx context.Context, user *entity.User) error
 			return domainerrors.ErrUserAlreadyExists
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrUserCreateFailed
+			return withSourceStack(domainerrors.ErrUserCreateFailed)
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrUserCreateFailed
+			return withSourceStack(domainerrors.ErrUserCreateFailed)
 		}
 
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	// Update the user entity with the generated ID and timestamps
@@ -149,13 +149,13 @@ func (repo *userRepository) Update(ctx context.Context, user *entity.User) error
 			return domainerrors.ErrUserAlreadyExists
 		}
 		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrUserUpdateFailed
+			return withSourceStack(domainerrors.ErrUserUpdateFailed)
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrUserUpdateFailed
+			return withSourceStack(domainerrors.ErrUserUpdateFailed)
 		}
 
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	// Update the user entity with the updated timestamps

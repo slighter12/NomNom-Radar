@@ -37,14 +37,11 @@ func (repo *deviceRepository) CreateDevice(ctx context.Context, device *entity.U
 		if isUniqueConstraintViolation(err) {
 			return domainerrors.ErrDeviceAlreadyExists
 		}
-		if isForeignKeyConstraintViolation(err) {
-			return domainerrors.ErrDeviceCreateFailed
-		}
-		if isNotNullConstraintViolation(err) {
-			return domainerrors.ErrDeviceCreateFailed
+		if isForeignKeyConstraintViolation(err) || isNotNullConstraintViolation(err) {
+			return withSourceStack(domainerrors.ErrDeviceCreateFailed)
 		}
 
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	// Update the entity with generated values
@@ -67,7 +64,7 @@ func (repo *deviceRepository) FindDeviceByID(ctx context.Context, id uuid.UUID) 
 			return nil, domainerrors.ErrDeviceNotFound
 		}
 
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return toDeviceDomain(deviceM), nil
@@ -87,7 +84,7 @@ func (repo *deviceRepository) FindDeviceByUserAndDeviceID(ctx context.Context, u
 			return nil, domainerrors.ErrDeviceNotFound
 		}
 
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return toDeviceDomain(deviceM), nil
@@ -123,7 +120,7 @@ func (repo *deviceRepository) FindDevicesByUser(
 
 	deviceModels, err := queryDB.Order(repo.q.UserDeviceModel.CreatedAt.Desc()).Find()
 	if err != nil {
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	devices := make([]*entity.UserDevice, 0, len(deviceModels))
@@ -142,7 +139,7 @@ func (repo *deviceRepository) FindDeviceHealthByUser(ctx context.Context, userID
 		Order(repo.q.UserDeviceModel.CreatedAt.Desc()).
 		Find()
 	if err != nil {
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	records := make([]repository.DeviceHealthRecord, 0, len(deviceModels))
@@ -173,7 +170,7 @@ func (repo *deviceRepository) FindDeviceByUserAndDeviceIDIncludingDeleted(ctx co
 			return nil, domainerrors.ErrDeviceNotFound
 		}
 
-		return nil, domainerrors.ErrPersistenceFailed
+		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return toDeviceDomain(deviceM), nil
@@ -194,7 +191,7 @@ func (repo *deviceRepository) UpdateFCMToken(ctx context.Context, deviceID uuid.
 			return domainerrors.ErrDeviceAlreadyExists
 		}
 
-		return domainerrors.ErrDeviceUpdateFailed
+		return withSourceStack(domainerrors.ErrDeviceUpdateFailed)
 	}
 
 	if result.RowsAffected == 0 {
@@ -211,7 +208,7 @@ func (repo *deviceRepository) SetDeviceActive(ctx context.Context, id uuid.UUID,
 		Update(repo.q.UserDeviceModel.IsActive, isActive)
 
 	if err != nil {
-		return domainerrors.ErrDeviceUpdateFailed
+		return withSourceStack(domainerrors.ErrDeviceUpdateFailed)
 	}
 
 	if result.RowsAffected == 0 {
@@ -241,7 +238,7 @@ func (repo *deviceRepository) RestoreAndUpdateDevice(ctx context.Context, userID
 			return domainerrors.ErrDeviceAlreadyExists
 		}
 
-		return domainerrors.ErrDeviceUpdateFailed
+		return withSourceStack(domainerrors.ErrDeviceUpdateFailed)
 	}
 
 	if result.RowsAffected == 0 {
@@ -265,7 +262,7 @@ func (repo *deviceRepository) SoftDeleteStaleDevices(ctx context.Context, staleD
 			repo.q.UserDeviceModel.DeletedAt.Value(sql.NullTime{Time: now, Valid: true}),
 		)
 	if err != nil {
-		return 0, domainerrors.ErrPersistenceFailed
+		return 0, withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	return result.RowsAffected, nil
@@ -278,7 +275,7 @@ func (repo *deviceRepository) DeleteDevice(ctx context.Context, id uuid.UUID) er
 		Delete()
 
 	if err != nil {
-		return domainerrors.ErrPersistenceFailed
+		return withSourceStack(domainerrors.ErrPersistenceFailed)
 	}
 
 	if result.RowsAffected == 0 {

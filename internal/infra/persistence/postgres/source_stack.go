@@ -1,4 +1,4 @@
-package handler
+package postgres
 
 import (
 	"radar/internal/platform/observability"

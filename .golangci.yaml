@@ -103,6 +103,7 @@ linters:
         - radar/internal/delivery/api/response
         - radar/internal/domain/errors
         - radar/internal/errors
+        - radar/internal/platform/observability
   exclusions:
     generated: lax
     presets:
