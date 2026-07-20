@@ -174,7 +174,7 @@ func (s *subscriptionService) ProcessQRSubscription(ctx context.Context, userID 
 	// Parse QR code to get merchant ID
 	merchantID, err := s.qrcodeService.ParseSubscriptionQR(qrData)
 	if err != nil {
-		return nil, domainerrors.ErrInvalidQRCode
+		return nil, replaceWithSourceStack(err, domainerrors.ErrInvalidQRCode)
 	}
 
 	// Subscribe to merchant

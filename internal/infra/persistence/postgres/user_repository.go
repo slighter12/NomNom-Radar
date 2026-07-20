@@ -42,10 +42,10 @@ func (repo *userRepository) FindByID(ctx context.Context, id uuid.UUID) (*entity
 	if err != nil {
 		// If the error is 'record not found', return a domain-specific error.
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, domainerrors.ErrUserNotFound
+			return nil, replaceWithSourceStack(err, domainerrors.ErrUserNotFound)
 		}
 
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	// Map the persistence model back to a pure domain entity before returning.
@@ -61,10 +61,10 @@ func (repo *userRepository) AcquireSessionMutex(ctx context.Context, id uuid.UUI
 		First()
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return domainerrors.ErrUserNotFound
+			return replaceWithSourceStack(err, domainerrors.ErrUserNotFound)
 		}
 
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	return nil
@@ -80,10 +80,10 @@ func (repo *userRepository) FindByEmail(ctx context.Context, email string) (*ent
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, domainerrors.ErrUserNotFound
+			return nil, replaceWithSourceStack(err, domainerrors.ErrUserNotFound)
 		}
 
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	return toUserDomain(userM), nil
@@ -100,19 +100,19 @@ func (repo *userRepository) Create(ctx context.Context, user *entity.User) error
 	if err := repo.q.UserModel.WithContext(ctx).Create(userM); err != nil {
 		if isUniqueConstraintViolation(err) {
 			if isBusinessLicenseUniqueConstraint(err) {
-				return domainerrors.ErrBusinessLicenseExists
+				return replaceWithSourceStack(err, domainerrors.ErrBusinessLicenseExists)
 			}
 
-			return domainerrors.ErrUserAlreadyExists
+			return replaceWithSourceStack(err, domainerrors.ErrUserAlreadyExists)
 		}
 		if isNotNullConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrUserCreateFailed)
+			return replaceWithSourceStack(err, domainerrors.ErrUserCreateFailed)
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrUserCreateFailed)
+			return replaceWithSourceStack(err, domainerrors.ErrUserCreateFailed)
 		}
 
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	// Update the user entity with the generated ID and timestamps
@@ -143,19 +143,19 @@ func (repo *userRepository) Update(ctx context.Context, user *entity.User) error
 	if err := repo.q.UserModel.WithContext(ctx).Session(&gorm.Session{FullSaveAssociations: true}).Save(userM); err != nil {
 		if isUniqueConstraintViolation(err) {
 			if isBusinessLicenseUniqueConstraint(err) {
-				return domainerrors.ErrBusinessLicenseExists
+				return replaceWithSourceStack(err, domainerrors.ErrBusinessLicenseExists)
 			}
 
-			return domainerrors.ErrUserAlreadyExists
+			return replaceWithSourceStack(err, domainerrors.ErrUserAlreadyExists)
 		}
 		if isNotNullConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrUserUpdateFailed)
+			return replaceWithSourceStack(err, domainerrors.ErrUserUpdateFailed)
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrUserUpdateFailed)
+			return replaceWithSourceStack(err, domainerrors.ErrUserUpdateFailed)
 		}
 
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	// Update the user entity with the updated timestamps

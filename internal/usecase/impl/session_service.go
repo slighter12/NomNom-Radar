@@ -55,7 +55,7 @@ func (srv *sessionService) GetActiveSessions(ctx context.Context, userID uuid.UU
 		_, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
 			if errors.Is(err, domainerrors.ErrUserNotFound) {
-				return domainerrors.ErrNotFound
+				return replaceWithSourceStack(err, domainerrors.ErrNotFound)
 			}
 
 			return err
@@ -105,7 +105,7 @@ func (srv *sessionService) RevokeSession(ctx context.Context, userID, sessionID 
 		_, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
 			if errors.Is(err, domainerrors.ErrUserNotFound) {
-				return domainerrors.ErrNotFound
+				return replaceWithSourceStack(err, domainerrors.ErrNotFound)
 			}
 
 			return err
@@ -115,7 +115,7 @@ func (srv *sessionService) RevokeSession(ctx context.Context, userID, sessionID 
 		token, err := refreshRepo.FindRefreshTokenByID(ctx, sessionID)
 		if err != nil {
 			if errors.Is(err, domainerrors.ErrRefreshTokenNotFound) {
-				return domainerrors.ErrNotFound
+				return replaceWithSourceStack(err, domainerrors.ErrNotFound)
 			}
 
 			return err
@@ -156,7 +156,7 @@ func (srv *sessionService) RevokeAllSessions(ctx context.Context, userID uuid.UU
 		_, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
 			if errors.Is(err, domainerrors.ErrUserNotFound) {
-				return domainerrors.ErrNotFound
+				return replaceWithSourceStack(err, domainerrors.ErrNotFound)
 			}
 
 			return err
@@ -192,7 +192,7 @@ func (srv *sessionService) RevokeAllOtherSessions(ctx context.Context, userID uu
 		_, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
 			if errors.Is(err, domainerrors.ErrUserNotFound) {
-				return domainerrors.ErrNotFound
+				return replaceWithSourceStack(err, domainerrors.ErrNotFound)
 			}
 
 			return err
@@ -240,7 +240,7 @@ func (srv *sessionService) GetSessionInfo(ctx context.Context, userID, sessionID
 		_, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
 			if errors.Is(err, domainerrors.ErrUserNotFound) {
-				return domainerrors.ErrNotFound
+				return replaceWithSourceStack(err, domainerrors.ErrNotFound)
 			}
 
 			return err
@@ -250,7 +250,7 @@ func (srv *sessionService) GetSessionInfo(ctx context.Context, userID, sessionID
 		token, err := refreshRepo.FindRefreshTokenByID(ctx, sessionID)
 		if err != nil {
 			if errors.Is(err, domainerrors.ErrRefreshTokenNotFound) {
-				return domainerrors.ErrNotFound
+				return replaceWithSourceStack(err, domainerrors.ErrNotFound)
 			}
 
 			return err

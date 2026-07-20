@@ -14,6 +14,7 @@ import (
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
+	"github.com/slighter12/go-lib/errors/stack"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -697,6 +698,8 @@ func TestUserService_Logout_DeleteRefreshTokenErrorReturnsInternalError(t *testi
 	ctx := context.Background()
 	input := &usecase.LogoutInput{RefreshToken: "delete-error-token"}
 	familyID := uuid.New()
+	databaseErr := errors.New("db error")
+	capturedDatabaseErr := stack.With(databaseErr)
 
 	fx.tokenService.EXPECT().
 		ValidateToken(input.RefreshToken).
@@ -725,17 +728,20 @@ func TestUserService_Logout_DeleteRefreshTokenErrorReturnsInternalError(t *testi
 				Return(nil)
 			mockRefreshRepo.EXPECT().
 				RevokeTokenFamily(ctx, familyID).
-				Return(errors.New("db error"))
+				Return(capturedDatabaseErr)
 
 			require.Error(t, fn(mockFactory))
 		}).
-		Return(errors.New("db error")).
+		Return(capturedDatabaseErr).
 		Once()
 
 	err := fx.service.Logout(ctx, input)
 
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, domainerrors.ErrInternalError))
+	assert.ErrorIs(t, err, domainerrors.ErrInternalError)
+	assert.ErrorIs(t, err, databaseErr)
+	_, ok := errors.AsType[stack.Provider](err)
+	assert.True(t, ok, "logout error should retain the repository source stack")
 }
 
 func TestUserService_LogoutAllDevices_Success(t *testing.T) {

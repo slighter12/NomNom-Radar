@@ -18,9 +18,9 @@ import (
 	"radar/internal/delivery"
 	"radar/internal/delivery/api/response"
 	domainerrors "radar/internal/domain/errors"
-	"radar/internal/platform/observability"
 
 	"github.com/labstack/echo/v4"
+	"github.com/slighter12/go-lib/errors/stack"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,16 +34,16 @@ type panicSourceStackProvider struct{}
 
 func (p panicSourceStackProvider) Error() string { return "source stack provider" }
 
-func (p panicSourceStackProvider) SourceStack() string {
+func (p panicSourceStackProvider) Stack() string {
 	panic("source stack should not be formatted")
 }
 
 func sourceStackTestError() error {
-	return observability.WithSourceStack(errors.New("database failed for owner@example.com authorization=Bearer secret-token"))
+	return stack.With(errors.New("database failed for owner@example.com authorization=Bearer secret-token"))
 }
 
 func reclassifiedSourceStackTestError() error {
-	return fmt.Errorf("%w: %w", domainerrors.ErrPersistenceFailed, observability.WithSourceStack(domainerrors.ErrMerchantNotFound))
+	return stack.Replace(stack.With(domainerrors.ErrMerchantNotFound), domainerrors.ErrPersistenceFailed)
 }
 
 func (b *closeTrackingBody) Read(p []byte) (int, error) {
@@ -301,14 +301,23 @@ func TestErrorMiddleware_HandleHTTPError_LogsInnerStackForReclassifiedError(t *t
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
 	errorMiddleware := NewErrorMiddleware(logger)
+	err := reclassifiedSourceStackTestError()
+	assert.ErrorIs(t, err, domainerrors.ErrPersistenceFailed)
+	assert.ErrorIs(t, err, domainerrors.ErrMerchantNotFound)
+	appErr, ok := errors.AsType[domainerrors.AppError](err)
+	require.True(t, ok)
+	assert.Equal(t, domainerrors.ErrPersistenceFailed, appErr)
+
 	handler := requestLogger.Log(errorMiddleware.HandleErrors(func(echo.Context) error {
-		return reclassifiedSourceStackTestError()
+		return err
 	}))
 
 	require.NoError(t, handler(c))
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
 
 	record := decodeLogRecord(t, logs.String())
+	assert.Equal(t, fmt.Sprintf("%T", domainerrors.ErrMerchantNotFound), record["source_error_type"])
+	assert.Equal(t, domainerrors.ErrMerchantNotFound.Error(), record["source_error_message"])
 	stack, ok := record["stack"].(string)
 	require.True(t, ok)
 	assert.Contains(t, stack, "reclassifiedSourceStackTestError")

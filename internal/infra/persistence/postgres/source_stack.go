@@ -1,9 +1,13 @@
 package postgres
 
 import (
-	"radar/internal/platform/observability"
+	"github.com/slighter12/go-lib/errors/stack"
 )
 
 func withSourceStack(err error) error {
-	return observability.WithSourceStackSkip(err, 1)
+	return stack.WithSkip(err, 1)
+}
+
+func replaceWithSourceStack(err, replacement error) error {
+	return stack.Replace(stack.WithSkip(err, 1), replacement)
 }

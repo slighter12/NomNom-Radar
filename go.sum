@@ -309,6 +309,8 @@ github.com/schollz/progressbar/v3 v3.19.1 h1:iv8BgwOvdML/S3p84uBpy/IMigv4U9594vP
 github.com/schollz/progressbar/v3 v3.19.1/go.mod h1:LFL7jqimKxfhero4K1eCkUr/6R39AgQeiPCJtlTWIW8=
 github.com/slighter12/go-lib/database/postgres v1.2.0 h1:wSWD9rISS+umpW4xxS//H6wzhpLh8/O71vLi4fQdfSA=
 github.com/slighter12/go-lib/database/postgres v1.2.0/go.mod h1:FpsXdCmSY7I0y/zjgYxHBfE54RIqUjeg88EaZZTzozs=
+github.com/slighter12/go-lib/errors/stack v1.0.1 h1:qYGXAiK9LmgiEASjzcT8hBIB0SdWll3grnIexb7HLbE=
+github.com/slighter12/go-lib/errors/stack v1.0.1/go.mod h1:Cpe1Hg6K6OxnhTAacm4YwHHZaywqkv1sN4jJ68Wvw6g=
 github.com/spiffe/go-spiffe/v2 v2.8.1 h1:eXZMLsu+3MLEPJyGJkolqtVrteZfQdUpOWj6LTiDl/E=
 github.com/spiffe/go-spiffe/v2 v2.8.1/go.mod h1:47Q0Q9/AqGha8QLHp+kxpH4Wca7X7EnOtlIJy3mxZ3U=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=

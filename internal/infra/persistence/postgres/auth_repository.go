@@ -32,16 +32,16 @@ func (repo *authRepository) CreateAuthentication(ctx context.Context, auth *enti
 
 	if err := repo.q.AuthenticationModel.WithContext(ctx).Create(authM); err != nil {
 		if isUniqueConstraintViolation(err) {
-			return domainerrors.ErrAuthAlreadyExists
+			return replaceWithSourceStack(err, domainerrors.ErrAuthAlreadyExists)
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrAuthCreateFailed)
+			return replaceWithSourceStack(err, domainerrors.ErrAuthCreateFailed)
 		}
 		if isNotNullConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrAuthCreateFailed)
+			return replaceWithSourceStack(err, domainerrors.ErrAuthCreateFailed)
 		}
 
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	// Update the entity with generated values
@@ -61,10 +61,10 @@ func (repo *authRepository) FindAuthentication(ctx context.Context, provider ent
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, domainerrors.ErrAuthNotFound
+			return nil, replaceWithSourceStack(err, domainerrors.ErrAuthNotFound)
 		}
 
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	return toAuthenticationDomain(authM), nil
@@ -81,10 +81,10 @@ func (repo *authRepository) FindAuthenticationByUserIDAndProvider(ctx context.Co
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, domainerrors.ErrAuthNotFound
+			return nil, replaceWithSourceStack(err, domainerrors.ErrAuthNotFound)
 		}
 
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	return toAuthenticationDomain(authM), nil
@@ -96,16 +96,16 @@ func (repo *authRepository) UpdateAuthentication(ctx context.Context, auth *enti
 
 	if err := repo.q.AuthenticationModel.WithContext(ctx).Save(authM); err != nil {
 		if isUniqueConstraintViolation(err) {
-			return domainerrors.ErrAuthAlreadyExists
+			return replaceWithSourceStack(err, domainerrors.ErrAuthAlreadyExists)
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrAuthUpdateFailed)
+			return replaceWithSourceStack(err, domainerrors.ErrAuthUpdateFailed)
 		}
 		if isNotNullConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrAuthUpdateFailed)
+			return replaceWithSourceStack(err, domainerrors.ErrAuthUpdateFailed)
 		}
 
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	return nil
@@ -118,7 +118,7 @@ func (repo *authRepository) DeleteAuthentication(ctx context.Context, id uuid.UU
 		Delete()
 
 	if err != nil {
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	// If no rows were affected, it means the authentication was not found.
@@ -136,7 +136,7 @@ func (repo *authRepository) ListAuthenticationsByUserID(ctx context.Context, use
 		Find()
 
 	if err != nil {
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	authentications := make([]*entity.Authentication, 0, len(authModels))

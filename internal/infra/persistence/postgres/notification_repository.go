@@ -32,10 +32,10 @@ func (repo *notificationRepository) CreateNotification(ctx context.Context, noti
 
 	if err := repo.q.MerchantLocationNotificationModel.WithContext(ctx).Create(notificationM); err != nil {
 		if isForeignKeyConstraintViolation(err) || isNotNullConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrNotificationCreateFailed)
+			return replaceWithSourceStack(err, domainerrors.ErrNotificationCreateFailed)
 		}
 
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	// Update the entity with generated values
@@ -55,10 +55,10 @@ func (repo *notificationRepository) FindNotificationByID(ctx context.Context, id
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, domainerrors.ErrNotificationNotFound
+			return nil, replaceWithSourceStack(err, domainerrors.ErrNotificationNotFound)
 		}
 
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	return toNotificationDomain(notificationM), nil
@@ -79,7 +79,7 @@ func (repo *notificationRepository) FindNotificationsByMerchant(ctx context.Cont
 
 	notificationModels, err := query.Find()
 	if err != nil {
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	notifications := make([]*entity.MerchantLocationNotification, 0, len(notificationModels))
@@ -100,7 +100,7 @@ func (repo *notificationRepository) UpdateNotificationStatus(ctx context.Context
 		)
 
 	if err != nil {
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	if result.RowsAffected == 0 {
@@ -116,10 +116,10 @@ func (repo *notificationRepository) CreateNotificationLog(ctx context.Context, l
 
 	if err := repo.q.NotificationLogModel.WithContext(ctx).Create(logM); err != nil {
 		if isForeignKeyConstraintViolation(err) || isNotNullConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrNotificationLogCreateFailed)
+			return replaceWithSourceStack(err, domainerrors.ErrNotificationLogCreateFailed)
 		}
 
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	// Update the entity with generated values
@@ -144,10 +144,10 @@ func (repo *notificationRepository) BatchCreateNotificationLogs(ctx context.Cont
 	// Default batch size is 100, which is a good balance between performance and memory
 	if err := repo.q.NotificationLogModel.WithContext(ctx).CreateInBatches(logModels, 100); err != nil {
 		if isForeignKeyConstraintViolation(err) || isNotNullConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrNotificationLogCreateFailed)
+			return replaceWithSourceStack(err, domainerrors.ErrNotificationLogCreateFailed)
 		}
 
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	// Update the entities with generated values

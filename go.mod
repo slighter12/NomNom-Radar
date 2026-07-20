@@ -1,6 +1,6 @@
 module radar
 
-go 1.26
+go 1.26.0
 
 require (
 	cloud.google.com/go/pubsub/v2 v2.6.1
@@ -19,6 +19,7 @@ require (
 	github.com/paulmach/orb v0.13.0
 	github.com/protomaps/go-pmtiles v1.31.1
 	github.com/slighter12/go-lib/database/postgres v1.2.0
+	github.com/slighter12/go-lib/errors/stack v1.0.1
 	github.com/stretchr/testify v1.11.1
 	github.com/yeqown/go-qrcode/v2 v2.2.5
 	github.com/yeqown/go-qrcode/writer/standard v1.3.0

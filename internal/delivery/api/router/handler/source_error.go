@@ -1,9 +1,9 @@
 package handler
 
 import (
-	"radar/internal/platform/observability"
+	"github.com/slighter12/go-lib/errors/stack"
 )
 
 func withSourceStack(err error) error {
-	return observability.WithSourceStackSkip(err, 1)
+	return stack.WithSkip(err, 1)
 }

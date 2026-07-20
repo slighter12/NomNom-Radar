@@ -134,7 +134,7 @@ func (srv *userService) verifyEmailIdentity(ctx context.Context, req *authReques
 			slog.String("error", err.Error()),
 		)
 
-		return nil, domainerrors.ErrValidationFailed.WithDetails("password does not meet security requirements")
+		return nil, replaceWithSourceStack(err, domainerrors.ErrValidationFailed.WithDetails("password does not meet security requirements"))
 	}
 
 	hashedPassword, err := srv.hasher.Hash(req.Password)
@@ -449,7 +449,7 @@ func (srv *userService) buildLinkingRequiredResult(user *entity.User, req *authR
 func (srv *userService) CompleteMerchantOnboarding(ctx context.Context, input *usecase.CompleteMerchantOnboardingInput) (*usecase.AuthResult, error) {
 	claims, err := srv.tokenService.ValidateToken(input.OnboardingToken)
 	if err != nil {
-		return nil, fmt.Errorf("invalid onboarding token: %w", domainerrors.ErrUnauthorized)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrUnauthorized)
 	}
 	if claims.Type != domainservice.TokenTypeOnboarding {
 		return nil, fmt.Errorf("invalid onboarding token type: %w", domainerrors.ErrUnauthorized)
@@ -467,7 +467,7 @@ func (srv *userService) CompleteMerchantOnboarding(ctx context.Context, input *u
 		loadedUser, err := userRepo.FindByID(ctx, claims.UserID)
 		if err != nil {
 			if errors.Is(err, domainerrors.ErrUserNotFound) {
-				return domainerrors.ErrNotFound
+				return replaceWithSourceStack(err, domainerrors.ErrNotFound)
 			}
 
 			return err
