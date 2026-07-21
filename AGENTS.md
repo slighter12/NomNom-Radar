@@ -7,65 +7,47 @@ These instructions apply to the whole repository.
 - Chat with the user in Traditional Chinese.
 - Keep repository artifacts in English.
 - Keep changes minimal. Do not refactor, rename public APIs, add dependencies, or introduce speculative abstractions unless the task explicitly requires it.
-- Do not treat historical implementation plans as current work. Check the current docs first.
-- Do not implement future pass/redemption, organizer-account, or advanced merchant-ops features unless explicitly requested.
-- For docs-only work, prefer manual verification over running programs.
+- Preserve unrelated worktree changes and do not stage, commit, deploy, or run migrations unless explicitly requested.
+- Treat current docs and code as the source of truth. Call out drift instead of copying stale statements.
+- Do not turn future directions, deferred work, or historical plans into requirements without an explicit product decision.
 
-## Reading Order
+## Task Context
 
-1. `docs/product.md` - product definition, v1 scope, non-goals, and future direction.
-2. `docs/architecture.md` - current runtime architecture and service boundaries.
-3. `docs/roadmap.md` - completed work, remaining verification, and next product directions.
-4. `docs/operations.md` - deployment and runtime reference index.
-5. Active reference docs only when relevant: `docs/reference/google-oauth-api.md`, `docs/reference/device-health-api.md`, and `docs/reference/cloud-run-jobs.md`.
+- Read only the context needed for the task.
+- Use `docs/product.md` and `docs/roadmap.md` for product scope, non-goals, status, and future direction.
+- Use `docs/architecture.md` for runtime services, data flow, integrations, and package boundaries.
+- Use `docs/operations.md` and the relevant file under `docs/reference/` for deployment, database, or API-specific work.
+- Treat `docs/history/` as background only. It must not override current docs or code.
 
-Historical playbooks are background only:
+## Runtime and Ownership
 
-- `docs/history/tier1-reliability.md`
-- `docs/history/tier2-discovery.md`
-- `docs/history/routing-engine.md`
-- `docs/history/serverless-geo-notification.md`
-
-## Product Boundary
-
-NomNom-Radar is a mobile-vendor and market-discovery backend. The v1 backend direction is reliable notifications plus discovery.
-
-- Mobile vendors use location publishing, menus, QR subscription, discovery profile, and notification history features.
-- Consumers use subscription, authenticated discovery of publicly visible merchants, category/hub filters, and route-aware notification delivery.
-- Markets and hubs are platform-defined discovery concepts today.
-- Electronic passes, redemption, organizer accounts, and advanced merchant operations are future directions, not v1 requirements.
-
-## Architecture Boundary
-
-Current runtime services:
-
-- `cmd/radar`: main API service.
-- `cmd/geoworker`: async Pub/Sub push worker for route-aware notification delivery.
-- `cmd/device-cleanup`: Cloud Run Job for stale device cleanup.
-
-Current storage and integrations:
-
-- PostgreSQL/PostGIS for application data and geospatial queries.
-- Firebase Cloud Messaging for push delivery.
-- Google Pub/Sub or local HTTP publisher for async notification events.
-- PMTiles/MVT routing with Haversine fallback for route-aware distance checks.
-
-Legacy/offline routing tooling:
-
-- `cmd/routing`
-- `internal/infra/routing/ch`
-- `internal/infra/routing/loader`
-
-## Implementation Notes
-
-- Follow the existing Go layering: delivery handlers -> usecases -> domain interfaces/entities -> infra implementations.
-- Keep HTTP parsing and response mapping in handlers.
-- Keep product validation and authorization-sensitive behavior in usecases.
+- Runtime entrypoints are `cmd/radar`, `cmd/geoworker`, and `cmd/device-cleanup`.
+- `cmd/routing`, `internal/infra/routing/ch`, and `internal/infra/routing/loader` are legacy or offline tooling, not the notification runtime path.
+- Follow the existing dependency direction: delivery -> usecase -> domain <- infra.
+- Keep HTTP and worker parsing, transport validation, and response mapping in delivery packages.
+- Keep product validation and authorization-sensitive orchestration in usecases.
+- Keep entities, policies, canonical errors, and repository/service contracts in domain packages.
 - Keep persistence and external integration details in infra packages.
-- Preserve existing response envelopes, auth boundaries, error semantics, and config names.
+- Keep `internal/platform` limited to cross-layer runtime primitives such as correlation context and request-scoped logging.
+
+## Error and Observability Boundaries
+
+- Preserve canonical `AppError` identities, response envelopes, HTTP semantics, request IDs, auth boundaries, and config names.
+- Capture source stacks where errors originate or where their semantic identity is replaced. Preserve existing stack providers instead of wrapping repeatedly.
+- Do not emit duplicate lower-layer error logs. The API request logger owns the final request lifecycle log.
+- Never return stack traces, SQL details, internal paths, or raw internal errors to clients.
+- Never log secrets, tokens, passwords, PII, or full request/response bodies. Keep logged request and error details sanitized.
+
+## Database Migrations
+
+- Put shared PostgreSQL schema changes in `database/migration/postgres/`.
+- Put Supabase extension/bootstrap changes in `database/migration/supabase/pre/` and function hardening in `database/migration/supabase/post/`.
+- Add a new migration instead of rewriting one already applied to shared environments.
+- Use the existing Supabase pre/shared/post deployment flow. Follow `docs/operations.md` and the active deployment reference for connection and ordering constraints.
 
 ## Verification
 
 - Do not run broad test suites unless requested or needed for non-trivial code changes.
-- For docs-only changes, check links and verify the docs do not describe completed work as pending.
+- For docs-only changes, verify referenced paths and current-status claims manually; do not run programs.
 - For code changes, run the narrowest relevant check and report any skipped verification.
+- For migration changes, validate migration structure without applying it unless execution was explicitly requested.
