@@ -2,7 +2,7 @@
     sec-scan trivy-scan vuln-scan \
     db-postgres-init db-postgres-seeders-init \
     db-postgres-create db-postgres-up db-postgres-down db-postgres-down-all \
-    db-postgres-status db-postgres-install-goose \
+    db-postgres-status db-postgres-install-goose db-supabase-create \
 	gci-format build docker-image-build \
 	docker-up docker-down docker-logs docker-clean \
 	k6-full \
@@ -64,6 +64,7 @@ vuln-scan: ## scan for vulnerability issues with govulncheck (govulncheck binary
 ######
 POSTGRES_SQL_PATH := ./database/migration/postgres
 POSTGRES_SEEDERS_SQL_PATH := ./database/migration/postgres/seeders
+SUPABASE_SQL_PATH ?= ./database/migration/supabase
 POSTGRES_HOST ?= localhost
 POSTGRES_PORT ?=
 POSTGRES_DB_NAME ?= auth_db
@@ -98,6 +99,18 @@ db-postgres-create: ## create new PostgreSQL migration
 		if [ -z "$${MIGRATE_NAME}" ]; then printf "Enter migration name: "; read -r MIGRATE_NAME; fi; \
 		if [ -z "$${MIGRATE_NAME}" ]; then echo "NAME is required"; exit 1; fi; \
 		$(GOOSE) -dir ${POSTGRES_SQL_PATH} create "$${MIGRATE_NAME}" sql \
+	)
+
+db-supabase-create: ## create new Supabase migration (PHASE=pre|post)
+	@( \
+		MIGRATION_PHASE="$(PHASE)"; \
+		case "$${MIGRATION_PHASE}" in pre|post) ;; *) echo "PHASE must be pre or post"; exit 1 ;; esac; \
+		MIGRATE_NAME="$(NAME)"; \
+		if [ -z "$${MIGRATE_NAME}" ]; then printf "Enter migration name: "; read -r MIGRATE_NAME; fi; \
+		if [ -z "$${MIGRATE_NAME}" ]; then echo "NAME is required"; exit 1; fi; \
+		MIGRATION_PATH="$(SUPABASE_SQL_PATH)/$${MIGRATION_PHASE}"; \
+		mkdir -p "$${MIGRATION_PATH}"; \
+		$(GOOSE) -dir "$${MIGRATION_PATH}" create "$${MIGRATE_NAME}" sql \
 	)
 
 define postgres_uri_command
