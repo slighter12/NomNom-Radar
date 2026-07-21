@@ -7,13 +7,14 @@ import (
 	"testing"
 
 	domainerrors "radar/internal/domain/errors"
-	"radar/internal/platform/observability"
+
+	"github.com/slighter12/go-lib/errors/stack"
 )
 
 func TestWithSourceStackWrapsClientAppError(t *testing.T) {
 	err := withSourceStack(fmt.Errorf("invalid request: %w", domainerrors.ErrInvalidInput))
 
-	if _, ok := errors.AsType[observability.SourceStackProvider](err); !ok {
+	if _, ok := errors.AsType[stack.Provider](err); !ok {
 		t.Fatal("4xx app error should capture source stack")
 	}
 	if !errors.Is(err, domainerrors.ErrInvalidInput) {
@@ -28,18 +29,18 @@ func handlerSourceStackTestError() error {
 func TestWithSourceStackWrapsInternalAppError(t *testing.T) {
 	err := handlerSourceStackTestError()
 
-	provider, ok := errors.AsType[observability.SourceStackProvider](err)
+	provider, ok := errors.AsType[stack.Provider](err)
 	if !ok {
 		t.Fatal("5xx app error should capture source stack")
 	}
 	if !errors.Is(err, domainerrors.ErrPersistenceFailed) {
 		t.Fatal("5xx app error should preserve errors.Is")
 	}
-	stack := provider.SourceStack()
-	if !strings.Contains(stack, "handlerSourceStackTestError") {
-		t.Fatalf("stack should include source caller, got:\n%s", stack)
+	frames := provider.Stack()
+	if !strings.Contains(frames, "handlerSourceStackTestError") {
+		t.Fatalf("stack should include source caller, got:\n%s", frames)
 	}
-	firstFrame, _, _ := strings.Cut(stack, "\n")
+	firstFrame, _, _ := strings.Cut(frames, "; ")
 	if strings.Contains(firstFrame, "withSourceStack") {
 		t.Fatalf("first stack frame should be the handler source caller, got %q", firstFrame)
 	}
@@ -49,7 +50,7 @@ func TestWithSourceStackWrapsNonAppError(t *testing.T) {
 	baseErr := errors.New("boom")
 	err := withSourceStack(baseErr)
 
-	if _, ok := errors.AsType[observability.SourceStackProvider](err); !ok {
+	if _, ok := errors.AsType[stack.Provider](err); !ok {
 		t.Fatal("non-app error should capture source stack")
 	}
 	if !errors.Is(err, baseErr) {

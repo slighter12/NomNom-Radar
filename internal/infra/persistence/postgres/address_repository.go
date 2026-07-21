@@ -10,9 +10,9 @@ import (
 	"radar/internal/domain/repository"
 	"radar/internal/infra/persistence/model"
 	"radar/internal/infra/persistence/postgres/query"
-	"radar/internal/platform/observability"
 
 	"github.com/google/uuid"
+	"github.com/slighter12/go-lib/errors/stack"
 	"gorm.io/gorm"
 )
 
@@ -33,16 +33,16 @@ func (repo *addressRepository) CreateAddress(ctx context.Context, address *entit
 
 	if err := repo.q.AddressModel.WithContext(ctx).Create(addressM); err != nil {
 		if isUniqueConstraintViolation(err) {
-			return domainerrors.ErrPrimaryAddressConflict
+			return replaceWithSourceStack(err, domainerrors.ErrPrimaryAddressConflict)
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrAddressCreateFailed)
+			return replaceWithSourceStack(err, domainerrors.ErrAddressCreateFailed)
 		}
 		if isNotNullConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrAddressCreateFailed)
+			return replaceWithSourceStack(err, domainerrors.ErrAddressCreateFailed)
 		}
 
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	// Update the entity with generated values
@@ -61,10 +61,10 @@ func (repo *addressRepository) FindAddressByID(ctx context.Context, id uuid.UUID
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, domainerrors.ErrAddressNotFound
+			return nil, replaceWithSourceStack(err, domainerrors.ErrAddressNotFound)
 		}
 
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	return toAddressDomain(addressM), nil
@@ -81,7 +81,7 @@ func (repo *addressRepository) FindAddressesByOwner(ctx context.Context, ownerID
 	case entity.OwnerTypeMerchantProfile:
 		query = query.Where(repo.q.AddressModel.MerchantProfileID.Eq(ownerID))
 	default:
-		return nil, observability.WithSourceStack(fmt.Errorf("unsupported owner type: %s", ownerType))
+		return nil, stack.With(fmt.Errorf("unsupported owner type: %s", ownerType))
 	}
 
 	// Filter out soft-deleted addresses
@@ -92,7 +92,7 @@ func (repo *addressRepository) FindAddressesByOwner(ctx context.Context, ownerID
 		Find()
 
 	if err != nil {
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	addresses := make([]*entity.Address, 0, len(addressModels))
@@ -115,17 +115,17 @@ func (repo *addressRepository) FindPrimaryAddressByOwner(ctx context.Context, ow
 	case entity.OwnerTypeMerchantProfile:
 		query = query.Where(repo.q.AddressModel.MerchantProfileID.Eq(ownerID))
 	default:
-		return nil, observability.WithSourceStack(fmt.Errorf("unsupported owner type: %s", ownerType))
+		return nil, stack.With(fmt.Errorf("unsupported owner type: %s", ownerType))
 	}
 
 	addressM, err := query.First()
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, domainerrors.ErrAddressNotFound
+			return nil, replaceWithSourceStack(err, domainerrors.ErrAddressNotFound)
 		}
 
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	return toAddressDomain(addressM), nil
@@ -137,16 +137,16 @@ func (repo *addressRepository) UpdateAddress(ctx context.Context, address *entit
 
 	if err := repo.q.AddressModel.WithContext(ctx).Save(addressM); err != nil {
 		if isUniqueConstraintViolation(err) {
-			return domainerrors.ErrPrimaryAddressConflict
+			return replaceWithSourceStack(err, domainerrors.ErrPrimaryAddressConflict)
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrAddressUpdateFailed)
+			return replaceWithSourceStack(err, domainerrors.ErrAddressUpdateFailed)
 		}
 		if isNotNullConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrAddressUpdateFailed)
+			return replaceWithSourceStack(err, domainerrors.ErrAddressUpdateFailed)
 		}
 
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	// Update the entity with updated timestamp
@@ -162,7 +162,7 @@ func (repo *addressRepository) DeleteAddress(ctx context.Context, id uuid.UUID) 
 		Delete()
 
 	if err != nil {
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	// If no rows were affected, it means the address was not found.
@@ -184,7 +184,7 @@ func (repo *addressRepository) CountAddressesByOwner(ctx context.Context, ownerI
 	case entity.OwnerTypeMerchantProfile:
 		query = query.Where(repo.q.AddressModel.MerchantProfileID.Eq(ownerID))
 	default:
-		return 0, observability.WithSourceStack(fmt.Errorf("unsupported owner type: %s", ownerType))
+		return 0, stack.With(fmt.Errorf("unsupported owner type: %s", ownerType))
 	}
 
 	// Filter out soft-deleted addresses
@@ -192,7 +192,7 @@ func (repo *addressRepository) CountAddressesByOwner(ctx context.Context, ownerI
 
 	count, err := query.Count()
 	if err != nil {
-		return 0, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return 0, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	return count, nil
@@ -209,7 +209,7 @@ func (repo *addressRepository) FindActiveAddressesByOwner(ctx context.Context, o
 	case entity.OwnerTypeMerchantProfile:
 		query = query.Where(repo.q.AddressModel.MerchantProfileID.Eq(ownerID))
 	default:
-		return nil, observability.WithSourceStack(fmt.Errorf("unsupported owner type: %s", ownerType))
+		return nil, stack.With(fmt.Errorf("unsupported owner type: %s", ownerType))
 	}
 
 	// Filter for active addresses and exclude soft-deleted
@@ -223,7 +223,7 @@ func (repo *addressRepository) FindActiveAddressesByOwner(ctx context.Context, o
 		Find()
 
 	if err != nil {
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	addresses := make([]*entity.Address, 0, len(addressModels))

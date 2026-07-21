@@ -39,16 +39,16 @@ func (repo *subscriptionRepository) CreateSubscription(ctx context.Context, subs
 
 	if err := repo.q.UserMerchantSubscriptionModel.WithContext(ctx).Create(subscriptionM); err != nil {
 		if isUniqueConstraintViolation(err) {
-			return domainerrors.ErrSubscriptionAlreadyExists
+			return replaceWithSourceStack(err, domainerrors.ErrSubscriptionAlreadyExists)
 		}
 		if isForeignKeyConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrSubscriptionCreateFailed)
+			return replaceWithSourceStack(err, domainerrors.ErrSubscriptionCreateFailed)
 		}
 		if isNotNullConstraintViolation(err) {
-			return withSourceStack(domainerrors.ErrSubscriptionCreateFailed)
+			return replaceWithSourceStack(err, domainerrors.ErrSubscriptionCreateFailed)
 		}
 
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	// Update the entity with generated values
@@ -73,7 +73,7 @@ func (repo *subscriptionRepository) FindSubscriptionByID(ctx context.Context, su
 		Scan(&subscriptionMs)
 
 	if err != nil {
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	if len(subscriptionMs) == 0 {
@@ -97,7 +97,7 @@ func (repo *subscriptionRepository) FindSubscriptionByUserAndMerchant(ctx contex
 		Scan(&subscriptionMs)
 
 	if err != nil {
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	if len(subscriptionMs) == 0 {
@@ -122,7 +122,7 @@ func (repo *subscriptionRepository) FindSubscriptionsByUser(ctx context.Context,
 		Scan(&subscriptionModels)
 
 	if err != nil {
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	subscriptions := make([]*entity.UserMerchantSubscription, 0, len(subscriptionModels))
@@ -148,7 +148,7 @@ func (repo *subscriptionRepository) FindSubscriptionsByMerchant(ctx context.Cont
 		Scan(&subscriptionModels)
 
 	if err != nil {
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	subscriptions := make([]*entity.UserMerchantSubscription, 0, len(subscriptionModels))
@@ -166,7 +166,7 @@ func (repo *subscriptionRepository) UpdateSubscriptionStatus(ctx context.Context
 		Update(repo.q.UserMerchantSubscriptionModel.IsActive, isActive)
 
 	if err != nil {
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	if result.RowsAffected == 0 {
@@ -183,7 +183,7 @@ func (repo *subscriptionRepository) UpdateNotificationRadius(ctx context.Context
 		Update(repo.q.UserMerchantSubscriptionModel.NotificationRadius, radius)
 
 	if err != nil {
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	if result.RowsAffected == 0 {
@@ -200,7 +200,7 @@ func (repo *subscriptionRepository) DeleteSubscription(ctx context.Context, subs
 		Delete()
 
 	if err != nil {
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	if result.RowsAffected == 0 {
@@ -235,7 +235,7 @@ func (repo *subscriptionRepository) FindSubscribersWithinRadius(ctx context.Cont
 		Find(&subscriptionModels).Error
 
 	if err != nil {
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	subscriptions := make([]*entity.UserMerchantSubscription, 0, len(subscriptionModels))
@@ -276,7 +276,7 @@ func (repo *subscriptionRepository) FindSubscriberAddressesWithinRadius(ctx cont
 		Find(&addressModels).Error
 
 	if err != nil {
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	addresses := make([]*entity.SubscriberAddress, 0, len(addressModels))
@@ -315,7 +315,7 @@ func (repo *subscriptionRepository) FindDevicesForUsers(ctx context.Context, use
 		Find()
 
 	if err != nil {
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	devices := make([]*entity.UserDevice, 0, len(deviceModels))
@@ -358,7 +358,7 @@ func (repo *subscriptionRepository) FindSubscriberAddressesByUserIDs(ctx context
 		Scan(&addressModels)
 
 	if err != nil {
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	addresses := make([]*entity.SubscriberAddress, 0, len(addressModels))

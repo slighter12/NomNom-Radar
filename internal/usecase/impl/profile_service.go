@@ -50,7 +50,7 @@ func (srv *profileService) GetProfile(ctx context.Context, userID uuid.UUID) (*e
 		foundUser, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
 			if errors.Is(err, domainerrors.ErrUserNotFound) {
-				return domainerrors.ErrNotFound
+				return replaceWithSourceStack(err, domainerrors.ErrNotFound)
 			}
 
 			return err
@@ -78,7 +78,7 @@ func (srv *profileService) UpdateUserProfile(ctx context.Context, userID uuid.UU
 		user, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
 			if errors.Is(err, domainerrors.ErrUserNotFound) {
-				return domainerrors.ErrNotFound
+				return replaceWithSourceStack(err, domainerrors.ErrNotFound)
 			}
 
 			return err
@@ -120,7 +120,7 @@ func (srv *profileService) UpdateMerchantProfile(ctx context.Context, userID uui
 		user, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
 			if errors.Is(err, domainerrors.ErrUserNotFound) {
-				return domainerrors.ErrNotFound
+				return replaceWithSourceStack(err, domainerrors.ErrNotFound)
 			}
 
 			return err
@@ -166,7 +166,7 @@ func (srv *profileService) GetMerchantDiscoveryProfile(ctx context.Context, user
 		user, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
 			if errors.Is(err, domainerrors.ErrUserNotFound) {
-				return domainerrors.ErrNotFound
+				return replaceWithSourceStack(err, domainerrors.ErrNotFound)
 			}
 
 			return err
@@ -270,7 +270,7 @@ func findMerchantProfileForUpdate(
 	user, err := userRepo.FindByID(ctx, userID)
 	if err != nil {
 		if errors.Is(err, domainerrors.ErrUserNotFound) {
-			return nil, nil, domainerrors.ErrNotFound
+			return nil, nil, replaceWithSourceStack(err, domainerrors.ErrNotFound)
 		}
 
 		return nil, nil, err
@@ -345,7 +345,7 @@ func (srv *profileService) SubmitMerchantVerification(ctx context.Context, userI
 		user, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
 			if errors.Is(err, domainerrors.ErrUserNotFound) {
-				return domainerrors.ErrNotFound
+				return replaceWithSourceStack(err, domainerrors.ErrNotFound)
 			}
 
 			return err
@@ -393,7 +393,7 @@ func (srv *profileService) SwitchToMerchant(ctx context.Context, userID uuid.UUI
 		user, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
 			if errors.Is(err, domainerrors.ErrUserNotFound) {
-				return domainerrors.ErrNotFound
+				return replaceWithSourceStack(err, domainerrors.ErrNotFound)
 			}
 
 			return err
@@ -737,7 +737,7 @@ func (srv *profileService) GetUserRole(ctx context.Context, userID uuid.UUID) ([
 		user, err := userRepo.FindByID(ctx, userID)
 		if err != nil {
 			if errors.Is(err, domainerrors.ErrUserNotFound) {
-				return domainerrors.ErrNotFound
+				return replaceWithSourceStack(err, domainerrors.ErrNotFound)
 			}
 
 			return err

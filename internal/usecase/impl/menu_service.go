@@ -261,7 +261,7 @@ func (s *menuService) validatePublicMerchant(ctx context.Context, merchantID uui
 	merchant, err := s.userRepo.FindByID(ctx, merchantID)
 	if err != nil {
 		if errors.Is(err, domainerrors.ErrUserNotFound) {
-			return domainerrors.ErrMerchantNotFound
+			return replaceWithSourceStack(err, domainerrors.ErrMerchantNotFound)
 		}
 
 		return err
@@ -282,7 +282,7 @@ func (s *menuService) validateActiveMenuCategory(ctx context.Context, categoryID
 	subcategory, err := s.discoveryRepo.FindSubcategoryByID(ctx, categoryID)
 	if err != nil {
 		if errors.Is(err, domainerrors.ErrDiscoverySubcategoryNotFound) {
-			return domainerrors.ErrValidationFailed.WithDetails("category_id must reference an active discovery subcategory")
+			return replaceWithSourceStack(err, domainerrors.ErrValidationFailed.WithDetails("category_id must reference an active discovery subcategory"))
 		}
 
 		return err

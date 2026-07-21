@@ -363,12 +363,12 @@ func (srv *userService) validateRefreshTokenInput(refreshToken string) (*service
 	}
 
 	if !errors.Is(err, jwt.ErrTokenExpired) {
-		return nil, domainerrors.ErrRefreshTokenInvalid
+		return nil, replaceWithSourceStack(err, domainerrors.ErrRefreshTokenInvalid)
 	}
 
 	token, _, parseErr := new(jwt.Parser).ParseUnverified(refreshToken, &service.Claims{})
 	if parseErr != nil {
-		return nil, domainerrors.ErrRefreshTokenInvalid
+		return nil, replaceWithSourceStack(parseErr, domainerrors.ErrRefreshTokenInvalid)
 	}
 
 	expiredClaims, ok := token.Claims.(*service.Claims)
@@ -401,8 +401,8 @@ func (srv *userService) rotateRefreshTokenPair(
 }
 
 func mapRefreshTokenRotationError(err error) error {
-	if appErr, ok := errors.AsType[domainerrors.AppError](err); ok {
-		return appErr
+	if _, ok := errors.AsType[domainerrors.AppError](err); ok {
+		return err
 	}
 
 	return fmt.Errorf("execute refresh token transaction: %w", err)
@@ -518,7 +518,7 @@ func loadStoredRefreshToken(
 ) (*entity.RefreshToken, error) {
 	storedToken, err := refreshRepo.FindRefreshTokenByHashIncludingRevoked(ctx, tokenHash)
 	if errors.Is(err, domainerrors.ErrRefreshTokenNotFound) {
-		return nil, domainerrors.ErrRefreshTokenInvalid
+		return nil, replaceWithSourceStack(err, domainerrors.ErrRefreshTokenInvalid)
 	}
 	if err != nil {
 		return nil, err
@@ -546,7 +546,7 @@ func (srv *userService) loadRefreshTokenUser(
 	}
 
 	if errors.Is(err, domainerrors.ErrUserNotFound) {
-		return nil, true, domainerrors.ErrUnauthorized
+		return nil, true, replaceWithSourceStack(err, domainerrors.ErrUnauthorized)
 	}
 
 	return nil, false, err
@@ -585,7 +585,7 @@ func (srv *userService) Logout(ctx context.Context, input *usecase.LogoutInput) 
 	}); err != nil {
 		srv.log(ctx).Error("Failed to revoke refresh token family during logout", slog.String("error", err.Error()))
 
-		return domainerrors.ErrInternalError
+		return replaceWithSourceStack(err, domainerrors.ErrInternalError)
 	}
 	srv.log(ctx).Info("Successfully logged out")
 
@@ -658,7 +658,10 @@ type linkProviderResolution struct {
 
 func (srv *userService) parseLinkingClaims(linkingToken string) (*service.Claims, entity.ProviderType, string, error) {
 	claims, err := srv.tokenService.ValidateToken(linkingToken)
-	if err != nil || claims.Type != service.TokenTypeLinking {
+	if err != nil {
+		return nil, "", "", replaceWithSourceStack(err, domainerrors.ErrInvalidLinkingToken)
+	}
+	if claims.Type != service.TokenTypeLinking {
 		return nil, "", "", domainerrors.ErrInvalidLinkingToken
 	}
 
@@ -685,7 +688,7 @@ func (srv *userService) resolveLinkProviderInput(
 
 		user, err := userRepo.FindByID(ctx, userID)
 		if errors.Is(err, domainerrors.ErrUserNotFound) {
-			return domainerrors.ErrUnauthorized
+			return replaceWithSourceStack(err, domainerrors.ErrUnauthorized)
 		}
 		if err != nil {
 			return err
@@ -693,7 +696,7 @@ func (srv *userService) resolveLinkProviderInput(
 
 		emailAuth, err := authRepo.FindAuthenticationByUserIDAndProvider(ctx, userID, entity.ProviderTypeEmail)
 		if errors.Is(err, domainerrors.ErrAuthNotFound) {
-			return domainerrors.ErrInvalidCredentials
+			return replaceWithSourceStack(err, domainerrors.ErrInvalidCredentials)
 		}
 		if err != nil {
 			return err
@@ -1153,7 +1156,7 @@ func (srv *userService) UnlinkGoogleAccount(ctx context.Context, userID uuid.UUI
 		googleAuth, err := authRepo.FindAuthenticationByUserIDAndProvider(ctx, userID, entity.ProviderTypeGoogle)
 		if err != nil {
 			if errors.Is(err, domainerrors.ErrAuthNotFound) {
-				return domainerrors.ErrNotFound.WithDetails("google account not linked to this user")
+				return replaceWithSourceStack(err, domainerrors.ErrNotFound.WithDetails("google account not linked to this user"))
 			}
 
 			return err

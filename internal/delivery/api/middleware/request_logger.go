@@ -12,6 +12,7 @@ import (
 	"radar/internal/platform/observability"
 
 	"github.com/labstack/echo/v4"
+	"github.com/slighter12/go-lib/errors/stack"
 )
 
 const sourceErrorLogContextKey = "source_error_for_log"
@@ -19,7 +20,7 @@ const sourceErrorLogContextKey = "source_error_for_log"
 type sourceErrorLog struct {
 	Type    string
 	Message string
-	Stack   observability.SourceStackProvider
+	Stack   stack.Provider
 }
 
 // RequestLoggerMiddleware logs one request lifecycle entry after the response is finalized.
@@ -101,27 +102,29 @@ func setSourceErrorLog(c echo.Context, err error) {
 		return
 	}
 
-	logErr := observability.UnwrapSourceStack(err)
-	sourceErr := sourceErrorLog{
-		Type:    fmt.Sprintf("%T", logErr),
-		Message: sanitizeFreeTextLogValue(logErr.Error()),
-	}
+	logErr := err
+	sourceErr := sourceErrorLog{}
 
-	if stackProvider, ok := errors.AsType[observability.SourceStackProvider](err); ok {
+	if stackProvider, ok := errors.AsType[stack.Provider](err); ok {
 		sourceErr.Stack = stackProvider
+		if wrappedErr := errors.Unwrap(stackProvider); wrappedErr != nil {
+			logErr = wrappedErr
+		}
 	}
+	sourceErr.Type = fmt.Sprintf("%T", logErr)
+	sourceErr.Message = sanitizeFreeTextLogValue(logErr.Error())
 
 	c.Set(sourceErrorLogContextKey, sourceErr)
 }
 
 func stackForInternalServerError(c echo.Context) string {
 	if sourceErr, ok := c.Get(sourceErrorLogContextKey).(sourceErrorLog); ok && sourceErr.Stack != nil {
-		if stack := sourceErr.Stack.SourceStack(); stack != "" {
+		if stack := sourceErr.Stack.Stack(); stack != "" {
 			return stack
 		}
 	}
 
-	return observability.CaptureSourceStack(0)
+	return stack.Capture(0)
 }
 
 func responseErrorLogFromContext(c echo.Context, status int) responseErrorLog {

@@ -126,7 +126,7 @@ func (repo *discoveryRepository) ListActiveCategories(ctx context.Context) ([]*e
 		Order(repo.q.DiscoveryCategoryModel.DisplayOrder.Asc(), repo.q.DiscoveryCategoryModel.Name.Asc()).
 		Find()
 	if err != nil {
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	result := make([]*entity.DiscoveryCategory, 0, len(categories))
@@ -151,7 +151,7 @@ func (repo *discoveryRepository) ListActiveSubcategories(ctx context.Context) ([
 		Order(subcategory.CategoryID.Asc(), subcategory.DisplayOrder.Asc(), subcategory.Name.Asc()).
 		Find()
 	if err != nil {
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	result := make([]*entity.DiscoverySubcategory, 0, len(subcategories))
@@ -168,7 +168,7 @@ func (repo *discoveryRepository) ListActiveHubs(ctx context.Context) ([]*entity.
 		Order(repo.q.HubModel.City.Asc(), repo.q.HubModel.AreaName.Asc(), repo.q.HubModel.Type.Asc(), repo.q.HubModel.Name.Asc()).
 		Find()
 	if err != nil {
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	result := make([]*entity.Hub, 0, len(hubs))
@@ -185,7 +185,7 @@ func (repo *discoveryRepository) SearchPublicMerchants(
 ) ([]*entity.PublicMerchantSearchItem, int64, error) {
 	total, err := repo.buildPublicMerchantSearchQuery(ctx, filter).Count()
 	if err != nil {
-		return nil, 0, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, 0, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	var rows []publicMerchantSearchRow
@@ -211,7 +211,7 @@ func (repo *discoveryRepository) SearchPublicMerchants(
 	}
 
 	if err := dataQuery.Scan(&rows); err != nil {
-		return nil, 0, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, 0, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	merchants := make([]*entity.PublicMerchantSearchItem, 0, len(rows))
@@ -348,26 +348,26 @@ func isCoordinateMerchantSearch(filter *repository.PublicMerchantSearchFilter) b
 
 func discoveryCategoryLookupError(err error) error {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return domainerrors.ErrDiscoveryCategoryNotFound
+		return replaceWithSourceStack(err, domainerrors.ErrDiscoveryCategoryNotFound)
 	}
 
-	return withSourceStack(domainerrors.ErrPersistenceFailed)
+	return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 }
 
 func discoverySubcategoryLookupError(err error) error {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return domainerrors.ErrDiscoverySubcategoryNotFound
+		return replaceWithSourceStack(err, domainerrors.ErrDiscoverySubcategoryNotFound)
 	}
 
-	return withSourceStack(domainerrors.ErrPersistenceFailed)
+	return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 }
 
 func hubLookupError(err error) error {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return domainerrors.ErrHubNotFound
+		return replaceWithSourceStack(err, domainerrors.ErrHubNotFound)
 	}
 
-	return withSourceStack(domainerrors.ErrPersistenceFailed)
+	return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 }
 
 func normalizeDiscoverySlug(slug string) string {

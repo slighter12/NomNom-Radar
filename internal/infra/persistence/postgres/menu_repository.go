@@ -67,10 +67,10 @@ func (repo *menuRepository) FindMenuItemByID(ctx context.Context, id uuid.UUID) 
 		First()
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, domainerrors.ErrMenuItemNotFound
+			return nil, replaceWithSourceStack(err, domainerrors.ErrMenuItemNotFound)
 		}
 
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	return toMenuItemDomain(itemM), nil
@@ -83,7 +83,7 @@ func (repo *menuRepository) ListActiveMenuItemIDsByMerchant(ctx context.Context,
 		Order(repo.q.MenuItemModel.DisplayOrder.Asc()).
 		Find()
 	if err != nil {
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	itemIDs := make([]uuid.UUID, 0, len(itemModels))
@@ -114,7 +114,7 @@ func (repo *menuRepository) ListMenuItemsByMerchant(ctx context.Context, merchan
 
 	total, err := menuItem.WithContext(ctx).Where(conditions...).Count()
 	if err != nil {
-		return nil, 0, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, 0, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	dataQuery := menuItem.WithContext(ctx).
@@ -129,7 +129,7 @@ func (repo *menuRepository) ListMenuItemsByMerchant(ctx context.Context, merchan
 
 	itemModels, err := dataQuery.Find()
 	if err != nil {
-		return nil, 0, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, 0, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	items := make([]*entity.MenuItem, 0, len(itemModels))
@@ -207,16 +207,16 @@ func (repo *menuRepository) DeleteMenuItem(ctx context.Context, merchantID, menu
 			Take()
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return domainerrors.ErrMenuItemNotFound
+				return replaceWithSourceStack(err, domainerrors.ErrMenuItemNotFound)
 			}
 
-			return withSourceStack(domainerrors.ErrPersistenceFailed)
+			return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 		}
 
 		if _, err := menuItemQuery.
 			Where(menuItem.ID.Eq(menuItemID)).
 			Delete(); err != nil {
-			return withSourceStack(domainerrors.ErrPersistenceFailed)
+			return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 		}
 
 		if _, err := menuItemQuery.
@@ -245,7 +245,7 @@ func (repo *menuRepository) getNextDisplayOrder(ctx context.Context, transaction
 			return 1, nil
 		}
 
-		return 0, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return 0, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	nextDisplayOrder := itemM.DisplayOrder + 1
@@ -266,10 +266,10 @@ func (repo *menuRepository) lockMerchantProfileForMenuWrite(ctx context.Context,
 		Take()
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return withSourceStack(domainerrors.ErrMerchantNotFound)
+			return replaceWithSourceStack(err, domainerrors.ErrMerchantNotFound)
 		}
 
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	return nil
@@ -277,30 +277,30 @@ func (repo *menuRepository) lockMerchantProfileForMenuWrite(ctx context.Context,
 
 func (repo *menuRepository) toMenuItemCreateError(err error) error {
 	if isUniqueConstraintViolation(err) {
-		return domainerrors.ErrMenuItemOrderConflict
+		return replaceWithSourceStack(err, domainerrors.ErrMenuItemOrderConflict)
 	}
 	if isForeignKeyConstraintViolation(err) {
-		return withSourceStack(domainerrors.ErrMenuItemCreateFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrMenuItemCreateFailed)
 	}
 	if isNotNullConstraintViolation(err) {
-		return withSourceStack(domainerrors.ErrMenuItemCreateFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrMenuItemCreateFailed)
 	}
 
-	return withSourceStack(domainerrors.ErrPersistenceFailed)
+	return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 }
 
 func (repo *menuRepository) toMenuItemUpdateError(err error) error {
 	if isUniqueConstraintViolation(err) {
-		return domainerrors.ErrMenuItemOrderConflict
+		return replaceWithSourceStack(err, domainerrors.ErrMenuItemOrderConflict)
 	}
 	if isForeignKeyConstraintViolation(err) {
-		return withSourceStack(domainerrors.ErrMenuItemUpdateFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrMenuItemUpdateFailed)
 	}
 	if isNotNullConstraintViolation(err) {
-		return withSourceStack(domainerrors.ErrMenuItemUpdateFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrMenuItemUpdateFailed)
 	}
 
-	return withSourceStack(domainerrors.ErrPersistenceFailed)
+	return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 }
 
 func (repo *menuRepository) ReorderMenuItems(ctx context.Context, merchantID uuid.UUID, itemIDs []uuid.UUID) error {
@@ -319,7 +319,7 @@ func (repo *menuRepository) withTransaction(fn func(transactionQuery *query.Quer
 			return err //nolint:wrapcheck // preserve the original classified error
 		}
 
-		return withSourceStack(domainerrors.ErrPersistenceFailed)
+		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	return nil
@@ -356,7 +356,7 @@ func (repo *menuRepository) listScopedMenuItemIDs(ctx context.Context, transacti
 		Order(menuItem.DisplayOrder.Asc()).
 		Find()
 	if err != nil {
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	scopedItemIDs := make([]uuid.UUID, 0, len(scopedItems))
@@ -412,7 +412,7 @@ func (repo *menuRepository) listProvidedMenuItems(ctx context.Context, transacti
 		Select(menuItem.MerchantID).
 		Where(menuItem.ID.In(ids...)).
 		Scan(&providedItems); err != nil {
-		return nil, withSourceStack(domainerrors.ErrPersistenceFailed)
+		return nil, replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 	}
 
 	return providedItems, nil
