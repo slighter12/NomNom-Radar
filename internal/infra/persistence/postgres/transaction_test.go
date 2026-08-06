@@ -39,11 +39,8 @@ func TestGormRepositoryFactory_AccessorsAreReadOnlyUnderConcurrentUse(t *testing
 
 	var wg sync.WaitGroup
 	nilRepo := make(chan struct{}, 50)
-	for i := 0; i < 50; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
+	for range 50 {
+		wg.Go(func() {
 			if factory.UserRepo() == nil ||
 				factory.AuthRepo() == nil ||
 				factory.AddressRepo() == nil ||
@@ -52,7 +49,7 @@ func TestGormRepositoryFactory_AccessorsAreReadOnlyUnderConcurrentUse(t *testing
 				factory.DiscoveryRepo() == nil {
 				nilRepo <- struct{}{}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	close(nilRepo)

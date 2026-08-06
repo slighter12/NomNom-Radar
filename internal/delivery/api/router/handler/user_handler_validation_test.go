@@ -98,6 +98,19 @@ func TestUserHandler_InvalidPayloadsAreRejectedAtHTTPBoundary(t *testing.T) {
 			wantCode:   "VALIDATION_FAILED",
 			wantDetail: "business_license is required",
 		},
+		{
+			name:   "merchant profile update missing fields",
+			target: "/merchant/profile",
+			body:   `{}`,
+			handle: func(c echo.Context) error {
+				c.Set("userID", uuid.New())
+
+				return handler.UpdateMerchantProfile(c)
+			},
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "VALIDATION_FAILED",
+			wantDetail: "at least one of store_name or store_description is required",
+		},
 	}
 
 	for _, tt := range tests {

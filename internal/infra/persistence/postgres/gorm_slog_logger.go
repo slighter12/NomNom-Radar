@@ -164,8 +164,7 @@ func safeGormErrorAttrs(err error) []slog.Attr {
 		slog.String("error_type", fmt.Sprintf("%T", err)),
 	}
 
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
 		attrs = append(attrs, slog.String("error_code", pgErr.Code))
 		if pgErr.ConstraintName != "" {
 			attrs = append(attrs, slog.String("constraint", pgErr.ConstraintName))
