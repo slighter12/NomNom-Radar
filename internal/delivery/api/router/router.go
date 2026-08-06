@@ -176,6 +176,7 @@ func (r *router) registerAPIV1MerchantRoutes(apiV1 *echo.Group) {
 	{
 		merchantGroup.GET("/qr", r.subscriptionHandler.GenerateSubscriptionQR)
 		merchantGroup.POST("/verification", r.userHandler.SubmitMerchantVerification)
+		merchantGroup.PATCH("/profile", r.userHandler.UpdateMerchantProfile)
 		merchantGroup.GET("/discovery-profile", r.userHandler.GetMerchantDiscoveryProfile)
 		merchantGroup.PATCH("/discovery-profile", r.userHandler.UpdateMerchantDiscoveryProfile)
 	}

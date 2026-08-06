@@ -7,6 +7,7 @@
 	docker-up docker-down docker-logs docker-clean \
 	k6-full \
 	routing-cli routing-prepare routing-validate \
+	modernize \
 	generate-mocks
 
 help: ## show this help
@@ -46,6 +47,9 @@ test-usecase-race: ## launch usecase tests with race detection
 
 lint: ## lints the entire codebase
 	@golangci-lint run ./... --config=./.golangci.yaml
+
+modernize: ## apply go modernize fixes (requires Go toolchain)
+	go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -fix ./...
 
 #######
 # sec #

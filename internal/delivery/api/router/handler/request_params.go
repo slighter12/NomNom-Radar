@@ -276,7 +276,7 @@ func requestTagValue(field *reflect.StructField, tagName string) string {
 		return ""
 	}
 
-	name := strings.Split(tagValue, ",")[0]
+	name, _, _ := strings.Cut(tagValue, ",")
 	if name == "" || name == "-" {
 		return ""
 	}

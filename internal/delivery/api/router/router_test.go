@@ -6,12 +6,14 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"radar/config"
 	apimiddleware "radar/internal/delivery/api/middleware"
 	"radar/internal/delivery/api/router/handler"
+	apivalidator "radar/internal/delivery/api/validator"
 	"radar/internal/domain/entity"
 	"radar/internal/domain/service"
 	"radar/internal/usecase"
@@ -206,6 +208,49 @@ func TestRouter_ProfileSupportsAPIV1AndLegacyRoutes(t *testing.T) {
 	}
 }
 
+func TestRouter_MerchantProfileUpdateRouteRequiresMerchantRole(t *testing.T) {
+	e := newRouterTestEcho()
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch, "/api/v1/merchant/profile", strings.NewReader(`{"store_name":"NomNom Bento"}`))
+	req.Header.Set(echo.HeaderAuthorization, "Bearer "+testMerchantToken)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"message":"Merchant profile updated"`)
+}
+
+func TestRouter_MerchantProfileUpdateRouteRequiresAuthorization(t *testing.T) {
+	e := newRouterTestEcho()
+
+	for _, tc := range []struct {
+		name     string
+		path     string
+		code     int
+		token    string
+		wantCode string
+	}{
+		{name: "no token", path: "/api/v1/merchant/profile", token: "", code: http.StatusUnauthorized, wantCode: "UNAUTHORIZED"},
+		{name: "user role", path: "/api/v1/merchant/profile", token: testUserToken, code: http.StatusForbidden, wantCode: "FORBIDDEN"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodPatch, tc.path, strings.NewReader(`{"store_name":"NomNom Bento"}`))
+			if tc.token != "" {
+				req.Header.Set(echo.HeaderAuthorization, "Bearer "+tc.token)
+			}
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+
+			e.ServeHTTP(rec, req)
+
+			require.Equal(t, tc.code, rec.Code)
+			assert.Contains(t, rec.Body.String(), `"code":"`+tc.wantCode+`"`)
+		})
+	}
+}
+
 func newRouterTestEcho() *echo.Echo {
 	userID := uuid.New()
 	tokenSvc := &routerTestTokenService{
@@ -224,6 +269,7 @@ func newRouterTestEcho() *echo.Echo {
 	}
 
 	e := echo.New()
+	e.Validator = apivalidator.New()
 	authMiddleware := apimiddleware.NewAuthMiddleware(tokenSvc, &config.Config{})
 	r := NewRouter(RouterParams{
 		UserHandler: handler.NewUserHandler(handler.UserHandlerParams{

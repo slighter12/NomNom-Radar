@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"radar/internal/delivery/api/middleware"
 	"radar/internal/delivery/api/response"
@@ -82,6 +83,11 @@ type UpdateMerchantDiscoveryProfileRequest struct {
 	DiscoverySubcategoryID optionalUUIDRequestField `json:"discovery_subcategory_id"`
 	ActiveHubID            optionalUUIDRequestField `json:"active_hub_id"`
 	IsPublic               *bool                    `json:"is_public,omitempty"`
+}
+
+type UpdateMerchantProfileRequest struct {
+	StoreName        *string `json:"store_name" validate:"omitempty,max=50"`
+	StoreDescription *string `json:"store_description" validate:"omitempty,max=500"`
 }
 
 // NewUserHandler is the constructor for UserHandler, injected by Fx.
@@ -237,6 +243,39 @@ func (h *UserHandler) GetMerchantDiscoveryProfile(c echo.Context) error {
 	}
 
 	return response.Success(c, http.StatusOK, result)
+}
+
+func (h *UserHandler) UpdateMerchantProfile(c echo.Context) error {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		return response.InvalidToken(c)
+	}
+
+	var req UpdateMerchantProfileRequest
+	if err := bindAndValidateRequest(c, &req, "Invalid merchant profile input"); err != nil {
+		return err
+	}
+	if req.StoreName == nil && req.StoreDescription == nil {
+		return validationFailedError("at least one of store_name or store_description is required")
+	}
+
+	var storeName *string
+	if req.StoreName != nil {
+		trimmed := strings.TrimSpace(*req.StoreName)
+		if trimmed == "" {
+			return validationFailedError("store_name is required")
+		}
+		storeName = &trimmed
+	}
+
+	if err := h.profileUC.UpdateMerchantProfile(c.Request().Context(), userID, &usecase.UpdateMerchantProfileInput{
+		StoreName:        storeName,
+		StoreDescription: req.StoreDescription,
+	}); err != nil {
+		return withSourceStack(err)
+	}
+
+	return response.Success(c, http.StatusOK, map[string]string{responseKeyMessage: "Merchant profile updated"})
 }
 
 func (h *UserHandler) UpdateMerchantDiscoveryProfile(c echo.Context) error {

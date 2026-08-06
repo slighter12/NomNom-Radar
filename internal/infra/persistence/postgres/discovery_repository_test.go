@@ -112,13 +112,13 @@ func (capture *captureSQLLogger) LogMode(gormlogger.LogLevel) gormlogger.Interfa
 	return capture
 }
 
-func (*captureSQLLogger) Info(context.Context, string, ...interface{}) {
+func (*captureSQLLogger) Info(context.Context, string, ...any) {
 }
 
-func (*captureSQLLogger) Warn(context.Context, string, ...interface{}) {
+func (*captureSQLLogger) Warn(context.Context, string, ...any) {
 }
 
-func (*captureSQLLogger) Error(context.Context, string, ...interface{}) {
+func (*captureSQLLogger) Error(context.Context, string, ...any) {
 }
 
 func (capture *captureSQLLogger) Trace(_ context.Context, _ time.Time, fc func() (string, int64), _ error) {
