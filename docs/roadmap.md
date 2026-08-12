@@ -1,10 +1,10 @@
 # Roadmap
 
-This document is the current product and engineering status source. Historical plan files are background only.
+This document is the source of truth for current implementation status, remaining verification risks, and decided next directions. Product scope and long-term principles belong in `docs/product.md`; historical files are background only.
 
 ## Current V1 Direction
 
-V1 is reliable notifications plus discovery:
+The product definition and complete v1 scope live in `docs/product.md`. Current backend delivery is aligned around reliable notifications plus discovery:
 
 - Consumers can subscribe to merchants, manage device/location state, and discover publicly visible merchants through authenticated APIs.
 - Merchants can maintain lightweight operational data, publish location notifications, and appear in discovery when eligible.
@@ -55,11 +55,7 @@ Do not turn the backend into a full POS, CRM, or campaign-management product wit
 
 ### Market Partnerships and Passes
 
-Electronic passes and redemption are future market-partnership directions. Keep them out of v1 implementation:
-
-- Future campaigns or passes should attach to stable hub identity or explicit participation records.
-- Redemption must have clear validity windows, fraud controls, and audit records before API work starts.
-- Do not add placeholder redemption endpoints.
+Electronic passes and redemption are not scheduled for implementation. The product constraints for any future market-partnership work remain in `docs/product.md`; a separate product decision is required before this becomes active roadmap scope.
 
 ### Auth and Account Completeness
 

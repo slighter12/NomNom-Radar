@@ -1,5 +1,7 @@
 # Product Brief
 
+This document is the source of truth for product positioning, actors, v1 scope, non-goals, long-term direction, and product rules. Implementation status belongs in `docs/roadmap.md`.
+
 NomNom-Radar is a backend for mobile-vendor and market discovery. It helps consumers find mobile vendors and market-style vendor clusters, and it lets vendors notify subscribed users when they are nearby.
 
 The v1 product direction is reliable notifications plus discovery. Future market partnership features, including electronic passes and redemption, should remain possible, but they are not part of the v1 backend scope.

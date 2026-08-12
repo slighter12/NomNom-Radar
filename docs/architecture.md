@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the current runtime architecture. Historical implementation details are kept in the old plan/spec files only as background.
+This document is the source of truth for the current runtime topology, data flow, integrations, trust boundaries, and package boundaries. Product scope belongs in `docs/product.md`; deployment procedures belong in `docs/operations.md` and focused references.
 
 ## Runtime Services
 

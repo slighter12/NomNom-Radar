@@ -4,26 +4,23 @@ NomNom-Radar is a backend for mobile-vendor and market discovery. It helps consu
 
 ## Documentation
 
-Start here:
+Read the active documentation in this order:
 
-- `AGENTS.md` - instructions for coding agents working in this repository.
-- `docs/product.md` - product definition, v1 scope, non-goals, and future direction.
-- `docs/architecture.md` - current runtime architecture and service boundaries.
-- `docs/roadmap.md` - completed backend foundation, remaining verification, and next directions.
-- `docs/operations.md` - deployment and runtime reference index.
+| Document | Authoritative for |
+| --- | --- |
+| `docs/product.md` | Product positioning, actors, v1 scope, non-goals, and long-term product rules. |
+| `docs/roadmap.md` | Current implementation status, remaining verification risks, and decided next directions. |
+| `docs/architecture.md` | Current runtime services, data flow, integrations, and package boundaries. |
+| `docs/operations.md` | Local operation, deployment entry points, database migration policy, and release checks. |
+| `docs/reference/api-conventions.md` | Shared HTTP success and error envelopes. |
+| `docs/reference/google-oauth-api.md` | Google OAuth, provider linking, and merchant onboarding client contract. |
+| `docs/reference/device-health-api.md` | Device health and rebind client contract. |
+| `docs/reference/cloud-run-jobs.md` | Cloud Run Job deployment, scheduling, and execution details. |
+| `AGENTS.md` | Instructions for coding agents working in this repository. |
 
-Active reference docs:
+Files under `docs/history/` are background material for investigation only. They are not current sources of truth.
 
-- `docs/reference/google-oauth-api.md` - Google OAuth mobile ID-token API contract.
-- `docs/reference/device-health-api.md` - device health and rebind API contract.
-- `docs/reference/cloud-run-jobs.md` - Cloud Run Job deployment and scheduling.
-
-Historical playbooks:
-
-- `docs/history/tier1-reliability.md`
-- `docs/history/tier2-discovery.md`
-- `docs/history/routing-engine.md`
-- `docs/history/serverless-geo-notification.md`
+Agent tooling contracts live under `docs/agents/` and are indexed from `AGENTS.md`.
 
 ## Tech Stack
 
@@ -60,13 +57,15 @@ Edit `config/local.yaml` with local database, OAuth, Firebase, Pub/Sub, and PMTi
 
 ### Database Setup
 
-The baseline PostgreSQL migration expects PostGIS and UUID support. Supabase deployments need the Supabase pre/post migration workflow when preparing a new database or changing database functions.
+The baseline schema requires PostgreSQL with PostGIS and UUID support. Start the local PostgreSQL master if needed, then install goose once and apply the shared migrations:
 
-Use a dedicated migration DSN secret named `postgres-migration-dsn` when deploying. For Supabase, this DSN must be a direct connection or Supavisor session-mode connection on port `5432`; do not use the transaction pooler on port `6543` for migrations.
+```sh
+docker compose up -d postgres-master
+make db-postgres-install-goose
+make db-postgres-up POSTGRES_PORT=5432
+```
 
-Runtime Cloud Run services may still use `postgres-master-dsn` with `POSTGRES_PRESET=supabase_transaction`.
-
-Do not run `DROP EXTENSION postgis CASCADE` on a migrated database.
+`make db-postgres-up` builds the DSN from the Makefile's `POSTGRES_*` variables or accepts an explicit `PG_URI=...`. Port `5432` matches the checked-in Docker Compose master; pass a different port or `PG_URI` for another database. Deployment migration policy, including Supabase pre/post ordering and migration DSN rules, is documented in `docs/operations.md` and does not apply to normal local setup.
 
 ### Run the API
 
@@ -82,21 +81,7 @@ docker compose --profile dev up --build geoworker
 
 ## Routing Data
 
-Runtime route-aware notification filtering reads PMTiles through the `pmtiles` config block. When PMTiles is disabled or unavailable, the routing adapter falls back to Haversine distance.
-
-Example PMTiles config:
-
-```yaml
-pmtiles:
-  enabled: true
-  source: "./data/pmtiles/map.pmtiles"
-  roadLayer: "transportation"
-  zoomLevel: 14
-```
-
-The older CH routing CLI under `cmd/routing` is legacy/offline tooling, not the notification runtime path.
-
-See `docs/operations.md` for the minimal PMTiles data preparation workflow.
+Runtime routing uses PMTiles/MVT with Haversine fallback. See `docs/architecture.md` for runtime behavior and `docs/operations.md` for PMTiles preparation and configuration.
 
 ## Testing
 
