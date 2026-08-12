@@ -19,7 +19,7 @@ The repository uses a single-context target layout. `CONTEXT.md` and
 `docs/adr/` are created lazily by `/domain-modeling`; their absence means that
 no glossary or ADR has needed to be recorded yet.
 
-```
+```text
 /
 ├── CONTEXT.md
 ├── docs/adr/
