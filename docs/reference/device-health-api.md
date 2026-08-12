@@ -1,6 +1,6 @@
 # Device Health API
 
-This is the active client contract for device health and rebind behavior.
+This document is the source of truth for device health and rebind client behavior. Shared HTTP envelopes are documented in `docs/reference/api-conventions.md`.
 
 ## Endpoint
 
@@ -12,16 +12,18 @@ Auth is required. The endpoint returns computed health information for the authe
 
 ## Response Shape
 
-Each device health item includes:
+The success envelope's `data` field is an array. Each device health item includes:
 
 ```json
-{
-  "id": "uuid-of-device-record",
-  "client_device_id": "client-side-device-identifier",
-  "health_status": "healthy",
-  "token_refreshed_at": "2026-04-01T12:00:00Z",
-  "requires_rebind": false
-}
+[
+  {
+    "id": "uuid-of-device-record",
+    "client_device_id": "client-side-device-identifier",
+    "health_status": "healthy",
+    "token_refreshed_at": "2026-04-01T12:00:00Z",
+    "requires_rebind": false
+  }
+]
 ```
 
 `health_status` values:

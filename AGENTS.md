@@ -18,6 +18,24 @@ These instructions apply to the whole repository.
 - Use `docs/architecture.md` for runtime services, data flow, integrations, and package boundaries.
 - Use `docs/operations.md` and the relevant file under `docs/reference/` for deployment, database, or API-specific work.
 - Treat `docs/history/` as background only. It must not override current docs or code.
+- Treat each active document's stated scope as its ownership boundary. Keep authoritative detail in the owning document and use a short summary plus a link elsewhere.
+- Keep shared API response semantics in `docs/reference/api-conventions.md`; focused API references should document only their endpoint-specific payloads and behavior.
+
+## Agent skills
+
+This repository has adopted the configured agent workflow described below. Files under `docs/agents/` are active repository contracts for that tooling, not future product requirements.
+
+### Issue tracker
+
+Issues and specs are tracked in GitHub at `github.com/slighter12/NomNom-Radar`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Triage uses the five canonical triage labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This repository uses a single-context domain documentation layout. See `docs/agents/domain.md`.
 
 ## Runtime and Ownership
 

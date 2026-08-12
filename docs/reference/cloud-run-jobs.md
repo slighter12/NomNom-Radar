@@ -1,6 +1,6 @@
 # Cloud Run Jobs
 
-This project uses Cloud Run Jobs for periodic maintenance work that should not be exposed as public HTTP API endpoints.
+This document is the source of truth for Cloud Run Job build, deployment, scheduling, and execution details. Shared database migration policy belongs in `docs/operations.md`.
 
 ## Device Cleanup
 
@@ -25,6 +25,8 @@ ${REGISTRY}/${IMAGE_NAME}/device-cleanup:${TAG}
 ${REGISTRY}/${IMAGE_NAME}/device-cleanup:latest
 ```
 
+`IMAGE_NAME` is the lowercase GitHub repository owner resolved by the CI and deploy workflows.
+
 ### Deploy with GitHub Actions
 
 Use the dedicated workflow for the target environment:
@@ -46,13 +48,9 @@ Inputs:
 | `schedule_time_zone` | Cloud Scheduler time zone. Defaults to `Asia/Taipei`. |
 | `scheduler_name` | Cloud Scheduler job name. Defaults to `device-cleanup-daily` for this job; change it if `schedule` is no longer daily or if adding another job target. |
 
-The workflow reuses the shared Cloud Run deployment setup used by services: Google auth, Artifact Registry image resolution, optional versioned Supabase database migrations, optional shared migration, and image existence verification. If `run_migration` is enabled, it runs the same goose migration path used by service deploys before deploying the job. The deployment branch for jobs runs `gcloud run jobs deploy` instead of `gcloud run services replace`.
+The workflow reuses the service deployment setup for Google authentication, Artifact Registry image resolution, optional migrations, and image existence verification. The job branch uses `gcloud run jobs deploy` instead of `gcloud run services replace`. Select `run_migration` and `run_supabase_migration` according to the shared policy in `docs/operations.md`.
 
-Supabase workflow usage matches the README database setup guidance: enable both `run_supabase_migration` and `run_migration` for a new Supabase database, use only `run_migration` for normal shared schema changes, and enable both when a shared migration adds or changes functions that need Supabase hardening.
-
-When migrations run, the shared workflow prefers the GCP Secret Manager secret `postgres-migration-dsn` and falls back to `postgres-master-dsn` only when the migration secret does not exist. For Supabase, configure `postgres-migration-dsn` as a direct or session-mode connection on port `5432`; transaction pooler DSNs on port `6543` are rejected before goose runs.
-
-The job deploy sets the same database and logging runtime configuration documented below. Firebase and HTTP server settings are not required.
+The job deploy uses the same database and logging variables as the `radar` service, with job-specific resource settings including a maximum of five open database connections. Firebase and HTTP server settings are not required.
 
 Prerequisites for Scheduler management:
 
@@ -62,7 +60,7 @@ Prerequisites for Scheduler management:
 
 ### Manual Deploy Fallback
 
-Deploy the image as a Cloud Run Job. Use the same database and logging environment variables as the `radar` service; Firebase and HTTP server settings are not required.
+Deploy the image as a Cloud Run Job. Use the same database and logging variables as the `radar` service, with the job-specific connection limit shown below. Firebase and HTTP server settings are not required.
 
 `POSTGRES_PRESET` is consumed by the shared Postgres configuration helper through environment override and preset handling; it is not a YAML key in this repository's config files.
 
