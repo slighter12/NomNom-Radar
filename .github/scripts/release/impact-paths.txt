@@ -1,0 +1,14 @@
+# A change in any of these paths requires a new candidate image.
+Dockerfile
+.dockerignore
+Makefile
+go.mod
+go.sum
+cmd/**
+config/**
+internal/**
+database/migration/**
+deploy/cloud-run/**
+.github/scripts/release/**
+.github/workflows/ci.yml
+.github/workflows/release-cloud-run.yml

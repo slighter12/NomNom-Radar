@@ -1,5 +1,6 @@
 .PHONY: help test-race test-usecase-race lint \
     sec-scan trivy-scan vuln-scan \
+    print-goose-version \
     db-postgres-init db-postgres-seeders-init \
     db-postgres-create db-postgres-up db-postgres-down db-postgres-down-all \
     db-postgres-status db-postgres-install-goose db-supabase-create \
@@ -77,6 +78,10 @@ POSTGRES_DB_PASSWORD ?= password
 POSTGRES_SSLMODE ?= disable
 PG_URI ?=
 GOOSE ?= $(shell if command -v goose >/dev/null 2>&1; then command -v goose; elif [ -x "$$(go env GOPATH)/bin/goose" ]; then echo "$$(go env GOPATH)/bin/goose"; else echo goose; fi)
+GOOSE_VERSION ?= v3.27.3
+
+print-goose-version: ## print the pinned Goose version used by release automation
+	@printf '%s\n' "$(GOOSE_VERSION)"
 
 # -----------------------------------------------------------------------------
 # PostgreSQL
@@ -152,7 +157,7 @@ db-postgres-status: ## show PostgreSQL migration status
 	)
 
 db-postgres-install-goose: ## install goose CLI
-	go install github.com/pressly/goose/v3/cmd/goose@latest
+	go install github.com/pressly/goose/v3/cmd/goose@$(GOOSE_VERSION)
 
 db-postgres-test-replication: ## test replication
 	@echo "Testing replication with SCRAM-SHA-256 authentication..."

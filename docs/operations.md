@@ -1,11 +1,13 @@
 # Operations
 
-This document is the source of truth for local operation, deployment entry points, shared database migration policy, and release checks. Keep service-specific commands and contracts in focused reference files.
+This document owns local operation, candidate release, promotion, migration,
+and operational workflow policy. Focused references own only target-specific
+commands and settings and link here for shared semantics.
 
 ## Runtime Units
 
 - `cmd/radar`: main API service.
-- `cmd/geoworker`: Pub/Sub/local HTTP push worker for async notification delivery.
+- `cmd/geoworker`: Pub/Sub/local HTTP push worker.
 - `cmd/device-cleanup`: scheduled Cloud Run Job for stale device cleanup.
 
 ## Local Development
@@ -17,113 +19,291 @@ cp config/config_demo.yaml config/local.yaml
 ENV=local go run ./cmd/radar
 ```
 
-Run the local geo worker through Docker Compose when testing async notification delivery:
+Run the local geo worker through Docker Compose when testing async delivery:
 
 ```sh
 docker compose --profile dev up --build geoworker
 ```
 
-Runtime PMTiles routing uses the `pmtiles` config block. When PMTiles is disabled or unavailable, routing falls back to straight-line Haversine behavior.
+Runtime PMTiles routing uses the `pmtiles` config block. When it is disabled or
+unavailable, routing falls back to straight-line Haversine behavior.
 
 ## PMTiles Data Preparation
 
-Prepare road PMTiles outside git and provide them through deployment storage or local bind mounts.
-
-Install the common local tools:
+Prepare road PMTiles outside git and provide them through deployment storage
+or local bind mounts.
 
 ```sh
 brew install osmium-tool tippecanoe
-```
-
-Build a road-only Taiwan PMTiles file from an OSM PBF:
-
-```sh
 osmium tags-filter taiwan-latest.osm.pbf w/highway -o filtered-roads.osm.pbf --overwrite
 osmium export filtered-roads.osm.pbf -o roads.geojson --overwrite
 tippecanoe -o map.pmtiles -z15 -Z15 --buffer=100 --no-clipping --layer=transportation roads.geojson
 ```
 
-Set `pmtiles.source`, `pmtiles.roadLayer`, and `pmtiles.zoomLevel` to match the generated file. Do not commit generated PMTiles or intermediate OSM/GeoJSON files.
+Set `pmtiles.source`, `pmtiles.roadLayer`, and `pmtiles.zoomLevel` to match.
+Do not commit generated PMTiles or intermediate OSM/GeoJSON files.
 
 ## Focused References
 
-- Cloud Run services and reusable GitHub Actions workflows are under `.github/workflows/` and `deploy/cloud-run/`.
-- Cloud Run Job deployment and scheduling are documented in `docs/reference/cloud-run-jobs.md`.
-- Shared HTTP response envelopes are documented in `docs/reference/api-conventions.md`.
-- Google OAuth mobile ID-token contract is documented in `docs/reference/google-oauth-api.md`.
-- Device health and rebind contract is documented in `docs/reference/device-health-api.md`.
+- Cloud Run release and operations workflows are under `.github/workflows/`;
+  service manifests are under `deploy/cloud-run/`.
+- Cloud Run Job deployment and scheduling are in
+  [`docs/reference/cloud-run-jobs.md`](reference/cloud-run-jobs.md).
+- Shared HTTP response envelopes are in
+  [`docs/reference/api-conventions.md`](reference/api-conventions.md).
+- Google OAuth mobile ID-token behavior is in
+  [`docs/reference/google-oauth-api.md`](reference/google-oauth-api.md).
+- Device health and rebind behavior is in
+  [`docs/reference/device-health-api.md`](reference/device-health-api.md).
 
 ## Database Migrations
 
 ### Local PostgreSQL
 
-Start the repository's PostgreSQL 18/PostGIS master when a compatible database is not already running:
+Start the repository PostgreSQL/PostGIS service, install goose, and apply or
+inspect shared migrations:
 
 ```sh
 docker compose up -d postgres-master
-```
-
-Install goose once, apply all shared migrations, and inspect their status:
-
-```sh
 make db-postgres-install-goose
 make db-postgres-up POSTGRES_PORT=5432
 make db-postgres-status POSTGRES_PORT=5432
 ```
 
-The Makefile builds the migration DSN from `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB_NAME`, `POSTGRES_DB_USER`, `POSTGRES_DB_PASSWORD`, and `POSTGRES_SSLMODE`. Port `5432` matches the checked-in Docker Compose master; pass a different `POSTGRES_PORT` or use `PG_URI=...` for another database. The Compose defaults use database `auth_db` and user `user`.
-
-Only shared PostgreSQL migrations have a local apply target. The repository provides `db-supabase-create` for authoring Supabase pre/post migrations, but it does not provide `db-supabase-up`; apply those phases through the deployment workflow described below.
+The Makefile builds the DSN from `POSTGRES_HOST`, `POSTGRES_PORT`,
+`POSTGRES_DB_NAME`, `POSTGRES_DB_USER`, `POSTGRES_DB_PASSWORD`, and
+`POSTGRES_SSLMODE`. Pass `PG_URI` to use a complete DSN. Only shared PostgreSQL
+migrations have a local apply target.
 
 ### Deployment
 
-Shared application schema changes live in `database/migration/postgres/` and run through the shared goose migration path. Supabase-specific preparation and function hardening use separate version tables and run around the shared migrations:
+The release compares the target environment's consistent baseline to the
+selected immutable `main` candidate. Changed directories run in this order:
 
 1. `database/migration/supabase/pre/`
 2. `database/migration/postgres/`
 3. `database/migration/supabase/post/`
 
-Use the deployment workflow inputs according to the change:
+`radar`, `geoworker`, and `device-cleanup` use the `release-sha` Cloud Run
+label. A normal release requires one valid baseline SHA shared by all three
+resources and ancestral to the selected candidate. A new environment with no
+resources bootstraps by checking every migration phase. A partial retry is
+accepted only when labels contain that consistent baseline and the current
+target, or when missing/unlabeled resources are paired only with the target.
 
-- New Supabase database: enable both `run_supabase_migration` and `run_migration`.
-- Normal shared schema change: enable only `run_migration`.
-- Shared function change that requires Supabase hardening: enable both inputs.
-- Supabase-only compatibility or hardening change: enable only `run_supabase_migration`.
+Rollbacks, divergent history, a third SHA, invalid labels, and label/image
+drift fail closed. Resolve those states through approved break-glass recovery;
+the normal workflow does not infer arbitrary history. Database changes remain
+forward-only, and a same-target retry relies on goose to no-op versions already
+applied.
 
-Deployment migrations prefer the GCP Secret Manager secret `postgres-migration-dsn` and fall back to `postgres-master-dsn` only when the dedicated secret does not exist. For Supabase, the migration DSN must use a direct connection or Supavisor session-mode connection on port `5432`; the workflow rejects transaction-pooler connections on port `6543` because session-level settings are not reliable there.
+The dedicated GCP Secret Manager secret `postgres-migration-dsn` is required.
+There is no fallback to `postgres-master-dsn`. Supabase migrations must use a
+direct or Supavisor session-mode connection on port `5432`; transaction-pooler
+port `6543` is rejected. Runtime services may continue using
+`postgres-master-dsn` with `POSTGRES_PRESET=supabase_transaction`.
 
-Runtime services may continue using `postgres-master-dsn` with `POSTGRES_PRESET=supabase_transaction`. Runtime connectivity does not make a transaction-pooler DSN suitable for migrations.
+Add a migration instead of rewriting one applied to a shared environment.
+Never run `DROP EXTENSION postgis CASCADE` on a migrated database.
 
-Add a new migration rather than rewriting a migration already applied to a shared environment. Do not run `DROP EXTENSION postgis CASCADE` on a migrated database because dependent geometry columns and spatial indexes can be removed with it.
+## Release Flow
+
+### Candidate images and attestation
+
+Release-impacting merges to `main` publish `radar`, `geoworker`, and
+`device-cleanup` to the dev Artifact Registry. Images use the full commit SHA
+as an immutable tag; `latest`, mutable aliases, and rebuilt images are not
+release inputs. Registry immutable-tag enforcement is required. Documentation
+and other non-impacting commits do not rebuild images.
+
+The checked-in target catalog at `.github/scripts/release/targets.json` is the
+single source for the three release targets and their deployment order. The
+impact manifest at `.github/scripts/release/impact-paths.txt` is the single
+source for deciding whether a commit requires a new candidate and whether an
+older candidate remains compatible with current release automation.
+
+The resolver checks at most the newest 50 first-parent commits. If no complete
+compatible candidate is found in that window, publish a new release-impacting
+candidate rather than relying on an unbounded registry scan.
+
+CI pushes each image to a run-scoped staging tag, resolves and attests its exact
+digest, verifies the attestation, and only then adds the immutable SHA tag. A
+release resolves the selected candidate's three SHA tags once and writes a
+run-local JSON bundle:
+
+```json
+{
+  "release_sha": "<40-character-main-commit-sha>",
+  "images": {
+    "radar": "<registry>/<repository>/radar@sha256:<64-hex-digest>",
+    "geoworker": "<registry>/<repository>/geoworker@sha256:<64-hex-digest>",
+    "device-cleanup": "<registry>/<repository>/device-cleanup@sha256:<64-hex-digest>"
+  }
+}
+```
+
+The bundle lasts only for that workflow run; there is no OCI manifest marker.
+GitHub attestations bind each exact image digest to this repository, the
+candidate workflow, and the `main` commit. Release fails unless all three
+digests resolve and pass verification. An existing image with an invalid or
+missing attestation fails closed; the resolver never silently falls back to an
+older candidate in that case.
+
+### Release Cloud Run
+
+`Release Cloud Run` has one input: `environment`, either `dev` or `prod`. The
+workflow must be dispatched from the current `main` HEAD. It executes only
+current protected automation (`CONTROL_SHA`) and walks first-parent history to
+select the newest ancestor with all three complete, attested candidate images
+(`RELEASE_SHA`).
+
+This separation allows a docs-only commit after a verified dev release to
+promote that same candidate without rebuilding it. The resolver rejects any
+candidate whose range to `CONTROL_SHA` changes a release-impacting path. If no
+compatible complete candidate exists, the release fails closed and a new
+release-impacting commit must produce one.
+
+The checked-in workflow verifies the control SHA against remote `main` and
+refuses an already-complete same-SHA rerun. Those checks do not protect against
+someone dispatching a historical workflow definition that predates them.
+Therefore the prod GitHub Environment requires an external reviewer gate for
+both release and operations jobs. Configure it to prevent self-review: the
+actor who triggered the run must not approve it. Before approval, the reviewer
+must confirm the run's `github.sha` is the current remote `main` HEAD. Dev may
+remain main-only without a required reviewer.
+
+A release processes the complete bundle in this order:
+
+1. For prod, verify dev and copy exact digests into the prod registry.
+2. Run required migration phases.
+3. Deploy `geoworker`, `device-cleanup`, then `radar`.
+4. Verify `release-sha`, exact digest, readiness, and Radar `/health`.
+
+Prod requires dev to be currently running the same selected SHA and three source
+digests. Promotion copies without rebuilding and verifies every destination.
+An existing prod SHA tag is accepted only when its digest is identical. A dev
+release that has already been replaced cannot be promoted.
+
+Release and operational workflows share the non-canceling
+`cloud-run-release` concurrency group across both environments. It covers
+migrations, deployment, job execution, scheduler changes, and Cloudflare
+synchronization. Use these workflows rather than routine direct `gcloud`
+deployment commands.
+
+`Cloud Run Operations` separately supports:
+
+- `execute-device-cleanup`
+- `configure-device-cleanup-scheduler`
+- prod-only `sync-cloudflare-origin-secret`
+
+The scheduler name is fixed as `device-cleanup-daily`; schedule and time zone
+remain explicit inputs with defaults `0 3 * * *` and `Asia/Taipei`. Operations
+does not publish candidates, deploy images, or run migrations.
+
+## Identities and Configuration
+
+The current phase uses separate role-specific JSON keys:
+
+| Role | GitHub secret | Scope |
+|------|---------------|-------|
+| Candidate publisher | `GCP_CANDIDATE_SA_KEY` repository secret | Publish/read dev candidate images; no deploy, migration, operations, or Cloudflare authority. |
+| Release deployer | `GCP_RELEASE_SA_KEY` in each Environment | Read candidates, deploy all resources, and migrate the target; prod also reads dev and writes its own registry. |
+| Operations operator | `GCP_OPERATIONS_SA_KEY` in each Environment | Execute cleanup and manage its scheduler; no image, deployment, or migration authority. |
+
+Candidate variables are `GCP_DEV_PROJECT_ID`, `GCP_DEV_REGISTRY`, and
+`GCP_DEV_REGION`. Each Environment provides `GCP_PROJECT_ID`,
+`GCP_PROJECT_NUMBER`, `GCP_REGION`,
+`GCP_REGISTRY`, `GCP_SA_EMAIL`, `GCP_SCHEDULER_SA_EMAIL`,
+`GOOGLEOAUTH_CLIENTID`, and `HTTP_ALLOWEDHOST`.
+
+`GCP_SA_EMAIL` is the Cloud Run runtime identity.
+`GCP_SCHEDULER_SA_EMAIL` must be a different scheduler caller identity with
+only job-scoped `roles/run.invoker` on `device-cleanup`. The operations
+identity needs scheduler edit permission and `actAs` on that scheduler caller.
+
+The prod GitHub Environment continues to hold `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ORIGIN_SECRET`; `CLOUDFLARE_ZONE_ID` and
+`CLOUDFLARE_TRANSFORM_RULE_ID` remain Environment variables. The origin secret
+is rendered into Radar and used by the operations workflow. It must not appear
+in repository files, workflow inputs, or logs, and must not contain CR or LF.
+
+Cloud Run receives the origin secret as a plaintext environment value. Actors
+who can inspect service or revision configuration can retrieve it, and older
+revisions retain earlier values. This is an accepted current risk: restrict
+describe permissions, rotate GitHub and Cloudflare values together after
+suspected exposure, and remove obsolete revisions after verified releases.
+
+No secret moves in this phase. Role-specific JSON keys remain in their current
+GitHub locations, and existing GCP secrets remain in Secret Manager. GitHub
+OIDC and Google Cloud Workload Identity Federation are deferred until
+exact-digest promotion is stable.
+
+## Prerequisites and Readiness
+
+The workflow files alone do not make the system production-ready. Complete and
+record this rollout before declaring readiness:
+
+- [ ] Dev dispatches are restricted to current `main`; each Environment
+  contains the correct non-overlapping secrets and variables, including the
+  numeric `GCP_PROJECT_NUMBER` required by the Cloud Run Job manifest.
+- [ ] The prod Environment requires an external reviewer, prevents the
+  triggering actor from self-approving, and its approval procedure verifies
+  the run's `github.sha` against the current remote `main` HEAD. This gate is
+  required even though the current workflow performs its own remote-main
+  check, because a historical workflow definition may not contain that check.
+- [ ] Candidate, release, operations, runtime, and scheduler identities exist
+  with the scopes above.
+- [ ] Both Artifact Registry repositories enforce immutable tags; cleanup may
+  remove stale staging tags but excludes commit-SHA image tags.
+- [ ] Required Google APIs are enabled and all three resources implement the
+  `release-sha` label contract.
+- [ ] A documentation-only commit after a verified candidate promotes the
+  newest compatible ancestor without rebuilding; a release-impacting commit
+  without a complete candidate fails closed and is recovered by publishing a
+  new candidate.
+- [ ] `postgres-migration-dsn` is release-only and verified as the intended
+  direct/session-mode port `5432` database.
+- [ ] Prod Cloudflare secrets and identifiers match the deployed origin rule;
+  the origin secret is absent from repository content and logs.
+- [ ] `device-cleanup-daily` uses the approved schedule and the separate
+  scheduler caller can invoke only the cleanup job.
+- [ ] Acceptance covers candidate publication, dev release, same-SHA partial
+  retry, exact prod promotion, migration failure, scheduler execution, and
+  Cloudflare synchronization.
+
+Until GitHub/GCP configuration and live acceptance are complete, release
+readiness remains unverified.
+
+## Manual Break-glass Recovery
+
+Break-glass is not a second normal deployment path. Obtain approval, record the
+operator and reason, confirm no release or operation is active, and preserve
+attestation evidence, current labels, and running digests.
+
+1. Inspect all three resources. Do not infer a baseline from one label or tag.
+2. Keep the database forward-only; never run goose `down` or rewrite applied
+   migrations. Use only `postgres-migration-dsn` and the documented phase order.
+3. Retry the same SHA and exact attested digests first. Never substitute
+   `latest` or rebuild while recovering a partial release.
+4. Holding the application on older exact digests requires retained
+   attestation, schema compatibility evidence, and explicit incident approval;
+   it is never a database rollback.
+5. Restore the workflow path, converge all resources, verify labels, digests,
+   readiness, and `/health`, then record and reconcile out-of-band actions.
+
+Stop and escalate when exact digests or compatibility evidence are unavailable.
 
 ## Configuration Notes
 
-Important runtime config areas:
-
-- `postgres`: primary database connection and pool settings.
-- `secretKey`: access, refresh, onboarding, and linking token keys.
-- `googleOAuth.clientId`: mobile ID-token audience.
-- `auth`: token TTLs, session limits, and Argon2id settings.
-- `loginThrottle`: credential-login lockout settings.
-- `firebase`: FCM project and credentials.
-- `pubsub`: local or Google Pub/Sub notification event publishing.
-- `pmtiles`: route-aware distance source.
-- `deviceCleanup`: stale-device cleanup timeout.
-
-Prefer environment overrides and Secret Manager for deployed secrets. Do not commit local credentials.
+Important runtime areas include `postgres`, `secretKey`, `googleOAuth.clientId`,
+`auth`, `loginThrottle`, `firebase`, `pubsub`, `pmtiles`, and `deviceCleanup`.
+Prefer environment overrides and Secret Manager for deployed secrets. Do not
+commit local credentials.
 
 ## Operational Checks
 
-Before a release that touches notifications or device health:
-
-- Confirm Firebase credentials are present in the target environment.
-- Confirm Pub/Sub topic/subscription or local publisher endpoint is configured.
-- Confirm PMTiles source, layer name, and zoom level are valid.
-- Confirm device-cleanup job image is deployed.
-- Confirm scheduler configuration only changes when intentionally requested.
-
-Before a release that touches database schema:
-
-- Select the shared and Supabase workflow inputs according to the deployment policy above.
-- Confirm the migration secret resolves to the intended database before deployment.
-- For Supabase, confirm the migration DSN uses a direct or session-mode connection on port `5432`.
+Before notification/device-health changes, confirm Firebase, Pub/Sub, PMTiles,
+the cleanup image, and any intentional scheduler change. Before schema changes,
+confirm the migration secret points to the intended database, uses direct or
+session-mode port `5432` for Supabase, and every migration is compatible with
+both prior and new application revisions.

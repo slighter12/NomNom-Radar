@@ -1,14 +1,17 @@
 # Cloud Run Jobs
 
-This document is the source of truth for Cloud Run Job build, deployment, scheduling, and execution details. Shared database migration policy belongs in `docs/operations.md`.
+This reference owns only Cloud Run Job-specific behavior and settings. Shared
+release, attestation, migration, identity, lock, readiness, and break-glass
+policy is defined in [`docs/operations.md`](../operations.md).
 
 ## Device Cleanup
 
-`cmd/device-cleanup` soft-deletes user devices whose `token_refreshed_at` is older than 270 days. This aligns with the FCM Android token expiration threshold and keeps permanently stale tokens out of push fanout.
+`cmd/device-cleanup` soft-deletes devices whose `token_refreshed_at` is older
+than 270 days, keeping permanently stale FCM tokens out of push fanout.
 
-### Build Image
+### Image and Deployment
 
-Build the dedicated Docker target:
+Build the dedicated image target locally with:
 
 ```sh
 docker build \
@@ -18,66 +21,53 @@ docker build \
   .
 ```
 
-CI builds and publishes this target as:
+CI publishes the target as:
 
 ```text
-${REGISTRY}/${IMAGE_NAME}/device-cleanup:${TAG}
-${REGISTRY}/${IMAGE_NAME}/device-cleanup:latest
+${GCP_DEV_REGISTRY}/${IMAGE_NAME}/device-cleanup:${RELEASE_SHA}
 ```
 
-`IMAGE_NAME` is the lowercase GitHub repository owner resolved by the CI and deploy workflows.
+`IMAGE_NAME` is the lowercase repository owner and `RELEASE_SHA` is the
+selected full `main` candidate SHA. Use the unified `Release Cloud Run`
+workflow with its `environment` input. The job deploys between `geoworker` and
+`radar` with the same `release-sha` label and exact-digest contract.
 
-### Deploy with GitHub Actions
+The release-owned template is
+[`deploy/cloud-run/jobs/device-cleanup.yaml`](../../deploy/cloud-run/jobs/device-cleanup.yaml).
+The job shares Radar's database and logging configuration, uses a maximum of
+five open database connections, and does not require Firebase or HTTP server
+settings. `POSTGRES_PRESET` is consumed through environment override; it is not
+a YAML config key.
 
-Use the dedicated workflow for the target environment:
-
-- `Deploy Cloud Run Job Dev`
-- `Deploy Cloud Run Job Prod`
-
-Inputs:
-
-| Input | Description |
-|-------|-------------|
-| `target` | Cloud Run Job target. Currently only `device-cleanup`. |
-| `image_ref` | Required image tag or commit SHA to deploy. |
-| `run_migration` | Runs the shared database migrations before deploy when this release includes schema changes. Defaults to `false`. |
-| `run_supabase_migration` | Runs versioned Supabase-specific pre/post database migrations. Defaults to `false`. |
-| `configure_scheduler` | Creates or updates the Cloud Scheduler trigger configured by `schedule`, `schedule_time_zone`, and `scheduler_name`. Leave disabled for image-only job deploys. Defaults to `false`. |
-| `execute_now` | Executes the job immediately after deploy. Defaults to `false`. |
-| `schedule` | Cloud Scheduler cron expression. Defaults to `0 3 * * *`. |
-| `schedule_time_zone` | Cloud Scheduler time zone. Defaults to `Asia/Taipei`. |
-| `scheduler_name` | Cloud Scheduler job name. Defaults to `device-cleanup-daily` for this job; change it if `schedule` is no longer daily or if adding another job target. |
-
-The workflow reuses the service deployment setup for Google authentication, Artifact Registry image resolution, optional migrations, and image existence verification. The job branch uses `gcloud run jobs deploy` instead of `gcloud run services replace`. Select `run_migration` and `run_supabase_migration` according to the shared policy in `docs/operations.md`.
-
-The job deploy uses the same database and logging variables as the `radar` service, with job-specific resource settings including a maximum of five open database connections. Firebase and HTTP server settings are not required.
-
-Prerequisites for Scheduler management:
-
-- `cloudscheduler.googleapis.com` must be enabled in the target GCP project.
-- The workflow deployer service account needs permission to create or update Cloud Scheduler jobs, for example `roles/cloudscheduler.jobEditor`, and `roles/iam.serviceAccountUser` on the scheduler service account.
-- The service account used by Cloud Scheduler must have permission to run the Cloud Run Job, for example `roles/run.invoker` on the target job or project.
-
-### Manual Deploy Fallback
-
-Deploy the image as a Cloud Run Job. Use the same database and logging variables as the `radar` service, with the job-specific connection limit shown below. Firebase and HTTP server settings are not required.
-
-`POSTGRES_PRESET` is consumed by the shared Postgres configuration helper through environment override and preset handling; it is not a YAML key in this repository's config files.
+For approved break-glass recovery only:
 
 ```sh
-gcloud run jobs deploy device-cleanup \
-  --image DEVICE_CLEANUP_IMAGE \
-  --region REGION \
-  --service-account SERVICE_ACCOUNT \
-  --set-env-vars ENV_LOG_PRETTY=false,ENV_LOG_LEVEL=info,POSTGRES_PRESET=supabase_transaction,POSTGRES_SSLMODE=require,POSTGRES_MAXOPENCONNS=5 \
-  --set-secrets POSTGRES_MASTER_DSN=postgres-master-dsn:latest
+# Render deploy/cloud-run/jobs/device-cleanup.yaml with the approved exact
+# image, service account, and release-sha, then replace the job:
+gcloud run jobs replace device-cleanup.yaml --region REGION --project PROJECT_ID
 ```
 
-### Schedule
+Follow the approval and exact-digest rules in
+[`docs/operations.md`](../operations.md); this is not a routine deployment
+path.
 
-Cloud Scheduler is configured separately from the job image deploy. The GitHub Actions workflow creates or updates this scheduler only when `configure_scheduler` is enabled. Leave it disabled for normal image-only job deploys. Enable it when first creating the scheduler or intentionally changing `scheduler_name`, `schedule`, `schedule_time_zone`, URI, HTTP method, or OAuth scope.
+### Scheduler
 
-For manual fallback, create a Cloud Scheduler trigger that executes the job once per day:
+Use `Cloud Run Operations` with
+`configure-device-cleanup-scheduler`. The resource name is always
+`device-cleanup-daily`; schedule and time zone default to `0 3 * * *` and
+`Asia/Taipei`. Release never creates, updates, or executes the scheduler.
+
+Job-specific prerequisites:
+
+- `cloudscheduler.googleapis.com` is enabled in the target project.
+- The operations identity can edit scheduler jobs and `actAs` the configured
+  scheduler caller.
+- `GCP_SCHEDULER_SA_EMAIL` differs from the Cloud Run runtime identity and has
+  only job-scoped `roles/run.invoker` on `device-cleanup`.
+
+The workflow creates or updates the trigger but does not grant IAM. Manual
+fallback, under the break-glass policy, is:
 
 ```sh
 gcloud scheduler jobs create http device-cleanup-daily \
@@ -86,13 +76,14 @@ gcloud scheduler jobs create http device-cleanup-daily \
   --time-zone "Asia/Taipei" \
   --uri "https://run.googleapis.com/v2/projects/PROJECT_ID/locations/REGION/jobs/device-cleanup:run" \
   --http-method POST \
-  --oauth-service-account-email SERVICE_ACCOUNT \
+  --oauth-service-account-email SCHEDULER_SA_EMAIL \
   --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform"
 ```
 
-The workflow creates or updates the scheduler trigger, but it does not grant IAM. The service account used by Cloud Scheduler must already have permission to run the Cloud Run Job, for example `roles/run.invoker` on the target job or project.
+### Execution
 
-### Manual Run
+Prefer `Cloud Run Operations` with `execute-device-cleanup`. Manual execution
+is break-glass only:
 
 ```sh
 gcloud run jobs execute device-cleanup \
@@ -100,11 +91,6 @@ gcloud run jobs execute device-cleanup \
   --wait
 ```
 
-Expected log fields:
-
-- `stale_days`: fixed at `270`
-- `rows_affected`: number of devices soft-deleted by the run
-
-Operational follow-up:
-
-- Add metrics and alerting for repeated zero-row runs or unexpected spikes in `rows_affected` once the monitoring stack is in place.
+Expected log fields are `stale_days` (fixed at `270`) and `rows_affected`.
+Monitoring should alert on repeated zero-row runs or unexpected spikes once
+the monitoring stack exists.
