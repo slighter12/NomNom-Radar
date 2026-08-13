@@ -38,6 +38,7 @@ jobs:
     permissions:
       contents: read
     env:
+      CONTROL_SHA: ${{ github.sha }}
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       REGION: ${{ vars.GCP_REGION }}
       RUNTIME_SA_EMAIL: ${{ vars.GCP_SA_EMAIL }}
@@ -46,6 +47,7 @@ jobs:
       - name: Validate operation configuration
         env:
           GCP_OPERATIONS_SA_KEY: ${{ secrets.GCP_OPERATIONS_SA_KEY }}
+          GH_TOKEN: ${{ github.token }}
           OPERATION: ${{ inputs.operation }}
           SCHEDULE: ${{ inputs.schedule }}
           SCHEDULE_TIME_ZONE: ${{ inputs.schedule_time_zone }}
@@ -53,6 +55,15 @@ jobs:
           set -euo pipefail
           if [ "${GITHUB_REF}" != refs/heads/main ]; then
             echo "::error::Operations dispatches must originate from main."
+            exit 1
+          fi
+          printf '%s' "${CONTROL_SHA}" | grep -Eq '^[0-9a-f]{40}$' || {
+            echo "::error::The operation commit must be a full commit SHA."
+            exit 1
+          }
+          remote_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)
+          if [ "${remote_sha}" != "${CONTROL_SHA}" ]; then
+            echo "::error::Main advanced after dispatch; start a new operation run."
             exit 1
           fi
           if [ "${OPERATION}" = sync-cloudflare-origin-secret ] \
@@ -161,6 +172,7 @@ jobs:
           export CF_ORIGIN_SECRET
 
           response=$(curl --silent --show-error --fail \
+            --connect-timeout 10 --max-time 60 \
             --request GET \
             --url "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/rulesets/phases/http_request_late_transform/entrypoint" \
             --header "Authorization: Bearer ${CF_API_TOKEN}" \
@@ -181,6 +193,7 @@ jobs:
           trap 'rm -f "${payload}"' EXIT HUP INT TERM
           printf '%s' "${updated}" > "${payload}"
           result=$(curl --silent --show-error --fail \
+            --connect-timeout 10 --max-time 60 \
             --request PATCH \
             --url "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/rulesets/${ruleset_id}/rules/${CF_RULE_ID}" \
             --header "Authorization: Bearer ${CF_API_TOKEN}" \

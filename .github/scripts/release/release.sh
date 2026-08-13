@@ -14,8 +14,19 @@ required() { for name in "$@"; do test -n "${!name:-}" || die "missing ${name}";
 is_sha() { printf '%s' "$1" | grep -Eq '^[0-9a-f]{40}$'; }
 is_digest() { printf '%s' "$1" | grep -Eq '^[^@[:space:]]+@sha256:[0-9a-f]{64}$'; }
 safe_line() { case "$2" in *$'\r'*|*$'\n'*) die "$1 must not contain CR or LF" ;; esac; }
-targets_file() { printf '%s\n' "${TARGETS_FILE:-${default_targets_file}}"; }
-impact_paths_file() { printf '%s\n' "${IMPACT_PATHS_FILE:-${default_impact_paths_file}}"; }
+repo_path() {
+  local configured=$1 default=$2
+  if [ -z "${configured}" ]; then
+    printf '%s\n' "${default}"
+  else
+    case "${configured}" in
+      /*) printf '%s\n' "${configured}" ;;
+      *) printf '%s/%s\n' "${repo_root}" "${configured#./}" ;;
+    esac
+  fi
+}
+targets_file() { repo_path "${TARGETS_FILE:-}" "${default_targets_file}"; }
+impact_paths_file() { repo_path "${IMPACT_PATHS_FILE:-}" "${default_impact_paths_file}"; }
 validate_catalog() {
   test -f "$(targets_file)" || die 'missing target catalog'
   jq -e '
@@ -200,6 +211,8 @@ describe_resource() {
 
 snapshot() {
   if [ -n "${RELEASE_STATE_FILE:-}" ]; then
+    test "${ALLOW_RELEASE_FIXTURES:-false}" = true \
+      || die 'RELEASE_STATE_FILE is a test-only hook'
     jq -c . "${RELEASE_STATE_FILE}"
     return
   fi
@@ -216,6 +229,8 @@ snapshot() {
 baseline_digest() {
   target=$1 label=$2
   if [ -n "${RELEASE_BASELINE_DIGESTS_FILE:-}" ]; then
+    test "${ALLOW_RELEASE_FIXTURES:-false}" = true \
+      || die 'RELEASE_BASELINE_DIGESTS_FILE is a test-only hook'
     jq -er --arg label "${label}" --arg target "${target}" '.[$label][$target]' \
       "${RELEASE_BASELINE_DIGESTS_FILE}" || die "missing baseline digest fixture for ${target}"
     return
@@ -353,7 +368,12 @@ deploy() {
     required CLOUDFLARE_ORIGIN_SECRET
     safe_line CLOUDFLARE_ORIGIN_SECRET "${CLOUDFLARE_ORIGIN_SECRET}"
   fi
+  validate_catalog
   validate_bundle
+  if jq -e 'any(.[]; .kind == "job")' "$(targets_file)" >/dev/null; then
+    required PROJECT_NUMBER
+    safe_line PROJECT_NUMBER "${PROJECT_NUMBER}"
+  fi
   umask 077
   temp_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/release-manifests.XXXXXX")
   trap 'rm -rf "${temp_dir}"' EXIT HUP INT TERM

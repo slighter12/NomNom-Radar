@@ -196,6 +196,10 @@ deployment commands.
 - `configure-device-cleanup-scheduler`
 - prod-only `sync-cloudflare-origin-secret`
 
+Operations dispatches are limited to the current `main` head. Reruns are
+permitted while `main` is unchanged; if `main` advances, dispatch a new
+operation run after reviewing the current configuration.
+
 The scheduler name is fixed as `device-cleanup-daily`; schedule and time zone
 remain explicit inputs with defaults `0 3 * * *` and `Asia/Taipei`. Operations
 does not publish candidates, deploy images, or run migrations.

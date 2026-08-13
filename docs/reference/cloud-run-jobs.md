@@ -71,6 +71,7 @@ fallback, under the break-glass policy, is:
 
 ```sh
 gcloud scheduler jobs create http device-cleanup-daily \
+  --project PROJECT_ID \
   --location REGION \
   --schedule "0 3 * * *" \
   --time-zone "Asia/Taipei" \

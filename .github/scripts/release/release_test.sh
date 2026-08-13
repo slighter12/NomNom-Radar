@@ -55,10 +55,20 @@ state() {
 preflight() {
   (cd "${git_dir}" && RELEASE_SHA="${sha}" BUNDLE_FILE="${bundle}" RELEASE_STATE_FILE="${temp_dir}/state.json" \
     REGISTRY="${TEST_REGISTRY:-registry.example}" OWNER=repo \
-    RELEASE_BASELINE_DIGESTS_FILE="${baseline_map}" bash "${script_dir}/release.sh" preflight)
+    RELEASE_BASELINE_DIGESTS_FILE="${baseline_map}" ALLOW_RELEASE_FIXTURES=true \
+    bash "${script_dir}/release.sh" preflight)
 }
 
 state '' '' '' false false false
+if (
+  cd "${git_dir}"
+  RELEASE_SHA="${sha}" BUNDLE_FILE="${bundle}" RELEASE_STATE_FILE="${temp_dir}/state.json" \
+    REGISTRY="${TEST_REGISTRY:-registry.example}" OWNER=repo \
+    RELEASE_BASELINE_DIGESTS_FILE="${baseline_map}" ALLOW_RELEASE_FIXTURES=false \
+    bash "${script_dir}/release.sh" preflight >/dev/null 2>&1
+); then
+  fail release-state-fixture-guard
+fi
 [ -z "$(preflight | jq -r .baseline_sha)" ] || fail bootstrap
 state "${parent}" "${parent}" "${parent}" true true true
 [ "$(preflight | jq -r .baseline_sha)" = "${parent}" ] || fail forward
@@ -130,11 +140,15 @@ MOCK
 cat > "${temp_dir}/bin/gcloud" <<'MOCK'
 #!/usr/bin/env bash
 if [ "${1:-}" = run ] && [ "${2:-}" = jobs ] && [ "${3:-}" = replace ]; then
+  : > "${MOCK_MUTATION_MARKER}"
   for arg in "$@"; do
     case "${arg}" in
       *.yaml) cp "${arg}" "${MOCK_JOB_MANIFEST}" ;;
     esac
   done
+fi
+if [ "${1:-}" = run ] && [ "${2:-}" = services ] && [ "${3:-}" = replace ]; then
+  : > "${MOCK_MUTATION_MARKER}"
 fi
 case "$*" in
   'run services describe radar '*'--format=json'*)
@@ -156,10 +170,15 @@ esac
 exit 0
 MOCK
 chmod +x "${temp_dir}/bin/kubectl" "${temp_dir}/bin/gcloud"
-common_env=(PATH="${temp_dir}/bin:${PATH}" RELEASE_SHA="${sha}" BUNDLE_FILE="${bundle}" PROJECT_ID=test PROJECT_NUMBER=123456 REGION=region RUNTIME_SA_EMAIL=runtime@example.invalid ALLOWED_HOST=radar.example.invalid GOOGLE_OAUTH_CLIENT_ID=oauth MOCK_JOB_MANIFEST="${temp_dir}/captured-job.yaml")
+common_env=(PATH="${temp_dir}/bin:${PATH}" RELEASE_SHA="${sha}" BUNDLE_FILE="${bundle}" PROJECT_ID=test PROJECT_NUMBER=123456 REGION=region RUNTIME_SA_EMAIL=runtime@example.invalid ALLOWED_HOST=radar.example.invalid GOOGLE_OAUTH_CLIENT_ID=oauth MOCK_JOB_MANIFEST="${temp_dir}/captured-job.yaml" MOCK_MUTATION_MARKER="${temp_dir}/mutation.marker")
 env "${common_env[@]}" TARGET_ENVIRONMENT=dev bash "${script_dir}/release.sh" deploy
 env "${common_env[@]}" TARGET_ENVIRONMENT=prod CLOUDFLARE_ORIGIN_SECRET='safe/+value=' bash "${script_dir}/release.sh" deploy
 [ -s "${temp_dir}/captured-job.yaml" ] || fail job-manifest-capture
+rm -f "${temp_dir}/mutation.marker"
+if env "${common_env[@]}" PROJECT_NUMBER= TARGET_ENVIRONMENT=dev bash "${script_dir}/release.sh" deploy >/dev/null 2>&1; then
+  fail deploy-project-number-guard
+fi
+[ ! -e "${temp_dir}/mutation.marker" ] || fail deploy-mutated-before-project-number
 ruby -ryaml -e '
   job = YAML.load_file(ARGV.fetch(0))
   spec = job.fetch("spec").fetch("template").fetch("spec").fetch("template").fetch("spec")
@@ -269,6 +288,7 @@ printf '%s\n' "${goose_version}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || fail 
 
 workflow="${repo_root}/.github/workflows/release-cloud-run.yml"
 ci_workflow="${repo_root}/.github/workflows/ci.yml"
+operations_workflow="${repo_root}/.github/workflows/cloud-run-operations.yml"
 grep -F 'group: candidate-${{ github.sha }}-${{ matrix.target }}' "${ci_workflow}" >/dev/null || fail matrix-concurrency-scope
 ! grep -F 'verified=false' "${repo_root}/.github/scripts/release/release.sh" >/dev/null || fail attestation-fallback
 grep -F 'has no valid attestation for' "${repo_root}/.github/scripts/release/release.sh" >/dev/null || fail attestation-fail-closed
@@ -279,14 +299,19 @@ ruby -ryaml -e '
   ci = YAML.load_file(ARGV.fetch(0))
   release = YAML.load_file(ARGV.fetch(1))
   job = YAML.load_file(ARGV.fetch(2))
+  operations = YAML.load_file(ARGV.fetch(3))
   raise "ci permissions" unless ci.fetch("permissions").fetch("contents") == "read"
   publish = ci.fetch("jobs").fetch("publish-candidate")
   raise "ci matrix" unless publish.fetch("strategy").fetch("matrix").fetch("target").include?("needs.candidate-changes.outputs.targets")
   raise "candidate concurrency" unless publish.fetch("concurrency").fetch("group").include?("matrix.target")
   stage = publish.fetch("steps").find { |step| step["id"] == "stage" }
   attest = publish.fetch("steps").find { |step| step["name"] == "Attest staged image digest" }
+  verify = publish.fetch("steps").find { |step| step["name"] == "Verify candidate attestation" }
+  finalize = publish.fetch("steps").find { |step| step["name"] == "Publish verified candidate SHA tag" }
   raise "lowercase attestation subject" unless attest.fetch("with").fetch("subject-name").include?("steps.stage.outputs.owner")
   raise "stage owner output" unless stage.fetch("run").include?("echo \"owner=${owner}\"")
+  publish_names = publish.fetch("steps").map { |step| step.fetch("name") }
+  raise "attestation finalization order" unless publish_names.index(attest.fetch("name")) < publish_names.index(verify.fetch("name")) && publish_names.index(verify.fetch("name")) < publish_names.index(finalize.fetch("name"))
   steps = release.fetch("jobs").fetch("release").fetch("steps")
   names = steps.map { |step| step.fetch("name") }
   raise "registry auth order" unless names.index("Configure dev Registry auth") < names.index("Resolve and verify candidate digests")
@@ -294,6 +319,14 @@ ruby -ryaml -e '
   raise "project number" unless release.fetch("jobs").fetch("release").fetch("env").fetch("PROJECT_NUMBER") == "${{ vars.GCP_PROJECT_NUMBER }}"
   container = job.fetch("spec").fetch("template").fetch("spec").fetch("template").fetch("spec").fetch("containers").first
   raise "job secret" unless container.fetch("env").any? { |env| env.fetch("name") == "POSTGRES_MASTER_DSN" }
-' "${repo_root}/.github/workflows/ci.yml" "${workflow}" "${repo_root}/deploy/cloud-run/jobs/device-cleanup.yaml"
+  operation = operations.fetch("jobs").fetch("operate")
+  raise "operation control sha" unless operation.fetch("env").fetch("CONTROL_SHA") == "${{ github.sha }}"
+  operation_steps = operation.fetch("steps")
+  validate = operation_steps.find { |step| step.fetch("name") == "Validate operation configuration" }
+  raise "operation current-main guard" unless validate.fetch("run").include?("git/ref/heads/main")
+  cloudflare = operation_steps.find { |step| step.fetch("name") == "Sync Cloudflare origin secret" }.fetch("run")
+  raise "cloudflare connect timeout" unless cloudflare.scan("--connect-timeout 10").length == 2
+  raise "cloudflare total timeout" unless cloudflare.scan("--max-time 60").length == 2
+' "${repo_root}/.github/workflows/ci.yml" "${workflow}" "${repo_root}/deploy/cloud-run/jobs/device-cleanup.yaml" "${operations_workflow}"
 
 printf 'release checks: PASS\n'

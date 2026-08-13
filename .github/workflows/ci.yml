@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Run release helper checks
         run: bash .github/scripts/release/release_test.sh
@@ -55,6 +57,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Detect release-impacting paths
         id: changes
@@ -101,6 +104,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Validate candidate registry configuration
         env:
@@ -203,10 +208,11 @@ jobs:
       - name: Verify candidate attestation
         env:
           GH_TOKEN: ${{ github.token }}
+          STAGED_DIGEST: ${{ steps.stage.outputs.digest }}
         run: |
           set -euo pipefail
           owner=$(printf '%s' "${OWNER}" | tr '[:upper:]' '[:lower:]')
-          image="${REGISTRY}/${owner}/${TARGET}@${{ steps.stage.outputs.digest }}"
+          image="${REGISTRY}/${owner}/${TARGET}@${STAGED_DIGEST}"
           attempt=1
           while ! gh attestation verify "oci://${image}" \
             --repo "${GITHUB_REPOSITORY}" \
@@ -224,13 +230,16 @@ jobs:
           done
 
       - name: Publish verified candidate SHA tag
+        env:
+          NEEDS_FINALIZE: ${{ steps.stage.outputs.needs_finalize }}
+          STAGING_REF: ${{ steps.stage.outputs.staging_ref }}
+          STAGED_DIGEST: ${{ steps.stage.outputs.digest }}
         run: |
           set -euo pipefail
           owner=$(printf '%s' "${OWNER}" | tr '[:upper:]' '[:lower:]')
           final_ref="${REGISTRY}/${owner}/${TARGET}:${RELEASE_SHA}"
-          if [ "${{ steps.stage.outputs.needs_finalize }}" = true ]; then
-            source_ref="${{ steps.stage.outputs.staging_ref }}"
-            source_digest_ref="${source_ref%:*}@${{ steps.stage.outputs.digest }}"
+          if [ "${NEEDS_FINALIZE}" = true ]; then
+            source_digest_ref="${STAGING_REF%:*}@${STAGED_DIGEST}"
             gcloud artifacts docker tags add "${source_digest_ref}" "${final_ref}" \
               --project="${PROJECT_ID}"
           fi
@@ -238,7 +247,7 @@ jobs:
             --project="${PROJECT_ID}" \
             --format='value(image_summary.fully_qualified_digest)')
           final_digest=$(printf '%s' "${final_digest}" | tr -d '\r\n')
-          expected="${REGISTRY}/${owner}/${TARGET}@${{ steps.stage.outputs.digest }}"
+          expected="${REGISTRY}/${owner}/${TARGET}@${STAGED_DIGEST}"
           [ "${final_digest}" = "${expected}" ] || {
             echo "::error::Final candidate tag for ${TARGET} does not equal the attested digest."
             exit 1
