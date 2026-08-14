@@ -21,6 +21,7 @@ future=$(git -C "${git_dir}" rev-parse HEAD)
 digest_a="registry.example/repo/radar@sha256:$(printf 'a%.0s' {1..64})"
 digest_b="registry.example/repo/geoworker@sha256:$(printf 'b%.0s' {1..64})"
 digest_c="registry.example/repo/device-cleanup@sha256:$(printf 'c%.0s' {1..64})"
+digest_d="registry.example/repo/extra-worker@sha256:$(printf 'e%.0s' {1..64})"
 bundle="${temp_dir}/bundle.json"
 jq -cn --arg sha "${sha}" --arg a "${digest_a}" --arg b "${digest_b}" --arg c "${digest_c}" \
   '{release_sha:$sha,images:{radar:$a,geoworker:$b,"device-cleanup":$c}}' > "${bundle}"
@@ -37,7 +38,12 @@ jq -cn --arg parent "${parent}" --arg future "${future}" --arg digest "${baselin
 
 resource() {
   target=$1 label=$2 exists=$3
-  case "${target}" in radar) candidate=${digest_a} ;; geoworker) candidate=${digest_b} ;; device-cleanup) candidate=${digest_c} ;; esac
+  case "${target}" in
+    radar) candidate=${digest_a} ;;
+    geoworker) candidate=${digest_b} ;;
+    device-cleanup) candidate=${digest_c} ;;
+    extra-worker) candidate=${digest_d} ;;
+  esac
   if [ "${exists}" = false ] || [ -z "${label}" ]; then
     image=
   elif [ "${label}" = "${sha}" ]; then
@@ -56,6 +62,35 @@ preflight() {
   (cd "${git_dir}" && RELEASE_SHA="${sha}" BUNDLE_FILE="${bundle}" RELEASE_STATE_FILE="${temp_dir}/state.json" \
     REGISTRY="${TEST_REGISTRY:-registry.example}" OWNER=repo \
     RELEASE_BASELINE_DIGESTS_FILE="${baseline_map}" ALLOW_RELEASE_FIXTURES=true \
+    bash "${script_dir}/release.sh" preflight)
+}
+four_catalog="${temp_dir}/targets-four.json"
+jq '. + {"extra-worker": {kind:"service", overlay:"geoworker", order:4}}' \
+  "${repo_root}/.github/scripts/release/targets.json" > "${four_catalog}"
+four_bundle="${temp_dir}/bundle-four.json"
+jq -cn --arg sha "${sha}" --arg a "${digest_a}" --arg b "${digest_b}" --arg c "${digest_c}" --arg d "${digest_d}" \
+  '{release_sha:$sha,images:{radar:$a,geoworker:$b,"device-cleanup":$c,"extra-worker":$d}}' > "${four_bundle}"
+four_baseline_map="${temp_dir}/baseline-digests-four.json"
+jq -cn --arg parent "${parent}" --arg digest "${baseline_digest}" '
+  def refs: {
+    radar:("registry.example/repo/radar@" + $digest),
+    geoworker:("registry.example/repo/geoworker@" + $digest),
+    "device-cleanup":("registry.example/repo/device-cleanup@" + $digest),
+    "extra-worker":("registry.example/repo/extra-worker@" + $digest)
+  };
+  {($parent):refs}
+' > "${four_baseline_map}"
+state_four() {
+  jq -cn --argjson radar "$(resource radar "$1" "$5")" \
+    --argjson geo "$(resource geoworker "$2" "$6")" \
+    --argjson job "$(resource device-cleanup "$3" "$7")" \
+    --argjson extra "$(resource extra-worker "$4" "$8")" \
+    '{radar:$radar,geoworker:$geo,"device-cleanup":$job,"extra-worker":$extra}' > "${temp_dir}/state-four.json"
+}
+preflight_four() {
+  (cd "${git_dir}" && RELEASE_SHA="${sha}" BUNDLE_FILE="${four_bundle}" RELEASE_STATE_FILE="${temp_dir}/state-four.json" \
+    TARGETS_FILE="${four_catalog}" REGISTRY="${TEST_REGISTRY:-registry.example}" OWNER=repo \
+    RELEASE_BASELINE_DIGESTS_FILE="${four_baseline_map}" ALLOW_RELEASE_FIXTURES=true \
     bash "${script_dir}/release.sh" preflight)
 }
 expect_empty_baseline() {
@@ -86,6 +121,8 @@ mv "${temp_dir}/prod-target.json" "${temp_dir}/state.json"
 [ "$(TEST_REGISTRY=prod.example preflight | jq -r .baseline_sha)" = "${sha}" ] || fail prod-cross-registry-target
 state "${parent}" "${sha}" "${parent}" true true true
 [ "$(preflight | jq -r .baseline_sha)" = "${parent}" ] || fail partial
+state_four "${sha}" "${parent}" "${parent}" "${parent}" true true true true
+[ "$(preflight_four | jq -r .baseline_sha)" = "${parent}" ] || fail partial-four-target-catalog
 state "${sha}" '' '' true false true
 expect_empty_baseline target-missing-unlabeled
 state "${parent}" '' '' true false true
@@ -364,6 +401,11 @@ if (
 ); then
   fail catalog-path-validation
 fi
+empty_catalog="${temp_dir}/targets-empty.json"
+printf '{}\n' > "${empty_catalog}"
+if jq -e -c 'keys | select(length > 0)' "${empty_catalog}" >/dev/null; then
+  fail empty-catalog-guard
+fi
 
 goose_version=$(make -s --no-print-directory print-goose-version)
 printf '%s\n' "${goose_version}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || fail goose-version-format
@@ -385,6 +427,10 @@ ruby -ryaml -e '
   operations = YAML.load_file(ARGV.fetch(3))
   raise "ci permissions" unless ci.fetch("permissions").fetch("contents") == "read"
   publish = ci.fetch("jobs").fetch("publish-candidate")
+  changes = ci.fetch("jobs").fetch("candidate-changes").fetch("steps").find { |step| step["id"] == "changes" }
+  quote = 39.chr
+  empty_target_guard = "targets=$(jq -e -c #{quote}keys | select(length > 0)#{quote}"
+  raise "empty target catalog guard" unless changes.fetch("run").include?(empty_target_guard)
   raise "ci matrix" unless publish.fetch("strategy").fetch("matrix").fetch("target").include?("needs.candidate-changes.outputs.targets")
   raise "candidate concurrency" unless publish.fetch("concurrency").fetch("group").include?("matrix.target")
   stage = publish.fetch("steps").find { |step| step["id"] == "stage" }

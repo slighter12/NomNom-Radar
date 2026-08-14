@@ -334,7 +334,7 @@ preflight() {
       git merge-base --is-ancestor "${baseline}" "${RELEASE_SHA}" \
         || die 'target is not a forward release from the current baseline'
     fi
-  elif [ "${count}" -eq $((target_count - 1)) ] && jq -e --arg target "${RELEASE_SHA}" 'index($target) != null' <<<"${labels}" >/dev/null; then
+  elif [ "${count}" -eq 2 ] && jq -e --arg target "${RELEASE_SHA}" 'index($target) != null' <<<"${labels}" >/dev/null; then
     baseline=$(jq -r --arg target "${RELEASE_SHA}" '.[] | select(. != $target)' <<<"${labels}")
     git merge-base --is-ancestor "${baseline}" "${RELEASE_SHA}" \
       || die 'partial release baseline is not an ancestor of target'

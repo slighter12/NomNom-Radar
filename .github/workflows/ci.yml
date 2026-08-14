@@ -77,7 +77,8 @@ jobs:
             candidate=false
           fi
           echo "candidate=${candidate}" >> "${GITHUB_OUTPUT}"
-          echo "targets=$(jq -c 'keys' "${TARGETS_FILE}")" >> "${GITHUB_OUTPUT}"
+          targets=$(jq -e -c 'keys | select(length > 0)' "${TARGETS_FILE}")
+          echo "targets=${targets}" >> "${GITHUB_OUTPUT}"
 
   publish-candidate:
     name: Publish ${{ matrix.target }} candidate image
