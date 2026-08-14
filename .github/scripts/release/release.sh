@@ -220,9 +220,20 @@ describe_resource() {
     ready=$(jq -r '([.status.conditions[]? | select(.type == "Ready") | .status] | first) // "False"' <<<"${json}")
     label= image=
     if [ -n "${revision}" ]; then
-      revision_json=$(gcloud run revisions describe "${revision}" --project="${PROJECT_ID}" --region="${REGION}" --format=json)
-      label=$(jq -r '.metadata.labels["release-sha"] // .spec.template.metadata.labels["release-sha"] // ""' <<<"${revision_json}")
-      image=$(jq -r '.spec.containers[0].image // .spec.template.spec.containers[0].image // ""' <<<"${revision_json}")
+      revision_error=$(mktemp "${RUNNER_TEMP:-/tmp}/release-revision.XXXXXX")
+      if revision_json=$(gcloud run revisions describe "${revision}" \
+        --project="${PROJECT_ID}" --region="${REGION}" --format=json 2>"${revision_error}"); then
+        rm -f "${revision_error}"
+        label=$(jq -r '.metadata.labels["release-sha"] // .spec.template.metadata.labels["release-sha"] // ""' <<<"${revision_json}")
+        image=$(jq -r '.spec.containers[0].image // .spec.template.spec.containers[0].image // ""' <<<"${revision_json}")
+      elif not_found "${revision_error}"; then
+        rm -f "${revision_error}"
+        ready=False
+      else
+        cat "${revision_error}" >&2
+        rm -f "${revision_error}"
+        die "cannot describe revision ${revision}"
+      fi
     fi
     [ "${ready}" = True ] && ready=true || ready=false
     jq -cn --arg label "${label}" --arg desired "${desired}" --arg image "${image}" --argjson ready "${ready}" \
@@ -440,10 +451,12 @@ verify() {
   required RELEASE_SHA PROJECT_ID REGION
   validate_bundle
   attempt=0
+  delay="${VERIFY_RETRY_DELAY:-5}"
   until verify_once; do
     attempt=$((attempt + 1))
-    [ "${attempt}" -ge "${VERIFY_RETRIES:-5}" ] && die 'released labels, digests, or readiness did not converge'
-    sleep "${VERIFY_RETRY_DELAY:-2}"
+    [ "${attempt}" -ge "${VERIFY_RETRIES:-10}" ] && die 'released labels, digests, or readiness did not converge'
+    sleep "${delay}"
+    [ "${delay}" -lt 30 ] && delay=$((delay * 2))
   done
   if [ "${SKIP_HEALTH:-false}" != true ]; then
     radar_url=$(gcloud run services describe radar --project="${PROJECT_ID}" --region="${REGION}" --format='value(status.url)')

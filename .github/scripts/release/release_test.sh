@@ -37,12 +37,13 @@ jq -cn --arg parent "${parent}" --arg future "${future}" --arg digest "${baselin
 ' > "${baseline_map}"
 
 resource() {
-  target=$1 label=$2 exists=$3
+  target=$1 label=$2 exists=$3 desired=${label}
   case "${target}" in
     radar) candidate=${digest_a} ;;
     geoworker) candidate=${digest_b} ;;
-    device-cleanup) candidate=${digest_c} ;;
+    device-cleanup) candidate=${digest_c}; desired= ;;
     extra-worker) candidate=${digest_d} ;;
+    *) printf 'unknown fixture target: %s\n' "${target}" >&2; return 1 ;;
   esac
   if [ "${exists}" = false ] || [ -z "${label}" ]; then
     image=
@@ -51,8 +52,8 @@ resource() {
   else
     image="registry.example/repo/${target}@sha256:$(printf 'd%.0s' {1..64})"
   fi
-  jq -cn --arg label "${label}" --arg image "${image}" --argjson exists "${exists}" \
-    '{exists:$exists,label:$label,desired_label:$label,ready:true,image:$image}'
+  jq -cn --arg label "${label}" --arg desired "${desired}" --arg image "${image}" --argjson exists "${exists}" \
+    '{exists:$exists,label:$label,desired_label:$desired,ready:true,image:$image}'
 }
 state() {
   jq -cn --argjson radar "$(resource radar "$1" "$4")" --argjson geo "$(resource geoworker "$2" "$5")" --argjson job "$(resource device-cleanup "$3" "$6")" \
@@ -181,6 +182,13 @@ YAML
 MOCK
 cat > "${temp_dir}/bin/gcloud" <<'MOCK'
 #!/usr/bin/env bash
+if [ -n "${MOCK_REPLACE_FAIL_TARGET:-}" ]; then
+  case "$*" in
+    *replace*"/${MOCK_REPLACE_FAIL_TARGET}.yaml"*)
+      printf 'mock: replace failed for %s\n' "${MOCK_REPLACE_FAIL_TARGET}" >&2
+      exit 1 ;;
+  esac
+fi
 if [ "${1:-}" = run ] && [ "${2:-}" = jobs ] && [ "${3:-}" = replace ]; then
   : > "${MOCK_MUTATION_MARKER}"
   for arg in "$@"; do
@@ -191,6 +199,13 @@ if [ "${1:-}" = run ] && [ "${2:-}" = jobs ] && [ "${3:-}" = replace ]; then
 fi
 if [ "${1:-}" = run ] && [ "${2:-}" = services ] && [ "${3:-}" = replace ]; then
   : > "${MOCK_MUTATION_MARKER}"
+fi
+if [ "${MOCK_REVISION_NOT_FOUND_ONCE:-false}" = true ] \
+  && [ "${1:-}" = run ] && [ "${2:-}" = revisions ] && [ "${3:-}" = describe ] \
+  && [ "${4:-}" = radar-ready ] && [ ! -e "${MOCK_REVISION_MARKER}" ]; then
+  : > "${MOCK_REVISION_MARKER}"
+  printf 'NOT_FOUND\n' >&2
+  exit 1
 fi
 case "$*" in
   'run services describe radar '*'--format=json'*)
@@ -223,17 +238,30 @@ fi
 [ ! -e "${temp_dir}/mutation.marker" ] || fail deploy-mutated-before-project-number
 ruby -ryaml -e '
   job = YAML.load_file(ARGV.fetch(0))
+  template_metadata = job.fetch("spec").fetch("template").fetch("metadata")
   spec = job.fetch("spec").fetch("template").fetch("spec").fetch("template").fetch("spec")
   container = spec.fetch("containers").first
   raise "job placeholder" if Marshal.dump(job).include?("PLACEHOLDER")
   raise "job label" unless job.fetch("metadata").fetch("labels").fetch("release-sha") == ARGV.fetch(1)
+  raise "job template label" unless template_metadata.fetch("labels").fetch("release-sha") == ARGV.fetch(1)
   raise "job image" unless container.fetch("image").include?("@sha256:")
   raise "job secret" unless container.fetch("env").any? { |env| env.fetch("name") == "POSTGRES_MASTER_DSN" }
 ' "${temp_dir}/captured-job.yaml" "${sha}"
+rm -f "${temp_dir}/captured-job.yaml" "${temp_dir}/mutation.marker"
+if env "${common_env[@]}" TARGET_ENVIRONMENT=dev MOCK_REPLACE_FAIL_TARGET=geoworker \
+  bash "${script_dir}/release.sh" deploy >/dev/null 2>&1; then
+  fail deploy-replace-failure-ignored
+fi
+[ ! -e "${temp_dir}/captured-job.yaml" ] || fail deploy-continued-after-replace-failure
 env "${common_env[@]}" TARGET_ENVIRONMENT=prod CLOUDFLARE_ORIGIN_SECRET=$'bad\nvalue' bash "${script_dir}/release.sh" deploy >/dev/null 2>&1 \
   && fail cloudflare-newline
 env "${common_env[@]}" MOCK_SHA="${sha}" MOCK_RADAR="${digest_a}" MOCK_GEOWORKER="${digest_b}" MOCK_CLEANUP="${digest_c}" \
   SKIP_HEALTH=true bash "${script_dir}/release.sh" verify || fail exact-digest-verify-fixture
+revision_marker="${temp_dir}/revision-missing.marker"
+env "${common_env[@]}" MOCK_SHA="${sha}" MOCK_RADAR="${digest_a}" MOCK_GEOWORKER="${digest_b}" MOCK_CLEANUP="${digest_c}" \
+  MOCK_REVISION_NOT_FOUND_ONCE=true MOCK_REVISION_MARKER="${revision_marker}" \
+  VERIFY_RETRIES=2 VERIFY_RETRY_DELAY=0 SKIP_HEALTH=true \
+  bash "${script_dir}/release.sh" verify || fail revision-describe-retry
 
 # Candidate resolution must select the newest complete ancestor when the
 # current control commit only changes non-release paths.
@@ -290,7 +318,10 @@ resolver_bundle="${temp_dir}/resolver-bundle.json"
 grep -F "release_sha=${resolver_candidate}" "${resolver_output}" >/dev/null || fail resolver-selected-ancestor
 resolver_bundle=$(sed -n 's/^path=//p' "${resolver_output}")
 [ -f "${resolver_bundle}" ] || fail resolver-bundle
-jq -e --arg sha "${resolver_candidate}" '.release_sha == $sha and (.images | length) == 3' "${resolver_bundle}" >/dev/null || fail resolver-bundle-content
+expected_targets=$(jq -c 'keys | sort' "${repo_root}/.github/scripts/release/targets.json")
+jq -e --arg sha "${resolver_candidate}" --argjson expected "${expected_targets}" \
+  '.release_sha == $sha and (.images | keys | sort) == $expected' "${resolver_bundle}" >/dev/null \
+  || fail resolver-bundle-content
 
 resolver_fail_bin="${temp_dir}/resolver-fail-bin"
 mkdir -p "${resolver_fail_bin}"
@@ -403,11 +434,21 @@ if (
 fi
 empty_catalog="${temp_dir}/targets-empty.json"
 printf '{}\n' > "${empty_catalog}"
-if jq -e -c 'keys | select(length > 0)' "${empty_catalog}" >/dev/null; then
+if (
+  cd "${resolver_dir}"
+  PATH="${resolver_bin}:${PATH}" \
+    CONTROL_SHA="${resolver_control}" \
+    DEV_PROJECT_ID=test DEV_REGISTRY=registry.example OWNER=repo \
+    GITHUB_REPOSITORY=repo/test GITHUB_OUTPUT="${temp_dir}/resolver-empty-catalog-output" \
+    RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
+    TARGETS_FILE="${empty_catalog}" \
+    IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
+    bash "${script_dir}/release.sh" resolve-candidate >/dev/null 2>&1
+); then
   fail empty-catalog-guard
 fi
 
-goose_version=$(make -s --no-print-directory print-goose-version)
+goose_version=$(make -C "${repo_root}" -s --no-print-directory print-goose-version)
 printf '%s\n' "${goose_version}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || fail goose-version-format
 
 workflow="${repo_root}/.github/workflows/release-cloud-run.yml"
@@ -425,12 +466,18 @@ ruby -ryaml -e '
   release = YAML.load_file(ARGV.fetch(1))
   job = YAML.load_file(ARGV.fetch(2))
   operations = YAML.load_file(ARGV.fetch(3))
+  release_script = File.read(ARGV.fetch(4))
   raise "ci permissions" unless ci.fetch("permissions").fetch("contents") == "read"
+  raise "checks timeout" unless ci.fetch("jobs").fetch("checks").fetch("timeout-minutes") == 30
+  raise "candidate changes timeout" unless ci.fetch("jobs").fetch("candidate-changes").fetch("timeout-minutes") == 10
+  raise "publish timeout" unless ci.fetch("jobs").fetch("publish-candidate").fetch("timeout-minutes") == 30
   publish = ci.fetch("jobs").fetch("publish-candidate")
   changes = ci.fetch("jobs").fetch("candidate-changes").fetch("steps").find { |step| step["id"] == "changes" }
   quote = 39.chr
   empty_target_guard = "targets=$(jq -e -c #{quote}keys | select(length > 0)#{quote}"
   raise "empty target catalog guard" unless changes.fetch("run").include?(empty_target_guard)
+  raise "before env" unless changes.fetch("env").fetch("BEFORE_SHA") == "${{ github.event.before }}"
+  raise "before inline" if changes.fetch("run").include?("${{ github.event.before }}")
   raise "ci matrix" unless publish.fetch("strategy").fetch("matrix").fetch("target").include?("needs.candidate-changes.outputs.targets")
   raise "candidate concurrency" unless publish.fetch("concurrency").fetch("group").include?("matrix.target")
   stage = publish.fetch("steps").find { |step| step["id"] == "stage" }
@@ -447,6 +494,13 @@ ruby -ryaml -e '
   names = steps.map { |step| step.fetch("name") }
   raise "registry auth order" unless names.index("Configure dev Registry auth") < names.index("Resolve and verify candidate digests")
   raise "mutation guard order" unless names.index("Recheck current main before mutation") < names.index("Promote exact digests to prod")
+  gcrane = steps.find { |step| step.fetch("name") == "Install pinned gcrane" }
+  raise "gcrane connect timeout" unless gcrane.fetch("run").include?("--connect-timeout 10")
+  raise "gcrane transfer timeout" unless gcrane.fetch("run").include?("--max-time 300")
+  raise "gcrane retry timeout" unless gcrane.fetch("run").include?("--retry-max-time 120")
+  raise "revision retry handling" unless release_script.include?("elif not_found \"${revision_error}\"")
+  raise "verify retry count" unless release_script.include?("VERIFY_RETRIES:-10")
+  raise "verify retry delay" unless release_script.include?("VERIFY_RETRY_DELAY:-5")
   raise "project number" unless release.fetch("jobs").fetch("release").fetch("env").fetch("PROJECT_NUMBER") == "${{ vars.GCP_PROJECT_NUMBER }}"
   container = job.fetch("spec").fetch("template").fetch("spec").fetch("template").fetch("spec").fetch("containers").first
   raise "job secret" unless container.fetch("env").any? { |env| env.fetch("name") == "POSTGRES_MASTER_DSN" }
@@ -458,6 +512,6 @@ ruby -ryaml -e '
   cloudflare = operation_steps.find { |step| step.fetch("name") == "Sync Cloudflare origin secret" }.fetch("run")
   raise "cloudflare connect timeout" unless cloudflare.scan("--connect-timeout 10").length == 2
   raise "cloudflare total timeout" unless cloudflare.scan("--max-time 60").length == 2
-' "${repo_root}/.github/workflows/ci.yml" "${workflow}" "${repo_root}/deploy/cloud-run/jobs/device-cleanup.yaml" "${operations_workflow}"
+' "${repo_root}/.github/workflows/ci.yml" "${workflow}" "${repo_root}/deploy/cloud-run/jobs/device-cleanup.yaml" "${operations_workflow}" "${repo_root}/.github/scripts/release/release.sh"
 
 printf 'release checks: PASS\n'
