@@ -39,6 +39,12 @@ five open database connections, and does not require Firebase or HTTP server
 settings. `POSTGRES_PRESET` is consumed through environment override; it is not
 a YAML config key.
 
+The task timeout is 600 seconds and `maxRetries: 1` permits one retry after the
+initial attempt (20 minutes worst case). The Operations workflow waits up to 30
+minutes, including setup headroom. This reduced retry count is intentional; a
+failed execution is picked up by the next scheduled run rather than extending
+one workflow indefinitely.
+
 For approved break-glass recovery only:
 
 ```sh

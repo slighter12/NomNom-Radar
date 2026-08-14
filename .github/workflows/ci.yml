@@ -266,7 +266,7 @@ jobs:
           if [ -n "${STAGING_REF}" ]; then
             gcloud artifacts docker tags delete "${STAGING_REF}" \
               --project="${PROJECT_ID}" --quiet \
-              || echo "::warning::Could not delete staging tag ${STAGING_REF}."
+              || echo "::warning::Could not delete staging tag ${STAGING_REF}; immutable-tag repositories may retain it."
           fi
           {
             echo "## Candidate image"

@@ -269,8 +269,10 @@ record this rollout before declaring readiness:
   check, because a historical workflow definition may not contain that check.
 - [ ] Candidate, release, operations, runtime, and scheduler identities exist
   with the scopes above.
-- [ ] Both Artifact Registry repositories enforce immutable tags; cleanup may
-  remove stale staging tags but excludes commit-SHA image tags.
+- [ ] Both Artifact Registry repositories enforce immutable tags. Commit-SHA
+  tags are retained; staging-tag deletion is best-effort and immutable-tag
+  repositories may retain stale staging tags for approved registry retention
+  or admin cleanup.
 - [ ] Required Google APIs are enabled and all three resources implement the
   `release-sha` label contract.
 - [ ] A documentation-only commit after a verified candidate promotes the

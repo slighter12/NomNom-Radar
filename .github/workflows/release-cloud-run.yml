@@ -17,6 +17,7 @@ jobs:
   release:
     name: Release current candidate to ${{ inputs.environment }}
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     environment: ${{ inputs.environment }}
     concurrency:
       group: cloud-run-release
@@ -206,6 +207,7 @@ jobs:
           gcloud auth configure-docker "${dev_host},${prod_host}" --quiet
           promoted='{}'
           while IFS= read -r target; do
+            # Preflight has already validated the complete target set and pinned digests.
             source=$(jq -r --arg target "${target}" '.images[$target]' "${SOURCE_BUNDLE}")
             destination="${REGISTRY}/${owner}/${target}:${RELEASE_SHA}"
             describe_error=$(mktemp "${RUNNER_TEMP}/prod-describe.XXXXXX")

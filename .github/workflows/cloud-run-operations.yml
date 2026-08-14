@@ -31,6 +31,8 @@ jobs:
   operate:
     name: ${{ inputs.operation }} in ${{ inputs.environment }}
     runs-on: ubuntu-latest
+    # device-cleanup allows 2 x 600s attempts (maxRetries: 1); keep setup headroom.
+    timeout-minutes: 30
     environment: ${{ inputs.environment }}
     concurrency:
       group: cloud-run-release

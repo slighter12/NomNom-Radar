@@ -452,11 +452,15 @@ verify() {
   validate_bundle
   attempt=0
   delay="${VERIFY_RETRY_DELAY:-5}"
+  max_delay=30
   until verify_once; do
     attempt=$((attempt + 1))
     [ "${attempt}" -ge "${VERIFY_RETRIES:-10}" ] && die 'released labels, digests, or readiness did not converge'
     sleep "${delay}"
-    [ "${delay}" -lt 30 ] && delay=$((delay * 2))
+    delay=$((delay * 2))
+    if [ "${delay}" -gt "${max_delay}" ]; then
+      delay="${max_delay}"
+    fi
   done
   if [ "${SKIP_HEALTH:-false}" != true ]; then
     radar_url=$(gcloud run services describe radar --project="${PROJECT_ID}" --region="${REGION}" --format='value(status.url)')
