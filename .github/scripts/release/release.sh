@@ -10,6 +10,7 @@ default_targets_file="${repo_root}/.github/scripts/release/targets.json"
 default_impact_paths_file="${repo_root}/.github/scripts/release/impact-paths.txt"
 
 die() { printf 'release: %s\n' "$*" >&2; exit 1; }
+integrity_die() { printf 'release: %s\n' "$*" >&2; exit 3; }
 required() { for name in "$@"; do test -n "${!name:-}" || die "missing ${name}"; done; }
 is_sha() { printf '%s' "$1" | grep -Eq '^[0-9a-f]{40}$'; }
 is_digest() { printf '%s' "$1" | grep -Eq '^[^@[:space:]]+@sha256:[0-9a-f]{64}$'; }
@@ -44,6 +45,26 @@ validate_catalog() {
     )
   ' "$(targets_file)" >/dev/null \
     || die 'target catalog has an invalid schema'
+  while IFS= read -r target; do
+    kind=$(target_kind "${target}")
+    if [ "${kind}" = service ]; then
+      overlay=$(target_overlay "${target}")
+      case "${overlay}" in
+        ''|/*|*..*) die "target ${target} has an unsafe service overlay path" ;;
+      esac
+      for environment in dev prod; do
+        test -f "${repo_root}/deploy/cloud-run/overlays/${environment}/${overlay}/kustomization.yaml" \
+          || die "target ${target} is missing its ${environment} overlay"
+      done
+    else
+      manifest=$(target_manifest "${target}")
+      case "${manifest}" in
+        ''|/*|*..*) die "target ${target} has an unsafe job manifest path" ;;
+      esac
+      test -f "${repo_root}/deploy/cloud-run/${manifest}" \
+        || die "target ${target} is missing its job manifest"
+    fi
+  done < <(jq -r 'keys[]' "$(targets_file)")
 }
 target_names() {
   validate_catalog
@@ -56,6 +77,14 @@ target_manifest() { jq -er --arg target "$1" '.[$target].manifest' "$(targets_fi
 impact_path_args() {
   test -f "$(impact_paths_file)" || die "missing impact path manifest"
   for required_path in \
+    'Dockerfile' \
+    '.dockerignore' \
+    'Makefile' \
+    'go.mod' \
+    'go.sum' \
+    'cmd/**' \
+    'config/**' \
+    'internal/**' \
     '.github/scripts/release/**' \
     '.github/workflows/ci.yml' \
     '.github/workflows/release-cloud-run.yml' \
@@ -99,12 +128,13 @@ resolve_candidate_image() {
     fi
     cat "${error_file}" >&2
     rm -f "${error_file}"
-    die "unable to inspect candidate image ${target}"
+    integrity_die "unable to inspect candidate image ${target}"
   fi
   image=$(printf '%s' "${image}" | tr -d '\r\n')
   expected_base="${DEV_REGISTRY}/${owner}/${target}"
-  [ "${image%@*}" = "${expected_base}" ] && is_digest "${image}" \
-    || die "candidate ${target} at ${sha} did not resolve to an exact dev digest"
+  if ! { [ "${image%@*}" = "${expected_base}" ] && is_digest "${image}"; }; then
+    integrity_die "candidate ${target} at ${sha} did not resolve to an exact dev digest"
+  fi
   printf '%s\n' "${image}"
 }
 
@@ -130,10 +160,12 @@ resolve_candidate() {
     images='{}'
     complete=true
     while IFS= read -r target; do
-      if ! image=$(resolve_candidate_image "${target}" "${candidate}" "${owner}"); then
+      image=$(resolve_candidate_image "${target}" "${candidate}" "${owner}") || {
+        status=$?
+        [ "${status}" -eq 3 ] && exit 3
         complete=false
         break
-      fi
+      }
       images=$(jq -c --arg target "${target}" --arg image "${image}" '. + {($target):$image}' <<<"${images}")
     done < <(target_names)
     [ "${complete}" = true ] || continue
@@ -416,7 +448,9 @@ verify() {
   if [ "${SKIP_HEALTH:-false}" != true ]; then
     radar_url=$(gcloud run services describe radar --project="${PROJECT_ID}" --region="${REGION}" --format='value(status.url)')
     test -n "${radar_url}" || die 'radar has no service URL'
-    curl --silent --show-error --fail --retry 5 --retry-all-errors "${radar_url}/health" >/dev/null
+    curl --silent --show-error --fail \
+      --connect-timeout 10 --max-time 60 \
+      --retry 5 --retry-all-errors "${radar_url}/health" >/dev/null
   fi
 }
 

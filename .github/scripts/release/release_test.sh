@@ -58,6 +58,11 @@ preflight() {
     RELEASE_BASELINE_DIGESTS_FILE="${baseline_map}" ALLOW_RELEASE_FIXTURES=true \
     bash "${script_dir}/release.sh" preflight)
 }
+expect_empty_baseline() {
+  local name=$1 output
+  output=$(preflight) || fail "${name}-preflight-exit"
+  [ -z "$(jq -r .baseline_sha <<<"${output}")" ] || fail "${name}"
+}
 
 state '' '' '' false false false
 if (
@@ -69,7 +74,7 @@ if (
 ); then
   fail release-state-fixture-guard
 fi
-[ -z "$(preflight | jq -r .baseline_sha)" ] || fail bootstrap
+expect_empty_baseline bootstrap
 state "${parent}" "${parent}" "${parent}" true true true
 [ "$(preflight | jq -r .baseline_sha)" = "${parent}" ] || fail forward
 state "${sha}" "${sha}" "${sha}" true true true
@@ -82,7 +87,7 @@ mv "${temp_dir}/prod-target.json" "${temp_dir}/state.json"
 state "${parent}" "${sha}" "${parent}" true true true
 [ "$(preflight | jq -r .baseline_sha)" = "${parent}" ] || fail partial
 state "${sha}" '' '' true false true
-[ -z "$(preflight | jq -r .baseline_sha)" ] || fail target-missing-unlabeled
+expect_empty_baseline target-missing-unlabeled
 state "${parent}" '' '' true false true
 preflight >/dev/null 2>&1 && fail baseline-with-missing
 state "${future}" "${future}" "${future}" true true true
@@ -204,10 +209,19 @@ resolver_candidate=$(git -C "${resolver_dir}" rev-parse HEAD)
 git -C "${resolver_dir}" commit -q --allow-empty -m docs-only
 resolver_control=$(git -C "${resolver_dir}" rev-parse HEAD)
 resolver_bin="${temp_dir}/resolver-bin"
-mkdir -p "${resolver_bin}"
+resolver_runner="${temp_dir}/resolver-runner"
+mkdir -p "${resolver_bin}" "${resolver_runner}"
 cat > "${resolver_bin}/gcloud" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
+if [ "${MOCK_GCLOUD_ERROR:-false}" = true ]; then
+  printf 'PERMISSION_DENIED\n' >&2
+  exit 1
+fi
+if [ "${MOCK_INVALID_DIGEST:-false}" = true ]; then
+  printf 'registry.example/repo/radar:latest\n'
+  exit 0
+fi
 case "$*" in
   *"artifacts docker images describe registry.example/repo/radar:${MOCK_CANDIDATE_SHA}"*)
     printf 'registry.example/repo/radar@sha256:%s\n' "$(printf 'a%.0s' {1..64})" ;;
@@ -231,7 +245,7 @@ resolver_bundle="${temp_dir}/resolver-bundle.json"
     CONTROL_SHA="${resolver_control}" \
     DEV_PROJECT_ID=test DEV_REGISTRY=registry.example OWNER=repo \
     GITHUB_REPOSITORY=repo/test GITHUB_OUTPUT="${resolver_output}" \
-    RUNNER_TEMP="${temp_dir}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
+    RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
     TARGETS_FILE="${repo_root}/.github/scripts/release/targets.json" \
     IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
     bash "${script_dir}/release.sh" resolve-candidate
@@ -255,13 +269,49 @@ if (
     CONTROL_SHA="${resolver_control}" \
     DEV_PROJECT_ID=test DEV_REGISTRY=registry.example OWNER=repo \
     GITHUB_REPOSITORY=repo/test GITHUB_OUTPUT="${temp_dir}/resolver-attestation-output" \
-    RUNNER_TEMP="${temp_dir}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
+    RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
     ATTESTATION_RETRIES=1 \
     TARGETS_FILE="${repo_root}/.github/scripts/release/targets.json" \
     IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
     bash "${script_dir}/release.sh" resolve-candidate >/dev/null 2>&1
 ); then
   fail resolver-attestation-fail-closed
+fi
+
+if (
+  cd "${resolver_dir}"
+  PATH="${resolver_bin}:${PATH}" \
+    CONTROL_SHA="${resolver_control}" \
+    DEV_PROJECT_ID=test DEV_REGISTRY=registry.example OWNER=repo \
+    GITHUB_REPOSITORY=repo/test GITHUB_OUTPUT="${temp_dir}/resolver-integrity-output" \
+    RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
+    MOCK_INVALID_DIGEST=true \
+    TARGETS_FILE="${repo_root}/.github/scripts/release/targets.json" \
+    IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
+    bash "${script_dir}/release.sh" resolve-candidate >/dev/null 2>&1
+); then
+  fail resolver-integrity-fallback
+else
+  integrity_status=$?
+  [ "${integrity_status}" -eq 3 ] || fail resolver-integrity-status
+fi
+
+if (
+  cd "${resolver_dir}"
+  PATH="${resolver_bin}:${PATH}" \
+    CONTROL_SHA="${resolver_control}" \
+    DEV_PROJECT_ID=test DEV_REGISTRY=registry.example OWNER=repo \
+    GITHUB_REPOSITORY=repo/test GITHUB_OUTPUT="${temp_dir}/resolver-error-output" \
+    RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
+    MOCK_GCLOUD_ERROR=true \
+    TARGETS_FILE="${repo_root}/.github/scripts/release/targets.json" \
+    IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
+    bash "${script_dir}/release.sh" resolve-candidate >/dev/null 2>&1
+); then
+  fail resolver-inspection-fallback
+else
+  inspection_status=$?
+  [ "${inspection_status}" -eq 3 ] || fail resolver-inspection-status
 fi
 
 git -C "${resolver_dir}" checkout -q -b impact
@@ -275,12 +325,44 @@ if (
     CONTROL_SHA="${resolver_impact_control}" \
     DEV_PROJECT_ID=test DEV_REGISTRY=registry.example OWNER=repo \
     GITHUB_REPOSITORY=repo/test GITHUB_OUTPUT="${temp_dir}/resolver-impact-output" \
-    RUNNER_TEMP="${temp_dir}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
+    RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
     TARGETS_FILE="${repo_root}/.github/scripts/release/targets.json" \
     IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
     bash "${script_dir}/release.sh" resolve-candidate >/dev/null 2>&1
 ); then
   fail resolver-impact-path-guard
+fi
+
+missing_impact_paths="${temp_dir}/impact-paths-missing.txt"
+grep -v '^Dockerfile$' "${repo_root}/.github/scripts/release/impact-paths.txt" > "${missing_impact_paths}"
+if (
+  cd "${resolver_dir}"
+  PATH="${resolver_bin}:${PATH}" \
+    CONTROL_SHA="${resolver_control}" \
+    DEV_PROJECT_ID=test DEV_REGISTRY=registry.example OWNER=repo \
+    GITHUB_REPOSITORY=repo/test GITHUB_OUTPUT="${temp_dir}/resolver-missing-impact-output" \
+    RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
+    TARGETS_FILE="${repo_root}/.github/scripts/release/targets.json" \
+    IMPACT_PATHS_FILE="${missing_impact_paths}" \
+    bash "${script_dir}/release.sh" resolve-candidate >/dev/null 2>&1
+); then
+  fail impact-path-manifest-guard
+fi
+
+invalid_catalog="${temp_dir}/targets-invalid.json"
+jq '.radar.overlay = "missing"' "${repo_root}/.github/scripts/release/targets.json" > "${invalid_catalog}"
+if (
+  cd "${resolver_dir}"
+  PATH="${resolver_bin}:${PATH}" \
+    CONTROL_SHA="${resolver_control}" \
+    DEV_PROJECT_ID=test DEV_REGISTRY=registry.example OWNER=repo \
+    GITHUB_REPOSITORY=repo/test GITHUB_OUTPUT="${temp_dir}/resolver-invalid-catalog-output" \
+    RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
+    TARGETS_FILE="${invalid_catalog}" \
+    IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
+    bash "${script_dir}/release.sh" resolve-candidate >/dev/null 2>&1
+); then
+  fail catalog-path-validation
 fi
 
 goose_version=$(make -s --no-print-directory print-goose-version)
@@ -294,6 +376,7 @@ grep -F 'group: candidate-${{ github.sha }}-${{ matrix.target }}' "${ci_workflow
 grep -F 'has no valid attestation for' "${repo_root}/.github/scripts/release/release.sh" >/dev/null || fail attestation-fail-closed
 grep -F 'Configure dev Registry auth' "${workflow}" >/dev/null || fail workflow-dev-registry-auth
 ! grep -F 'RELEASE_SHA: ${{ github.sha }}' "${workflow}" >/dev/null || fail workflow-release-sha-coupling
+grep -F -- '--connect-timeout 10 --max-time 60' "${repo_root}/.github/scripts/release/release.sh" >/dev/null || fail health-timeout
 
 ruby -ryaml -e '
   ci = YAML.load_file(ARGV.fetch(0))
@@ -312,6 +395,8 @@ ruby -ryaml -e '
   raise "stage owner output" unless stage.fetch("run").include?("echo \"owner=${owner}\"")
   publish_names = publish.fetch("steps").map { |step| step.fetch("name") }
   raise "attestation finalization order" unless publish_names.index(attest.fetch("name")) < publish_names.index(verify.fetch("name")) && publish_names.index(verify.fetch("name")) < publish_names.index(finalize.fetch("name"))
+  raise "existing attestation fail-closed" unless verify.fetch("run").include?("Existing SHA tag")
+  raise "staging cleanup" unless finalize.fetch("run").include?("artifacts docker tags delete")
   steps = release.fetch("jobs").fetch("release").fetch("steps")
   names = steps.map { |step| step.fetch("name") }
   raise "registry auth order" unless names.index("Configure dev Registry auth") < names.index("Resolve and verify candidate digests")

@@ -118,9 +118,12 @@ and other non-impacting commits do not rebuild images.
 
 The checked-in target catalog at `.github/scripts/release/targets.json` is the
 single source for the three release targets and their deployment order. The
-impact manifest at `.github/scripts/release/impact-paths.txt` is the single
-source for deciding whether a commit requires a new candidate and whether an
-older candidate remains compatible with current release automation.
+impact manifest at `.github/scripts/release/impact-paths.txt` lists paths that
+require a new candidate image. It may be extended with additional paths, but
+the entries enforced by `impact_path_args()` are mandatory: removing any of
+them fails the release closed. The manifest and those mandatory entries
+together decide whether an older candidate remains compatible with current
+release automation.
 
 The resolver checks at most the newest 50 first-parent commits. If no complete
 compatible candidate is found in that window, publish a new release-impacting
@@ -164,8 +167,9 @@ compatible complete candidate exists, the release fails closed and a new
 release-impacting commit must produce one.
 
 The checked-in workflow verifies the control SHA against remote `main` and
-refuses an already-complete same-SHA rerun. Those checks do not protect against
-someone dispatching a historical workflow definition that predates them.
+rejects all reruns. Dispatch a new release run for every retry. Those checks do
+not protect against someone dispatching a historical workflow definition that
+predates them.
 Therefore the prod GitHub Environment requires an external reviewer gate for
 both release and operations jobs. Configure it to prevent self-review: the
 actor who triggered the run must not approve it. Before approval, the reviewer
@@ -183,6 +187,12 @@ Prod requires dev to be currently running the same selected SHA and three source
 digests. Promotion copies without rebuilding and verifies every destination.
 An existing prod SHA tag is accepted only when its digest is identical. A dev
 release that has already been replaced cannot be promoted.
+
+If a candidate SHA tag exists but its attestation is missing or invalid, CI
+fails closed and never re-attests the existing digest. Use approved break-glass
+procedures to inspect the tag, remove or quarantine the invalid tag, and then
+rerun the original candidate workflow only after the tag is absent, or publish
+a new release-impacting commit. Do not manually attest an unknown image.
 
 Release and operational workflows share the non-canceling
 `cloud-run-release` concurrency group across both environments. It covers

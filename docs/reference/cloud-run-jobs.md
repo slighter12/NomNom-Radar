@@ -66,8 +66,10 @@ Job-specific prerequisites:
 - `GCP_SCHEDULER_SA_EMAIL` differs from the Cloud Run runtime identity and has
   only job-scoped `roles/run.invoker` on `device-cleanup`.
 
-The workflow creates or updates the trigger but does not grant IAM. Manual
-fallback, under the break-glass policy, is:
+The workflow describes the fixed job first, updates it when it exists, and
+creates it only when the describe returns NOT_FOUND. It does not grant IAM.
+Manual fallback, under the break-glass policy, must use the same
+describe-then-update-or-create behavior and explicit project:
 
 ```sh
 gcloud scheduler jobs create http device-cleanup-daily \
@@ -81,6 +83,9 @@ gcloud scheduler jobs create http device-cleanup-daily \
   --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform"
 ```
 
+For an existing scheduler job, replace `create http` with `update http` and
+keep the same project, location, schedule, URI, and OAuth flags.
+
 ### Execution
 
 Prefer `Cloud Run Operations` with `execute-device-cleanup`. Manual execution
@@ -88,6 +93,7 @@ is break-glass only:
 
 ```sh
 gcloud run jobs execute device-cleanup \
+  --project PROJECT_ID \
   --region REGION \
   --wait
 ```

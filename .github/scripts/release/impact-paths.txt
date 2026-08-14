@@ -1,4 +1,6 @@
-# A change in any of these paths requires a new candidate image.
+# A change in any of these paths requires a new candidate image. These entries
+# are mandatory; additional paths may be appended, but removing one fails the
+# release closed.
 Dockerfile
 .dockerignore
 Makefile

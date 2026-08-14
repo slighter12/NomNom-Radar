@@ -208,6 +208,7 @@ jobs:
       - name: Verify candidate attestation
         env:
           GH_TOKEN: ${{ github.token }}
+          NEEDS_FINALIZE: ${{ steps.stage.outputs.needs_finalize }}
           STAGED_DIGEST: ${{ steps.stage.outputs.digest }}
         run: |
           set -euo pipefail
@@ -222,7 +223,11 @@ jobs:
             --deny-self-hosted-runners \
             --predicate-type https://slsa.dev/provenance/v1; do
             if [ "${attempt}" -ge 4 ]; then
-              echo "::error::Candidate attestation did not become visible for ${TARGET}."
+              if [ "${NEEDS_FINALIZE}" = false ]; then
+                echo "::error::Existing SHA tag for ${TARGET} has no valid attestation; stop and follow the approved manual recovery procedure before retrying."
+              else
+                echo "::error::Candidate attestation did not become visible for ${TARGET}."
+              fi
               exit 1
             fi
             sleep 5
@@ -252,6 +257,11 @@ jobs:
             echo "::error::Final candidate tag for ${TARGET} does not equal the attested digest."
             exit 1
           }
+          if [ -n "${STAGING_REF}" ]; then
+            gcloud artifacts docker tags delete "${STAGING_REF}" \
+              --project="${PROJECT_ID}" --quiet \
+              || echo "::warning::Could not delete staging tag ${STAGING_REF}."
+          fi
           {
             echo "## Candidate image"
             echo
