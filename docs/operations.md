@@ -189,10 +189,12 @@ An existing prod SHA tag is accepted only when its digest is identical. A dev
 release that has already been replaced cannot be promoted.
 
 If a candidate SHA tag exists but its attestation is missing or invalid, CI
-fails closed and never re-attests the existing digest. Use approved break-glass
-procedures to inspect the tag, remove or quarantine the invalid tag, and then
-rerun the original candidate workflow only after the tag is absent, or publish
-a new release-impacting commit. Do not manually attest an unknown image.
+fails closed and never re-attests the existing digest. Do not rerun the failed
+candidate workflow. Because Artifact Registry immutable tags may not be removed,
+the standard recovery is to quarantine the affected SHA and publish a new
+release-impacting commit; CI must create a new SHA tag and verify its attestation
+before release. If an old tag must be removed, use an explicitly approved
+registry-admin break-glass procedure. Do not manually attest an unknown image.
 
 Release and operational workflows share the non-canceling
 `cloud-run-release` concurrency group across both environments. It covers
