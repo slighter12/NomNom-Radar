@@ -1,0 +1,308 @@
+name: Release Cloud Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        type: choice
+        options: [dev, prod]
+
+env:
+  GCRANE_VERSION: v0.21.9
+  GCRANE_SHA256: 5c16d8ddb971cb1d5e6ed8b1e743da8224414eeba2c2762d8f1a61b2f095699e
+
+jobs:
+  release:
+    name: Release current candidate to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: cloud-run-release
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      attestations: read
+    env:
+      CONTROL_SHA: ${{ github.sha }}
+      TARGET_ENVIRONMENT: ${{ inputs.environment }}
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      PROJECT_NUMBER: ${{ vars.GCP_PROJECT_NUMBER }}
+      REGION: ${{ vars.GCP_REGION }}
+      REGISTRY: ${{ vars.GCP_REGISTRY }}
+      RUNTIME_SA_EMAIL: ${{ vars.GCP_SA_EMAIL }}
+      ALLOWED_HOST: ${{ vars.HTTP_ALLOWEDHOST }}
+      GOOGLE_OAUTH_CLIENT_ID: ${{ vars.GOOGLEOAUTH_CLIENTID }}
+      DEV_PROJECT_ID: ${{ vars.GCP_DEV_PROJECT_ID }}
+      DEV_REGION: ${{ vars.GCP_DEV_REGION }}
+      DEV_REGISTRY: ${{ vars.GCP_DEV_REGISTRY }}
+      OWNER: ${{ github.repository_owner }}
+      TARGETS_FILE: .github/scripts/release/targets.json
+      IMPACT_PATHS_FILE: .github/scripts/release/impact-paths.txt
+
+    steps:
+      - name: Validate trusted dispatch
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF}" = refs/heads/main || {
+            echo "::error::Release dispatches must originate from main."
+            exit 1
+          }
+          test "${GITHUB_RUN_ATTEMPT}" = 1 || {
+            echo "::error::Release runs cannot be rerun; dispatch a new run from current main."
+            exit 1
+          }
+          printf '%s' "${CONTROL_SHA}" | grep -Eq '^[0-9a-f]{40}$' || {
+            echo "::error::The workflow commit must be a full commit SHA."
+            exit 1
+          }
+          for name in PROJECT_ID PROJECT_NUMBER REGION REGISTRY RUNTIME_SA_EMAIL ALLOWED_HOST GOOGLE_OAUTH_CLIENT_ID \
+            DEV_PROJECT_ID DEV_REGION DEV_REGISTRY; do
+            test -n "${!name:-}" || { echo "::error::Missing release configuration: ${name}"; exit 1; }
+          done
+
+      # Always execute automation from the same protected commit that supplied
+      # this workflow. Candidate images are payload, never executable scripts.
+      - name: Checkout trusted release automation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require current remote main HEAD
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          remote_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)
+          test "${remote_sha}" = "${CONTROL_SHA}" || {
+            echo "::error::Main advanced after dispatch; start a new release run."
+            exit 1
+          }
+
+      - name: Google Auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          credentials_json: "${{ secrets.GCP_RELEASE_SA_KEY }}"
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure dev Registry auth
+        run: gcloud auth configure-docker "${DEV_REGISTRY%%/*}" --quiet
+
+      - name: Resolve and verify candidate digests
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/release/release.sh resolve-candidate
+
+      - name: Preflight target state
+        id: preflight
+        env:
+          RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
+          BUNDLE_FILE: ${{ steps.candidate.outputs.path }}
+        run: bash .github/scripts/release/release.sh preflight
+
+      - name: Detect migration phases
+        id: migrations
+        env:
+          RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
+          BASELINE_SHA: ${{ steps.preflight.outputs.baseline_sha }}
+        run: |
+          set -euo pipefail
+          changed() {
+            if git diff --quiet "${BASELINE_SHA}..${RELEASE_SHA}" -- "$1"; then
+              return 1
+            else
+              status=$?
+              [ "${status}" -eq 1 ] || exit "${status}"
+              return 0
+            fi
+          }
+          if [ -z "${BASELINE_SHA}" ]; then
+            pre=true; shared=true; post=true
+          elif [ "${BASELINE_SHA}" = "${RELEASE_SHA}" ]; then
+            pre=false; shared=false; post=false
+          else
+            pre=false; shared=false; post=false
+            changed database/migration/supabase/pre && pre=true
+            changed database/migration/postgres && shared=true
+            changed database/migration/supabase/post && post=true
+          fi
+          any=false
+          { [ "${pre}" = false ] && [ "${shared}" = false ] && [ "${post}" = false ]; } || any=true
+          printf 'pre=%s\nshared=%s\npost=%s\nany=%s\n' "${pre}" "${shared}" "${post}" "${any}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up Go for migrations
+        if: steps.migrations.outputs.any == 'true'
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install pinned Goose
+        if: steps.migrations.outputs.any == 'true'
+        run: |
+          set -euo pipefail
+          goose_version=$(make -s --no-print-directory print-goose-version)
+          printf '%s' "${goose_version}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || {
+            echo "::error::Invalid Goose version from Makefile."
+            exit 1
+          }
+          go install "github.com/pressly/goose/v3/cmd/goose@${goose_version}"
+
+      - name: Install pinned gcrane
+        if: inputs.environment == 'prod'
+        run: |
+          set -euo pipefail
+          archive="${RUNNER_TEMP}/go-containerregistry.tar.gz"
+          mkdir -p "${RUNNER_TEMP}/gcrane"
+          curl --fail --silent --show-error --location \
+            --connect-timeout 10 --max-time 300 \
+            --retry 3 --retry-all-errors --retry-max-time 120 \
+            "https://github.com/google/go-containerregistry/releases/download/${GCRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" \
+            --output "${archive}"
+          printf '%s  %s\n' "${GCRANE_SHA256}" "${archive}" | sha256sum --check --strict
+          tar -xzf "${archive}" -C "${RUNNER_TEMP}/gcrane" gcrane
+          test -x "${RUNNER_TEMP}/gcrane/gcrane"
+
+      - name: Final prod gate against dev
+        if: inputs.environment == 'prod'
+        env:
+          PROJECT_ID: ${{ env.DEV_PROJECT_ID }}
+          REGION: ${{ env.DEV_REGION }}
+          RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
+          BUNDLE_FILE: ${{ steps.candidate.outputs.path }}
+          SKIP_HEALTH: "true"
+        run: bash .github/scripts/release/release.sh verify
+
+      - name: Recheck current main before mutation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          remote_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)
+          test "${remote_sha}" = "${CONTROL_SHA}" || {
+            echo "::error::Main advanced before mutation; start a new release run."
+            exit 1
+          }
+
+      - name: Promote exact digests to prod
+        if: inputs.environment == 'prod'
+        id: promote
+        env:
+          SOURCE_BUNDLE: ${{ steps.candidate.outputs.path }}
+          RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
+        run: |
+          set -euo pipefail
+          owner=$(printf '%s' "${OWNER}" | tr '[:upper:]' '[:lower:]')
+          dev_host=$(printf '%s' "${DEV_REGISTRY}" | cut -d/ -f1)
+          prod_host=$(printf '%s' "${REGISTRY}" | cut -d/ -f1)
+          gcloud auth configure-docker "${dev_host},${prod_host}" --quiet
+          promoted='{}'
+          while IFS= read -r target; do
+            # Preflight has already validated the complete target set and pinned digests.
+            source=$(jq -r --arg target "${target}" '.images[$target]' "${SOURCE_BUNDLE}")
+            destination="${REGISTRY}/${owner}/${target}:${RELEASE_SHA}"
+            describe_error=$(mktemp "${RUNNER_TEMP}/prod-describe.XXXXXX")
+            if existing=$(gcloud artifacts docker images describe "${destination}" \
+              --project="${PROJECT_ID}" --format='value(image_summary.fully_qualified_digest)' 2>"${describe_error}"); then
+              rm -f "${describe_error}"
+              [ "${existing##*@}" = "${source##*@}" ] || {
+                echo "::error::Immutable prod tag already points to a different digest: ${target}"
+                exit 1
+              }
+            else
+              grep -Eiq 'NOT_FOUND|not found|does not exist' "${describe_error}" || {
+                cat "${describe_error}" >&2
+                rm -f "${describe_error}"
+                echo "::error::Unable to inspect prod image: ${target}"
+                exit 1
+              }
+              rm -f "${describe_error}"
+              "${RUNNER_TEMP}/gcrane/gcrane" copy "${source}" "${destination}"
+            fi
+            image=$(gcloud artifacts docker images describe "${destination}" \
+              --project="${PROJECT_ID}" --format='value(image_summary.fully_qualified_digest)')
+            expected="${REGISTRY}/${owner}/${target}@${source##*@}"
+            [ "${image}" = "${expected}" ] || { echo "::error::Prod digest verification failed: ${target}"; exit 1; }
+            promoted=$(jq -c --arg target "${target}" --arg image "${image}" '. + {($target):$image}' <<<"${promoted}")
+          done < <(jq -r 'keys[]' "${TARGETS_FILE}")
+          bundle="${RUNNER_TEMP}/promoted-bundle.json"
+          jq -cn --arg sha "${RELEASE_SHA}" --argjson images "${promoted}" \
+            '{release_sha:$sha,images:$images}' > "${bundle}"
+          echo "path=${bundle}" >> "${GITHUB_OUTPUT}"
+
+      - name: Run selected migration phases
+        if: steps.migrations.outputs.any == 'true'
+        env:
+          RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
+          RUN_PRE: ${{ steps.migrations.outputs.pre }}
+          RUN_SHARED: ${{ steps.migrations.outputs.shared }}
+          RUN_POST: ${{ steps.migrations.outputs.post }}
+        run: |
+          set -euo pipefail
+          PG_URI=$(gcloud secrets versions access latest --secret=postgres-migration-dsn --project="${PROJECT_ID}")
+          test -n "${PG_URI}" || { echo "::error::postgres-migration-dsn is empty."; exit 1; }
+          case "${PG_URI}" in
+            *$'\r'*|*$'\n'*)
+              echo "::error::postgres-migration-dsn must not contain CR or LF."
+              exit 1
+              ;;
+          esac
+          echo "::add-mask::${PG_URI}"
+          if grep -Eq 'pooler\.supabase\.com' <<<"${PG_URI}" && grep -Eq '(:6543|port=6543)([^0-9]|$)' <<<"${PG_URI}"; then
+            echo "::error::Migration DSN must use a direct or session connection."
+            exit 1
+          fi
+          goose="$(go env GOPATH)/bin/goose"
+          test -x "${goose}"
+          [ "${RUN_PRE}" = false ] || PGOPTIONS='-c search_path=public,extensions' "${goose}" \
+            -table goose_supabase_pre_version -dir database/migration/supabase/pre postgres "${PG_URI}" up
+          [ "${RUN_SHARED}" = false ] || PGOPTIONS='-c search_path=public,extensions' "${goose}" \
+            -dir database/migration/postgres postgres "${PG_URI}" up
+          [ "${RUN_POST}" = false ] || PGOPTIONS='-c search_path=public,extensions' "${goose}" \
+            -table goose_supabase_post_version -dir database/migration/supabase/post postgres "${PG_URI}" up
+          unset PG_URI
+
+      - name: Deploy complete bundle
+        env:
+          RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
+          BUNDLE_FILE: ${{ inputs.environment == 'prod' && steps.promote.outputs.path || steps.candidate.outputs.path }}
+          CLOUDFLARE_ORIGIN_SECRET: ${{ secrets.CLOUDFLARE_ORIGIN_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ "${TARGET_ENVIRONMENT}" = prod ]; then
+            test -n "${CLOUDFLARE_ORIGIN_SECRET:-}" || { echo "::error::Missing CLOUDFLARE_ORIGIN_SECRET"; exit 1; }
+          fi
+          bash .github/scripts/release/release.sh deploy
+
+      - name: Verify released digests and readiness
+        env:
+          RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
+          BUNDLE_FILE: ${{ inputs.environment == 'prod' && steps.promote.outputs.path || steps.candidate.outputs.path }}
+        run: bash .github/scripts/release/release.sh verify
+
+      - name: Write release summary
+        env:
+          RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
+          BUNDLE_FILE: ${{ inputs.environment == 'prod' && steps.promote.outputs.path || steps.candidate.outputs.path }}
+        run: |
+          {
+            echo '## Cloud Run release'
+            echo
+            echo "Environment: \`${TARGET_ENVIRONMENT}\`"
+            echo "Release SHA: \`${RELEASE_SHA}\`"
+            echo '| Target | Image |'
+            echo '| --- | --- |'
+            while IFS= read -r target; do
+              image=$(jq -r --arg target "${target}" '.images[$target]' "${BUNDLE_FILE}")
+              echo "| ${target} | \`${image}\` |"
+            done < <(jq -r 'keys[]' "${TARGETS_FILE}")
+          } >> "${GITHUB_STEP_SUMMARY}"

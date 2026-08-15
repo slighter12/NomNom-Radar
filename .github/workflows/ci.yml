@@ -1,409 +1,279 @@
-name: Go CI Workflow
+name: Go CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 env:
   GOLANGCI_LINT_VERSION: latest
+  TARGETS_FILE: .github/scripts/release/targets.json
+  IMPACT_PATHS_FILE: .github/scripts/release/impact-paths.txt
 
 jobs:
   checks:
-    name: Run Checks
+    name: Run checks
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - name: Checkout the repository
-        uses: actions/checkout@v7
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Set up Go version
-        uses: actions/setup-go@v6
+      - name: Run release helper checks
+        run: bash .github/scripts/release/release_test.sh
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.mod
 
-      - name: Run Linter
-        uses: golangci/golangci-lint-action@v9
+      - name: Run linter
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
           args: --config=./.golangci.yaml
 
-      - name: Run Tests
+      - name: Run tests
         run: go test -race ./...
 
-  build-images:
-    name: Build Docker Images Once
-    runs-on: ubuntu-latest
+  candidate-changes:
+    name: Detect candidate changes
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: checks
     outputs:
-      any: ${{ steps.build-flags.outputs.any }}
-      radar: ${{ steps.build-flags.outputs.radar }}
-      geoworker: ${{ steps.build-flags.outputs.geoworker }}
-      device_cleanup: ${{ steps.build-flags.outputs.device_cleanup }}
-      tag: ${{ steps.set-vars.outputs.TAG }}
-      image_name: ${{ steps.set-vars.outputs.IMAGE_NAME }}
+      candidate: ${{ steps.changes.outputs.candidate }}
+      targets: ${{ steps.changes.outputs.targets }}
     steps:
-      - name: Checkout the repository
-        uses: actions/checkout@v7
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Set environment variables
-        id: set-vars
-        run: |
-          if TAG=$(git describe --tags --exact-match 2>/dev/null); then
-            echo "TAG=$TAG" >> $GITHUB_OUTPUT
-          else
-            echo "TAG=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-          fi
-          echo "IMAGE_NAME=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
-
-      - name: Detect changed paths
+      - name: Detect release-impacting paths
         id: changes
-        uses: dorny/paths-filter@v4
-        with:
-          base: ${{ github.event.before }}
-          ref: ${{ github.sha }}
-          filters: |
-            shared_all:
-              - 'Dockerfile'
-              - '.dockerignore'
-              - 'go.mod'
-              - 'go.sum'
-              - 'config/**'
-            shared_internal:
-              - 'internal/**'
-            device_cleanup_shared_internal:
-              - 'internal/domain/entity/**'
-              - 'internal/domain/errors/**'
-              - 'internal/domain/lifecycle/**'
-              - 'internal/domain/repository/**'
-              - 'internal/infra/log/**'
-              - 'internal/infra/persistence/**'
-            radar:
-              - 'cmd/radar/**'
-            geoworker:
-              - 'cmd/geoworker/**'
-            device_cleanup:
-              - 'cmd/device-cleanup/**'
-
-      - name: Compute build flags
-        id: build-flags
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
         run: |
-          SHARED_ALL="${{ steps.changes.outputs.shared_all }}"
-          SHARED_INTERNAL="${{ steps.changes.outputs.shared_internal }}"
-          DEVICE_CLEANUP_SHARED_INTERNAL="${{ steps.changes.outputs.device_cleanup_shared_internal }}"
-          echo "any=$([ "$SHARED_ALL" = 'true' ] || [ "$SHARED_INTERNAL" = 'true' ] || [ "$DEVICE_CLEANUP_SHARED_INTERNAL" = 'true' ] || [ '${{ steps.changes.outputs.radar }}' = 'true' ] || [ '${{ steps.changes.outputs.geoworker }}' = 'true' ] || [ '${{ steps.changes.outputs.device_cleanup }}' = 'true' ] && echo true || echo false)" >> $GITHUB_OUTPUT
-          echo "radar=$([ "$SHARED_ALL" = 'true' ] || [ "$SHARED_INTERNAL" = 'true' ] || [ '${{ steps.changes.outputs.radar }}' = 'true' ] && echo true || echo false)" >> $GITHUB_OUTPUT
-          echo "geoworker=$([ "$SHARED_ALL" = 'true' ] || [ "$SHARED_INTERNAL" = 'true' ] || [ '${{ steps.changes.outputs.geoworker }}' = 'true' ] && echo true || echo false)" >> $GITHUB_OUTPUT
-          echo "device_cleanup=$([ "$SHARED_ALL" = 'true' ] || [ "$DEVICE_CLEANUP_SHARED_INTERNAL" = 'true' ] || [ '${{ steps.changes.outputs.device_cleanup }}' = 'true' ] && echo true || echo false)" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          path_args=()
+          while IFS= read -r path; do
+            path_args+=("${path}")
+          done < <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "${IMPACT_PATHS_FILE}")
+          test "${#path_args[@]}" -gt 0
+          before="${BEFORE_SHA}"
+          candidate=true
+          if printf '%s' "${before}" | grep -Eq '^[0]{40}$' \
+            || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+            echo "Force-push or missing before SHA: publishing a complete candidate."
+          elif git diff --quiet "${before}..${GITHUB_SHA}" -- "${path_args[@]}"; then
+            candidate=false
+          fi
+          echo "candidate=${candidate}" >> "${GITHUB_OUTPUT}"
+          targets=$(jq -e -c 'keys | select(length > 0)' "${TARGETS_FILE}")
+          echo "targets=${targets}" >> "${GITHUB_OUTPUT}"
 
-      - name: Skip build (no image-impacting changes)
-        if: steps.build-flags.outputs.any != 'true'
-        run: echo "No image-impacting changes detected. Skipping Docker builds."
-
-      - name: Set up Docker Buildx
-        if: steps.build-flags.outputs.any == 'true'
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build Radar image
-        if: steps.build-flags.outputs.radar == 'true'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile
-          target: radar
-          platforms: linux/amd64
-          push: false
-          load: true
-          pull: true
-          provenance: false
-          sbom: false
-          tags: |
-            radar:${{ steps.set-vars.outputs.TAG }}
-            radar:latest
-          build-args: |
-            VERSION=${{ steps.set-vars.outputs.TAG }}
-            BUILT=${{ github.event.head_commit.timestamp }}
-            GIT_COMMIT=${{ github.sha }}
-            IMAGE_NAME=${{ steps.set-vars.outputs.IMAGE_NAME }}
-          cache-from: type=gha,scope=radar-latest
-          cache-to: type=gha,mode=max,scope=radar-latest
-
-      - name: Save Radar image artifact
-        if: steps.build-flags.outputs.radar == 'true'
-        run: docker save "radar:${{ steps.set-vars.outputs.TAG }}" --output /tmp/radar-image.tar
-
-      - name: Upload Radar image artifact
-        if: steps.build-flags.outputs.radar == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: radar-image
-          path: /tmp/radar-image.tar
-          retention-days: 1
-
-      - name: Build Geoworker image
-        if: steps.build-flags.outputs.geoworker == 'true'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile
-          target: geoworker
-          platforms: linux/amd64
-          push: false
-          load: true
-          pull: true
-          provenance: false
-          sbom: false
-          tags: |
-            geoworker:${{ steps.set-vars.outputs.TAG }}
-            geoworker:latest
-          build-args: |
-            VERSION=${{ steps.set-vars.outputs.TAG }}
-            BUILT=${{ github.event.head_commit.timestamp }}
-            GIT_COMMIT=${{ github.sha }}
-            IMAGE_NAME=${{ steps.set-vars.outputs.IMAGE_NAME }}
-          cache-from: type=gha,scope=geoworker-latest
-          cache-to: type=gha,mode=max,scope=geoworker-latest
-
-      - name: Build Device Cleanup image
-        if: steps.build-flags.outputs.device_cleanup == 'true'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile
-          target: device-cleanup
-          platforms: linux/amd64
-          push: false
-          load: true
-          pull: true
-          provenance: false
-          sbom: false
-          tags: |
-            device-cleanup:${{ steps.set-vars.outputs.TAG }}
-            device-cleanup:latest
-          build-args: |
-            VERSION=${{ steps.set-vars.outputs.TAG }}
-            BUILT=${{ github.event.head_commit.timestamp }}
-            GIT_COMMIT=${{ github.sha }}
-            IMAGE_NAME=${{ steps.set-vars.outputs.IMAGE_NAME }}
-          cache-from: type=gha,scope=device-cleanup-latest
-          cache-to: type=gha,mode=max,scope=device-cleanup-latest
-
-      - name: Save Device Cleanup image artifact
-        if: steps.build-flags.outputs.device_cleanup == 'true'
-        run: docker save "device-cleanup:${{ steps.set-vars.outputs.TAG }}" --output /tmp/device-cleanup-image.tar
-
-      - name: Upload Device Cleanup image artifact
-        if: steps.build-flags.outputs.device_cleanup == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: device-cleanup-image
-          path: /tmp/device-cleanup-image.tar
-          retention-days: 1
-
-      - name: Save Geoworker image artifact
-        if: steps.build-flags.outputs.geoworker == 'true'
-        run: docker save "geoworker:${{ steps.set-vars.outputs.TAG }}" --output /tmp/geoworker-image.tar
-
-      - name: Upload Geoworker image artifact
-        if: steps.build-flags.outputs.geoworker == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: geoworker-image
-          path: /tmp/geoworker-image.tar
-          retention-days: 1
-
-  publish-dev:
-    name: Publish Docker Images (dev)
+  publish-candidate:
+    name: Publish ${{ matrix.target }} candidate image
+    if: needs.candidate-changes.outputs.candidate == 'true'
     runs-on: ubuntu-latest
-    if: needs.build-images.outputs.any == 'true'
-    needs: build-images
+    timeout-minutes: 30
+    needs: candidate-changes
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.candidate-changes.outputs.targets) }}
+    concurrency:
+      group: candidate-${{ github.sha }}-${{ matrix.target }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     env:
       PROJECT_ID: ${{ vars.GCP_DEV_PROJECT_ID }}
       REGISTRY: ${{ vars.GCP_DEV_REGISTRY }}
-      TAG: ${{ needs.build-images.outputs.tag }}
-      IMAGE_NAME: ${{ needs.build-images.outputs.image_name }}
+      RELEASE_SHA: ${{ github.sha }}
+      OWNER: ${{ github.repository_owner }}
+      TARGET: ${{ matrix.target }}
     steps:
-      - name: Validate dev registry configuration
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate candidate registry configuration
         env:
-          GCP_SA_KEY: ${{ secrets.GCP_DEV_SA_KEY }}
+          GCP_CANDIDATE_SA_KEY: ${{ secrets.GCP_CANDIDATE_SA_KEY }}
         run: |
           set -euo pipefail
-
-          for required in PROJECT_ID REGISTRY GCP_SA_KEY; do
+          for required in PROJECT_ID REGISTRY GCP_CANDIDATE_SA_KEY; do
             if [ -z "${!required:-}" ]; then
-              echo "::error::Missing required CI configuration: ${required} for dev"
+              echo "::error::Missing candidate registry configuration: ${required}"
               exit 1
             fi
           done
+          jq -e --arg target "${TARGET}" '.[$target] != null' "${TARGETS_FILE}" >/dev/null
 
-      - name: Download Radar image artifact
-        if: needs.build-images.outputs.radar == 'true'
-        uses: actions/download-artifact@v8
+      - name: Google Auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
-          name: radar-image
-          path: /tmp
+          credentials_json: "${{ secrets.GCP_CANDIDATE_SA_KEY }}"
 
-      - name: Download Geoworker image artifact
-        if: needs.build-images.outputs.geoworker == 'true'
-        uses: actions/download-artifact@v8
-        with:
-          name: geoworker-image
-          path: /tmp
-
-      - name: Download Device Cleanup image artifact
-        if: needs.build-images.outputs.device_cleanup == 'true'
-        uses: actions/download-artifact@v8
-        with:
-          name: device-cleanup-image
-          path: /tmp
-
-      - name: Google Auth (dev)
-        uses: google-github-actions/auth@v3
-        with:
-          credentials_json: "${{ secrets.GCP_DEV_SA_KEY }}"
-
-      - name: Set up Cloud SDK (dev)
-        uses: google-github-actions/setup-gcloud@v3
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
         with:
           project_id: ${{ env.PROJECT_ID }}
 
-      - name: Configure Docker auth for Artifact Registry (dev)
-        run: gcloud auth configure-docker "$(echo "${REGISTRY}" | cut -d/ -f1)" --quiet
+      - name: Configure Docker auth
+        run: gcloud auth configure-docker "${REGISTRY%%/*}" --quiet
 
-      - name: Push Radar image (dev)
-        if: needs.build-images.outputs.radar == 'true'
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Build and stage candidate image
+        id: stage
         run: |
           set -euo pipefail
-
-          docker load --input /tmp/radar-image.tar
-          TARGET_BASE="${REGISTRY}/${IMAGE_NAME}/radar"
-          docker tag "radar:${TAG}" "${TARGET_BASE}:${TAG}"
-          docker tag "radar:${TAG}" "${TARGET_BASE}:latest"
-          docker push "${TARGET_BASE}:${TAG}"
-          docker push "${TARGET_BASE}:latest"
-
-      - name: Push Geoworker image (dev)
-        if: needs.build-images.outputs.geoworker == 'true'
-        run: |
-          set -euo pipefail
-
-          docker load --input /tmp/geoworker-image.tar
-          TARGET_BASE="${REGISTRY}/${IMAGE_NAME}/geoworker"
-          docker tag "geoworker:${TAG}" "${TARGET_BASE}:${TAG}"
-          docker tag "geoworker:${TAG}" "${TARGET_BASE}:latest"
-          docker push "${TARGET_BASE}:${TAG}"
-          docker push "${TARGET_BASE}:latest"
-
-      - name: Push Device Cleanup image (dev)
-        if: needs.build-images.outputs.device_cleanup == 'true'
-        run: |
-          set -euo pipefail
-
-          docker load --input /tmp/device-cleanup-image.tar
-          TARGET_BASE="${REGISTRY}/${IMAGE_NAME}/device-cleanup"
-          docker tag "device-cleanup:${TAG}" "${TARGET_BASE}:${TAG}"
-          docker tag "device-cleanup:${TAG}" "${TARGET_BASE}:latest"
-          docker push "${TARGET_BASE}:${TAG}"
-          docker push "${TARGET_BASE}:latest"
-
-  publish-prod:
-    name: Publish Docker Images (prod)
-    runs-on: ubuntu-latest
-    if: needs.build-images.outputs.any == 'true'
-    needs: build-images
-    env:
-      PROJECT_ID: ${{ vars.GCP_PROD_PROJECT_ID }}
-      REGISTRY: ${{ vars.GCP_PROD_REGISTRY }}
-      TAG: ${{ needs.build-images.outputs.tag }}
-      IMAGE_NAME: ${{ needs.build-images.outputs.image_name }}
-    steps:
-      - name: Validate prod registry configuration
-        env:
-          GCP_SA_KEY: ${{ secrets.GCP_PROD_SA_KEY }}
-        run: |
-          set -euo pipefail
-
-          for required in PROJECT_ID REGISTRY GCP_SA_KEY; do
-            if [ -z "${!required:-}" ]; then
-              echo "::error::Missing required CI configuration: ${required} for prod"
+          owner=$(printf '%s' "${OWNER}" | tr '[:upper:]' '[:lower:]')
+          echo "owner=${owner}" >> "${GITHUB_OUTPUT}"
+          built=$(git show -s --format=%cI "${RELEASE_SHA}")
+          final_ref="${REGISTRY}/${owner}/${TARGET}:${RELEASE_SHA}"
+          describe_error=$(mktemp "${RUNNER_TEMP}/candidate-describe.XXXXXX")
+          if existing=$(gcloud artifacts docker images describe "${final_ref}" \
+            --project="${PROJECT_ID}" \
+            --format='value(image_summary.fully_qualified_digest)' 2>"${describe_error}"); then
+            rm -f "${describe_error}"
+            existing=$(printf '%s' "${existing}" | tr -d '\r\n')
+            expected_base="${REGISTRY}/${owner}/${TARGET}"
+            if [ "${existing%@*}" != "${expected_base}" ] || ! printf '%s' "${existing}" | grep -Eq '@sha256:[0-9a-f]{64}$'; then
+              echo "::error::Existing candidate image for ${TARGET} did not resolve to an exact digest."
               exit 1
             fi
+            echo "digest=${existing##*@}" >> "${GITHUB_OUTPUT}"
+            echo "staging_ref=" >> "${GITHUB_OUTPUT}"
+            echo "needs_finalize=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if ! grep -Eiq 'not[[:space:]_-]*found|NOT_FOUND|does not exist|could not find|resource.*missing' "${describe_error}"; then
+            cat "${describe_error}" >&2
+            rm -f "${describe_error}"
+            echo "::error::Unable to inspect candidate image for ${TARGET}."
+            exit 1
+          fi
+          rm -f "${describe_error}"
+          nonce=$(openssl rand -hex 16)
+          staging_ref="${REGISTRY}/${owner}/${TARGET}:candidate-stage-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${nonce}-${TARGET}"
+          docker buildx build \
+            --file ./Dockerfile \
+            --target "${TARGET}" \
+            --platform linux/amd64 \
+            --pull \
+            --provenance=false \
+            --sbom=false \
+            --build-arg "VERSION=${RELEASE_SHA}" \
+            --build-arg "BUILT=${built}" \
+            --build-arg "GIT_COMMIT=${RELEASE_SHA}" \
+            --build-arg "IMAGE_NAME=${owner}" \
+            --cache-from "type=gha,scope=${TARGET}" \
+            --cache-to "type=gha,mode=max,scope=${TARGET}" \
+            --tag "${staging_ref}" \
+            --push \
+            .
+          staged=$(gcloud artifacts docker images describe "${staging_ref}" \
+            --project="${PROJECT_ID}" \
+            --format='value(image_summary.fully_qualified_digest)')
+          staged=$(printf '%s' "${staged}" | tr -d '\r\n')
+          expected_base="${REGISTRY}/${owner}/${TARGET}"
+          if [ "${staged%@*}" != "${expected_base}" ] || ! printf '%s' "${staged}" | grep -Eq '@sha256:[0-9a-f]{64}$'; then
+            echo "::error::Staged candidate image for ${TARGET} did not resolve to an exact digest."
+            exit 1
+          fi
+          echo "digest=${staged##*@}" >> "${GITHUB_OUTPUT}"
+          echo "staging_ref=${staging_ref}" >> "${GITHUB_OUTPUT}"
+          echo "needs_finalize=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Attest staged image digest
+        if: steps.stage.outputs.needs_finalize == 'true'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ steps.stage.outputs.owner }}/${{ env.TARGET }}
+          subject-digest: ${{ steps.stage.outputs.digest }}
+
+      - name: Verify candidate attestation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEEDS_FINALIZE: ${{ steps.stage.outputs.needs_finalize }}
+          STAGED_DIGEST: ${{ steps.stage.outputs.digest }}
+        run: |
+          set -euo pipefail
+          owner=$(printf '%s' "${OWNER}" | tr '[:upper:]' '[:lower:]')
+          image="${REGISTRY}/${owner}/${TARGET}@${STAGED_DIGEST}"
+          attempt=1
+          while ! gh attestation verify "oci://${image}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/ci.yml" \
+            --source-ref refs/heads/main \
+            --source-digest "${RELEASE_SHA}" \
+            --deny-self-hosted-runners \
+            --predicate-type https://slsa.dev/provenance/v1; do
+            if [ "${attempt}" -ge 4 ]; then
+              if [ "${NEEDS_FINALIZE}" = false ]; then
+                echo "::error::Existing SHA tag for ${TARGET} has no valid attestation; stop and follow the approved manual recovery procedure before retrying."
+              else
+                echo "::error::Candidate attestation did not become visible for ${TARGET}."
+              fi
+              exit 1
+            fi
+            sleep 5
+            attempt=$((attempt + 1))
           done
 
-      - name: Download Radar image artifact
-        if: needs.build-images.outputs.radar == 'true'
-        uses: actions/download-artifact@v8
-        with:
-          name: radar-image
-          path: /tmp
-
-      - name: Download Geoworker image artifact
-        if: needs.build-images.outputs.geoworker == 'true'
-        uses: actions/download-artifact@v8
-        with:
-          name: geoworker-image
-          path: /tmp
-
-      - name: Download Device Cleanup image artifact
-        if: needs.build-images.outputs.device_cleanup == 'true'
-        uses: actions/download-artifact@v8
-        with:
-          name: device-cleanup-image
-          path: /tmp
-
-      - name: Google Auth (prod)
-        uses: google-github-actions/auth@v3
-        with:
-          credentials_json: "${{ secrets.GCP_PROD_SA_KEY }}"
-
-      - name: Set up Cloud SDK (prod)
-        uses: google-github-actions/setup-gcloud@v3
-        with:
-          project_id: ${{ env.PROJECT_ID }}
-
-      - name: Configure Docker auth for Artifact Registry (prod)
-        run: gcloud auth configure-docker "$(echo "${REGISTRY}" | cut -d/ -f1)" --quiet
-
-      - name: Push Radar image (prod)
-        if: needs.build-images.outputs.radar == 'true'
+      - name: Publish verified candidate SHA tag
+        env:
+          NEEDS_FINALIZE: ${{ steps.stage.outputs.needs_finalize }}
+          STAGING_REF: ${{ steps.stage.outputs.staging_ref }}
+          STAGED_DIGEST: ${{ steps.stage.outputs.digest }}
         run: |
           set -euo pipefail
-
-          docker load --input /tmp/radar-image.tar
-          TARGET_BASE="${REGISTRY}/${IMAGE_NAME}/radar"
-          docker tag "radar:${TAG}" "${TARGET_BASE}:${TAG}"
-          docker tag "radar:${TAG}" "${TARGET_BASE}:latest"
-          docker push "${TARGET_BASE}:${TAG}"
-          docker push "${TARGET_BASE}:latest"
-
-      - name: Push Geoworker image (prod)
-        if: needs.build-images.outputs.geoworker == 'true'
-        run: |
-          set -euo pipefail
-
-          docker load --input /tmp/geoworker-image.tar
-          TARGET_BASE="${REGISTRY}/${IMAGE_NAME}/geoworker"
-          docker tag "geoworker:${TAG}" "${TARGET_BASE}:${TAG}"
-          docker tag "geoworker:${TAG}" "${TARGET_BASE}:latest"
-          docker push "${TARGET_BASE}:${TAG}"
-          docker push "${TARGET_BASE}:latest"
-
-      - name: Push Device Cleanup image (prod)
-        if: needs.build-images.outputs.device_cleanup == 'true'
-        run: |
-          set -euo pipefail
-
-          docker load --input /tmp/device-cleanup-image.tar
-          TARGET_BASE="${REGISTRY}/${IMAGE_NAME}/device-cleanup"
-          docker tag "device-cleanup:${TAG}" "${TARGET_BASE}:${TAG}"
-          docker tag "device-cleanup:${TAG}" "${TARGET_BASE}:latest"
-          docker push "${TARGET_BASE}:${TAG}"
-          docker push "${TARGET_BASE}:latest"
+          owner=$(printf '%s' "${OWNER}" | tr '[:upper:]' '[:lower:]')
+          final_ref="${REGISTRY}/${owner}/${TARGET}:${RELEASE_SHA}"
+          if [ "${NEEDS_FINALIZE}" = true ]; then
+            source_digest_ref="${STAGING_REF%:*}@${STAGED_DIGEST}"
+            gcloud artifacts docker tags add "${source_digest_ref}" "${final_ref}" \
+              --project="${PROJECT_ID}"
+          fi
+          final_digest=$(gcloud artifacts docker images describe "${final_ref}" \
+            --project="${PROJECT_ID}" \
+            --format='value(image_summary.fully_qualified_digest)')
+          final_digest=$(printf '%s' "${final_digest}" | tr -d '\r\n')
+          expected="${REGISTRY}/${owner}/${TARGET}@${STAGED_DIGEST}"
+          [ "${final_digest}" = "${expected}" ] || {
+            echo "::error::Final candidate tag for ${TARGET} does not equal the attested digest."
+            exit 1
+          }
+          if [ -n "${STAGING_REF}" ]; then
+            gcloud artifacts docker tags delete "${STAGING_REF}" \
+              --project="${PROJECT_ID}" --quiet \
+              || echo "::warning::Could not delete staging tag ${STAGING_REF}; immutable-tag repositories may retain it."
+          fi
+          {
+            echo "## Candidate image"
+            echo
+            echo "Release SHA: \`${RELEASE_SHA}\`"
+            echo
+            echo "| Target | Digest |"
+            echo "| --- | --- |"
+            echo "| ${TARGET} | \`${final_digest##*@}\` |"
+          } >> "${GITHUB_STEP_SUMMARY}"

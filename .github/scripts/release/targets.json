@@ -1,0 +1,17 @@
+{
+  "radar": {
+    "kind": "service",
+    "overlay": "radar",
+    "order": 3
+  },
+  "geoworker": {
+    "kind": "service",
+    "overlay": "geoworker",
+    "order": 1
+  },
+  "device-cleanup": {
+    "kind": "job",
+    "manifest": "jobs/device-cleanup.yaml",
+    "order": 2
+  }
+}

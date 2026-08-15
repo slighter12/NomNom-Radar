@@ -1,0 +1,43 @@
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  name: device-cleanup
+  labels:
+    release-sha: RELEASE_SHA_PLACEHOLDER
+spec:
+  template:
+    metadata:
+      labels:
+        release-sha: RELEASE_SHA_PLACEHOLDER
+      annotations:
+        run.googleapis.com/secrets: postgres-master-dsn:projects/PROJECT_NUMBER_PLACEHOLDER/secrets/postgres-master-dsn
+    spec:
+      parallelism: 1
+      taskCount: 1
+      template:
+        spec:
+          timeoutSeconds: 600
+          maxRetries: 1
+          serviceAccountName: SERVICE_ACCOUNT_PLACEHOLDER
+          containers:
+            - image: IMAGE_PLACEHOLDER
+              resources:
+                limits:
+                  cpu: "1"
+                  memory: 512Mi
+              env:
+                - name: ENV_LOG_PRETTY
+                  value: "false"
+                - name: ENV_LOG_LEVEL
+                  value: info
+                - name: POSTGRES_PRESET
+                  value: supabase_transaction
+                - name: POSTGRES_SSLMODE
+                  value: require
+                - name: POSTGRES_MAXOPENCONNS
+                  value: "5"
+                - name: POSTGRES_MASTER_DSN
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-master-dsn
+                      key: latest

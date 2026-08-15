@@ -2,11 +2,15 @@ apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
   name: service
+  labels:
+    release-sha: "RELEASE_SHA_PLACEHOLDER"
   annotations:
     run.googleapis.com/ingress: all
 spec:
   template:
     metadata:
+      labels:
+        release-sha: "RELEASE_SHA_PLACEHOLDER"
       annotations:
         autoscaling.knative.dev/minScale: "0"
         autoscaling.knative.dev/maxScale: "10"

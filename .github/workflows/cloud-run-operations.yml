@@ -1,0 +1,209 @@
+name: Cloud Run Operations
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options: [dev, prod]
+      operation:
+        description: "Operational action"
+        required: true
+        type: choice
+        options:
+          - execute-device-cleanup
+          - configure-device-cleanup-scheduler
+          - sync-cloudflare-origin-secret
+      schedule:
+        description: "Cloud Scheduler cron expression"
+        required: false
+        default: "0 3 * * *"
+        type: string
+      schedule_time_zone:
+        description: "Cloud Scheduler time zone"
+        required: false
+        default: Asia/Taipei
+        type: string
+
+jobs:
+  operate:
+    name: ${{ inputs.operation }} in ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    # maxRetries: 1 allows 2 x 600s task runtime; retry scheduling overhead is separate.
+    # The 30-minute value is the workflow operational bound, including setup headroom.
+    timeout-minutes: 30
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: cloud-run-release
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    env:
+      CONTROL_SHA: ${{ github.sha }}
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      RUNTIME_SA_EMAIL: ${{ vars.GCP_SA_EMAIL }}
+      SCHEDULER_SA_EMAIL: ${{ vars.GCP_SCHEDULER_SA_EMAIL }}
+    steps:
+      - name: Validate operation configuration
+        env:
+          GCP_OPERATIONS_SA_KEY: ${{ secrets.GCP_OPERATIONS_SA_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          OPERATION: ${{ inputs.operation }}
+          SCHEDULE: ${{ inputs.schedule }}
+          SCHEDULE_TIME_ZONE: ${{ inputs.schedule_time_zone }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF}" != refs/heads/main ]; then
+            echo "::error::Operations dispatches must originate from main."
+            exit 1
+          fi
+          printf '%s' "${CONTROL_SHA}" | grep -Eq '^[0-9a-f]{40}$' || {
+            echo "::error::The operation commit must be a full commit SHA."
+            exit 1
+          }
+          remote_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)
+          if [ "${remote_sha}" != "${CONTROL_SHA}" ]; then
+            echo "::error::Main advanced after dispatch; start a new operation run."
+            exit 1
+          fi
+          if [ "${OPERATION}" = sync-cloudflare-origin-secret ] \
+            && [ "${{ inputs.environment }}" != prod ]; then
+            echo "::error::Cloudflare origin synchronization is prod-only."
+            exit 1
+          fi
+          if [ "${OPERATION}" != sync-cloudflare-origin-secret ]; then
+            for required in PROJECT_ID REGION GCP_OPERATIONS_SA_KEY; do
+              if [ -z "${!required:-}" ]; then
+                echo "::error::Missing operations configuration: ${required}"
+                exit 1
+              fi
+            done
+          fi
+          if [ "${OPERATION}" = configure-device-cleanup-scheduler ]; then
+            for required in SCHEDULE SCHEDULE_TIME_ZONE RUNTIME_SA_EMAIL SCHEDULER_SA_EMAIL; do
+              if [ -z "${!required:-}" ]; then
+                echo "::error::Missing scheduler configuration: ${required}"
+                exit 1
+              fi
+            done
+            if [ "${SCHEDULER_SA_EMAIL}" = "${RUNTIME_SA_EMAIL}" ]; then
+              echo "::error::GCP_SCHEDULER_SA_EMAIL must be distinct from the Cloud Run runtime service account."
+              exit 1
+            fi
+          fi
+
+      - name: Google Auth
+        if: inputs.operation != 'sync-cloudflare-origin-secret'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          credentials_json: "${{ secrets.GCP_OPERATIONS_SA_KEY }}"
+
+      - name: Set up Cloud SDK
+        if: inputs.operation != 'sync-cloudflare-origin-secret'
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Execute device-cleanup
+        if: inputs.operation == 'execute-device-cleanup'
+        run: |
+          set -euo pipefail
+          gcloud run jobs execute device-cleanup \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --wait
+
+      - name: Configure device-cleanup scheduler
+        if: inputs.operation == 'configure-device-cleanup-scheduler'
+        env:
+          SCHEDULER_NAME: device-cleanup-daily
+          SCHEDULE: ${{ inputs.schedule }}
+          SCHEDULE_TIME_ZONE: ${{ inputs.schedule_time_zone }}
+        run: |
+          set -euo pipefail
+          uri="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/device-cleanup:run"
+          common=(
+            --project="${PROJECT_ID}"
+            --location="${REGION}"
+            --schedule="${SCHEDULE}"
+            --time-zone="${SCHEDULE_TIME_ZONE}"
+            --uri="${uri}"
+            --http-method=POST
+            --oauth-service-account-email="${SCHEDULER_SA_EMAIL}"
+            --oauth-token-scope=https://www.googleapis.com/auth/cloud-platform
+            --quiet
+          )
+          describe_error=$(mktemp "${RUNNER_TEMP}/scheduler-describe.XXXXXX")
+          trap 'rm -f "${describe_error}"' EXIT HUP INT TERM
+          if gcloud scheduler jobs describe "${SCHEDULER_NAME}" \
+            --project="${PROJECT_ID}" \
+            --location="${REGION}" >/dev/null 2>"${describe_error}"; then
+            gcloud scheduler jobs update http "${SCHEDULER_NAME}" "${common[@]}"
+          else
+            if ! grep -Eiq 'not[[:space:]_-]*found|NOT_FOUND|does not exist|could not find|resource.*missing' "${describe_error}"; then
+              cat "${describe_error}" >&2
+              echo "::error::Unable to inspect the fixed Cloud Scheduler job."
+              exit 1
+            fi
+            gcloud scheduler jobs create http "${SCHEDULER_NAME}" "${common[@]}"
+          fi
+
+      - name: Sync Cloudflare origin secret
+        if: inputs.operation == 'sync-cloudflare-origin-secret'
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ORIGIN_SECRET: ${{ secrets.CLOUDFLARE_ORIGIN_SECRET }}
+          CF_ZONE_ID: ${{ vars.CLOUDFLARE_ZONE_ID }}
+          CF_RULE_ID: ${{ vars.CLOUDFLARE_TRANSFORM_RULE_ID }}
+        run: |
+          set -euo pipefail
+          for required in CF_API_TOKEN CF_ORIGIN_SECRET CF_ZONE_ID CF_RULE_ID; do
+            if [ -z "${!required:-}" ]; then
+              echo "::error::Missing Cloudflare configuration: ${required}"
+              exit 1
+            fi
+          done
+          case "${CF_ORIGIN_SECRET}" in
+            *$'\r'*|*$'\n'*)
+              echo "::error::CLOUDFLARE_ORIGIN_SECRET must not contain CR or LF characters."
+              exit 1
+              ;;
+          esac
+          export CF_ORIGIN_SECRET
+
+          response=$(curl --silent --show-error --fail \
+            --connect-timeout 10 --max-time 60 \
+            --request GET \
+            --url "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/rulesets/phases/http_request_late_transform/entrypoint" \
+            --header "Authorization: Bearer ${CF_API_TOKEN}" \
+            --header 'Content-Type: application/json')
+          ruleset_id=$(printf '%s' "${response}" | jq -r '.result.id // empty')
+          rule=$(printf '%s' "${response}" | jq -c --arg id "${CF_RULE_ID}" '.result.rules[] | select(.id == $id)')
+          if [ "$(printf '%s' "${response}" | jq -r '.success')" != true ] \
+            || [ -z "${ruleset_id}" ] || [ -z "${rule}" ]; then
+            echo "::error::Unable to resolve the configured Cloudflare transform rule."
+            exit 1
+          fi
+          updated=$(printf '%s' "${rule}" | jq -c '
+            .action = "rewrite"
+            | .action_parameters.headers["X-Cloudflare-Secret"] = {"operation":"set","value":env.CF_ORIGIN_SECRET}
+          ')
+          umask 077
+          payload=$(mktemp "${RUNNER_TEMP}/cloudflare-rule.XXXXXX")
+          trap 'rm -f "${payload}"' EXIT HUP INT TERM
+          printf '%s' "${updated}" > "${payload}"
+          result=$(curl --silent --show-error --fail \
+            --connect-timeout 10 --max-time 60 \
+            --request PATCH \
+            --url "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/rulesets/${ruleset_id}/rules/${CF_RULE_ID}" \
+            --header "Authorization: Bearer ${CF_API_TOKEN}" \
+            --header 'Content-Type: application/json' \
+            --data-binary "@${payload}")
+          if [ "$(printf '%s' "${result}" | jq -r '.success')" != true ]; then
+            echo "::error::Cloudflare transform rule update failed."
+            printf '%s' "${result}" | jq -c '.errors'
+            exit 1
+          fi
