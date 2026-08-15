@@ -31,7 +31,8 @@ jobs:
   operate:
     name: ${{ inputs.operation }} in ${{ inputs.environment }}
     runs-on: ubuntu-latest
-    # device-cleanup allows 2 x 600s attempts (maxRetries: 1); keep setup headroom.
+    # maxRetries: 1 allows 2 x 600s task runtime; retry scheduling overhead is separate.
+    # The 30-minute value is the workflow operational bound, including setup headroom.
     timeout-minutes: 30
     environment: ${{ inputs.environment }}
     concurrency:

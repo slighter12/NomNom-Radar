@@ -339,6 +339,39 @@ jq -e --arg sha "${resolver_candidate}" --argjson expected "${expected_targets}"
   '.release_sha == $sha and (.images | keys | sort) == $expected' "${resolver_bundle}" >/dev/null \
   || fail resolver-bundle-content
 
+resolver_git_fail_bin="${temp_dir}/resolver-git-fail-bin"
+mkdir -p "${resolver_git_fail_bin}"
+cp "${resolver_bin}/gcloud" "${resolver_git_fail_bin}/gcloud"
+cp "${resolver_bin}/gh" "${resolver_git_fail_bin}/gh"
+real_git=$(command -v git)
+cat > "${resolver_git_fail_bin}/git" <<'MOCK'
+#!/usr/bin/env bash
+if [ "${1:-}" = "${MOCK_GIT_FAILURE:-}" ]; then
+  printf 'mock git failure: %s\n' "${1}" >&2
+  exit 128
+fi
+exec "${REAL_GIT}" "$@"
+MOCK
+chmod +x "${resolver_git_fail_bin}/gcloud" "${resolver_git_fail_bin}/gh" "${resolver_git_fail_bin}/git"
+for git_failure in diff rev-list; do
+  resolver_git_output="${temp_dir}/resolver-${git_failure}-output"
+  if (
+    cd "${resolver_dir}"
+    PATH="${resolver_git_fail_bin}:${PATH}" REAL_GIT="${real_git}" MOCK_GIT_FAILURE="${git_failure}" \
+      CONTROL_SHA="${resolver_control}" \
+      DEV_PROJECT_ID=test DEV_REGISTRY=registry.example OWNER=repo \
+      GITHUB_REPOSITORY=repo/test GITHUB_OUTPUT="${resolver_git_output}" \
+      RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
+      TARGETS_FILE="${repo_root}/.github/scripts/release/targets.json" \
+      IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
+      bash "${script_dir}/release.sh" resolve-candidate >"${resolver_git_output}" 2>&1
+  ); then
+    fail "resolver-${git_failure}-failure-open"
+  fi
+  grep -F "git ${git_failure} failed" "${resolver_git_output}" >/dev/null \
+    || fail "resolver-${git_failure}-error-message"
+done
+
 resolver_fail_bin="${temp_dir}/resolver-fail-bin"
 mkdir -p "${resolver_fail_bin}"
 cp "${resolver_bin}/gcloud" "${resolver_fail_bin}/gcloud"

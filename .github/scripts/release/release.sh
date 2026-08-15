@@ -151,18 +151,25 @@ resolve_candidate() {
   done < <(impact_path_args)
   test "${#path_args[@]}" -gt 0 || die 'impact path manifest is empty'
 
-  for candidate in $(git rev-list --first-parent --max-count=50 "${CONTROL_SHA}"); do
+  candidates=$(git rev-list --first-parent --max-count=50 "${CONTROL_SHA}") \
+    || die "git rev-list failed while scanning candidates"
+  test -n "${candidates}" || die 'git rev-list returned no candidates'
+  while IFS= read -r candidate <&3; do
     # A candidate can only be promoted when everything after it is outside the
     # release contract. This is what permits docs-only commits without rebuilds.
-    if ! git diff --quiet "${candidate}..${CONTROL_SHA}" -- "${path_args[@]}"; then
+    if git diff --quiet "${candidate}..${CONTROL_SHA}" -- "${path_args[@]}"; then
+      :
+    else
+      diff_status=$?
+      [ "${diff_status}" -eq 1 ] || die "git diff failed while scanning candidate ${candidate}"
       continue
     fi
     images='{}'
     complete=true
     while IFS= read -r target; do
       image=$(resolve_candidate_image "${target}" "${candidate}" "${owner}") || {
-        status=$?
-        [ "${status}" -eq 3 ] && exit 3
+        image_status=$?
+        [ "${image_status}" -eq 3 ] && exit 3
         complete=false
         break
       }
@@ -182,7 +189,7 @@ resolve_candidate() {
       '{release_sha:$sha,images:$images}' > "${bundle}"
     printf 'release_sha=%s\npath=%s\n' "${candidate}" "${bundle}" >> "${GITHUB_OUTPUT:-/dev/stdout}"
     return 0
-  done
+  done 3<<<"${candidates}"
   die 'no complete candidate ancestor is compatible with the current main control commit'
 }
 
