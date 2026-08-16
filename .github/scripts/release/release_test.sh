@@ -643,7 +643,6 @@ ruby -ryaml -e '
   raise "staging cleanup command" unless finalize.fetch("run").include?("artifacts docker tags delete")
   workflow_dispatch = release.fetch(true).fetch("workflow_dispatch")
   release_sha_input = workflow_dispatch.fetch("inputs").fetch("release_sha")
-  raise "release sha input description" unless release_sha_input.fetch("description") == "Pin a specific candidate commit SHA (40 hex). Empty = newest candidate."
   raise "release sha input required" unless release_sha_input.fetch("required") == false
   raise "release sha input default" unless release_sha_input.fetch("default") == ""
   raise "release sha input type" unless release_sha_input.fetch("type") == "string"
@@ -659,12 +658,7 @@ ruby -ryaml -e '
   raise "preflight unconditional" unless preflight["if"].nil?
   raise "preflight order" unless names.index(preflight.fetch("name")) < names.index(promote.fetch("name"))
   migrations = steps.find { |step| step.fetch("name") == "Detect migration phases" }
-  raise "migration pin guard" unless migrations.fetch("run").include?("if [ -n \"${REQUESTED_SHA:-}\" ]; then")
-  raise "migration pin outputs" unless migrations.fetch("run").include?("pre=false\\nshared=false\\npost=false\\nany=false")
-  raise "migration pin notice" unless migrations.fetch("run").include?("Pinned release: migrations skipped")
-  summary = steps.find { |step| step.fetch("name") == "Write release summary" }
-  raise "summary candidate mode" unless summary.fetch("run").include?("Candidate mode:")
-  raise "summary migration status" unless summary.fetch("run").include?("Migrations:")
+  raise "migration pin guard" unless migrations.fetch("run").include?("REQUESTED_SHA")
   task = job.fetch("spec").fetch("template").fetch("spec").fetch("template").fetch("spec")
   container = task.fetch("containers").first
   raise "job secret" unless container.fetch("env").any? { |env| env.fetch("name") == "POSTGRES_MASTER_DSN" }

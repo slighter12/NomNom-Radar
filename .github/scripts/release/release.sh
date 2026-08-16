@@ -306,13 +306,16 @@ baseline_digest() {
     --project="${PROJECT_ID}" --format='value(image_summary.fully_qualified_digest)'
 }
 
+# A pinned release may move backwards, so its baseline only has to be
+# comparable; an unpinned release must move strictly forward.
 baseline_is_compatible() {
+  candidate_baseline=$1
   if [ -n "${REQUESTED_SHA:-}" ]; then
-    git merge-base --is-ancestor "${baseline}" "${CONTROL_SHA}" || return 1
-    git merge-base --is-ancestor "${baseline}" "${RELEASE_SHA}" \
-      || git merge-base --is-ancestor "${RELEASE_SHA}" "${baseline}"
+    git merge-base --is-ancestor "${candidate_baseline}" "${CONTROL_SHA}" || return 1
+    git merge-base --is-ancestor "${candidate_baseline}" "${RELEASE_SHA}" \
+      || git merge-base --is-ancestor "${RELEASE_SHA}" "${candidate_baseline}"
   else
-    git merge-base --is-ancestor "${baseline}" "${RELEASE_SHA}"
+    git merge-base --is-ancestor "${candidate_baseline}" "${RELEASE_SHA}"
   fi
 }
 
@@ -379,26 +382,14 @@ preflight() {
       || die 'missing or unlabeled resources are accepted only for a target-SHA retry'
   elif [ "${count}" -eq 1 ]; then
     baseline=$(jq -r '.[0]' <<<"${labels}")
-    if [ "${baseline}" = "${RELEASE_SHA}" ]; then
-      :
-    else
-      if [ -n "${REQUESTED_SHA:-}" ]; then
-        baseline_is_compatible \
-          || die 'pinned release is not compatible with the current target baseline'
-      else
-        git merge-base --is-ancestor "${baseline}" "${RELEASE_SHA}" \
-          || die 'target is not a forward release from the current baseline'
-      fi
+    if [ "${baseline}" != "${RELEASE_SHA}" ]; then
+      baseline_is_compatible "${baseline}" \
+        || die "release is not compatible with the current target baseline ${baseline}"
     fi
   elif [ "${count}" -eq 2 ] && jq -e --arg target "${RELEASE_SHA}" 'index($target) != null' <<<"${labels}" >/dev/null; then
     baseline=$(jq -r --arg target "${RELEASE_SHA}" '.[] | select(. != $target)' <<<"${labels}")
-    if [ -n "${REQUESTED_SHA:-}" ]; then
-      baseline_is_compatible \
-        || die 'pinned release is not compatible with the partial target baseline'
-    else
-      git merge-base --is-ancestor "${baseline}" "${RELEASE_SHA}" \
-        || die 'partial release baseline is not an ancestor of target'
-    fi
+    baseline_is_compatible "${baseline}" \
+      || die "release is not compatible with the partial target baseline ${baseline}"
   else
     die 'Cloud Run resources have divergent release state'
   fi
