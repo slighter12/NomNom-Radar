@@ -161,9 +161,11 @@ jobs:
               echo "::error::Existing candidate image for ${TARGET} did not resolve to an exact digest."
               exit 1
             fi
-            echo "digest=${existing##*@}" >> "${GITHUB_OUTPUT}"
-            echo "staging_ref=" >> "${GITHUB_OUTPUT}"
-            echo "needs_finalize=false" >> "${GITHUB_OUTPUT}"
+            {
+              echo "digest=${existing##*@}"
+              echo "staging_ref="
+              echo "needs_finalize=false"
+            } >> "${GITHUB_OUTPUT}"
             exit 0
           fi
           if ! grep -Eiq 'not[[:space:]_-]*found|NOT_FOUND|does not exist|could not find|resource.*missing' "${describe_error}"; then
@@ -200,9 +202,11 @@ jobs:
             echo "::error::Staged candidate image for ${TARGET} did not resolve to an exact digest."
             exit 1
           fi
-          echo "digest=${staged##*@}" >> "${GITHUB_OUTPUT}"
-          echo "staging_ref=${staging_ref}" >> "${GITHUB_OUTPUT}"
-          echo "needs_finalize=true" >> "${GITHUB_OUTPUT}"
+          {
+            echo "digest=${staged##*@}"
+            echo "staging_ref=${staging_ref}"
+            echo "needs_finalize=true"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Attest staged image digest
         if: steps.stage.outputs.needs_finalize == 'true'

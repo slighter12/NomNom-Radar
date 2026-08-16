@@ -225,7 +225,7 @@ describe_resource() {
     desired=$(jq -r '.metadata.labels["release-sha"] // ""' <<<"${json}")
     revision=$(jq -r '.status.latestReadyRevisionName // ""' <<<"${json}")
     ready=$(jq -r '([.status.conditions[]? | select(.type == "Ready") | .status] | first) // "False"' <<<"${json}")
-    label= image=
+    label='' image=''
     if [ -n "${revision}" ]; then
       revision_error=$(mktemp "${RUNNER_TEMP:-/tmp}/release-revision.XXXXXX")
       if revision_json=$(gcloud run revisions describe "${revision}" \

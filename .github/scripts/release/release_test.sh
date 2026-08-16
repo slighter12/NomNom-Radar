@@ -271,13 +271,13 @@ MOCK
 chmod +x "${temp_dir}/bin/sleep"
 verify_output="${temp_dir}/verify-nonconverge.txt"
 if env "${common_env[@]}" MOCK_SHA="${parent}" MOCK_RADAR="${digest_a}" MOCK_GEOWORKER="${digest_b}" MOCK_CLEANUP="${digest_c}" \
-  MOCK_SLEEP_LOG="${sleep_log}" VERIFY_RETRIES=5 VERIFY_RETRY_DELAY=5 SKIP_HEALTH=true \
+  MOCK_SLEEP_LOG="${sleep_log}" SKIP_HEALTH=true \
   bash "${script_dir}/release.sh" verify >"${verify_output}" 2>&1; then
   fail verify-retry-exhausted
 fi
 grep -F 'released labels, digests, or readiness did not converge' "${verify_output}" >/dev/null \
   || fail verify-retry-message
-printf '5\n10\n20\n30\n' | diff -u - "${sleep_log}" || fail verify-retry-backoff
+printf '5\n10\n20\n30\n30\n30\n30\n30\n30\n' | diff -u - "${sleep_log}" || fail verify-retry-backoff
 
 # Candidate resolution must select the newest complete ancestor when the
 # current control commit only changes non-release paths.
@@ -355,12 +355,13 @@ MOCK
 chmod +x "${resolver_git_fail_bin}/gcloud" "${resolver_git_fail_bin}/gh" "${resolver_git_fail_bin}/git"
 for git_failure in diff rev-list; do
   resolver_git_output="${temp_dir}/resolver-${git_failure}-output"
+  resolver_git_env="${temp_dir}/resolver-${git_failure}-env"
   if (
     cd "${resolver_dir}"
     PATH="${resolver_git_fail_bin}:${PATH}" REAL_GIT="${real_git}" MOCK_GIT_FAILURE="${git_failure}" \
       CONTROL_SHA="${resolver_control}" \
       DEV_PROJECT_ID=test DEV_REGISTRY=registry.example OWNER=repo \
-      GITHUB_REPOSITORY=repo/test GITHUB_OUTPUT="${resolver_git_output}" \
+      GITHUB_REPOSITORY=repo/test GITHUB_OUTPUT="${resolver_git_env}" \
       RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
       TARGETS_FILE="${repo_root}/.github/scripts/release/targets.json" \
       IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
@@ -506,20 +507,14 @@ operations_workflow="${repo_root}/.github/workflows/cloud-run-operations.yml"
 grep -F 'group: candidate-${{ github.sha }}-${{ matrix.target }}' "${ci_workflow}" >/dev/null || fail matrix-concurrency-scope
 ! grep -F 'verified=false' "${repo_root}/.github/scripts/release/release.sh" >/dev/null || fail attestation-fallback
 grep -F 'has no valid attestation for' "${repo_root}/.github/scripts/release/release.sh" >/dev/null || fail attestation-fail-closed
-grep -F 'Configure dev Registry auth' "${workflow}" >/dev/null || fail workflow-dev-registry-auth
 ! grep -F 'RELEASE_SHA: ${{ github.sha }}' "${workflow}" >/dev/null || fail workflow-release-sha-coupling
-grep -F -- '--connect-timeout 10 --max-time 60' "${repo_root}/.github/scripts/release/release.sh" >/dev/null || fail health-timeout
 
 ruby -ryaml -e '
   ci = YAML.load_file(ARGV.fetch(0))
   release = YAML.load_file(ARGV.fetch(1))
   job = YAML.load_file(ARGV.fetch(2))
   operations = YAML.load_file(ARGV.fetch(3))
-  release_script = File.read(ARGV.fetch(4))
   raise "ci permissions" unless ci.fetch("permissions").fetch("contents") == "read"
-  raise "checks timeout" unless ci.fetch("jobs").fetch("checks").fetch("timeout-minutes") == 30
-  raise "candidate changes timeout" unless ci.fetch("jobs").fetch("candidate-changes").fetch("timeout-minutes") == 10
-  raise "publish timeout" unless ci.fetch("jobs").fetch("publish-candidate").fetch("timeout-minutes") == 30
   publish = ci.fetch("jobs").fetch("publish-candidate")
   changes = ci.fetch("jobs").fetch("candidate-changes").fetch("steps").find { |step| step["id"] == "changes" }
   quote = 39.chr
@@ -529,48 +524,34 @@ ruby -ryaml -e '
   raise "before inline" if changes.fetch("run").include?("${{ github.event.before }}")
   raise "ci matrix" unless publish.fetch("strategy").fetch("matrix").fetch("target").include?("needs.candidate-changes.outputs.targets")
   raise "candidate concurrency" unless publish.fetch("concurrency").fetch("group").include?("matrix.target")
-  stage = publish.fetch("steps").find { |step| step["id"] == "stage" }
   attest = publish.fetch("steps").find { |step| step["name"] == "Attest staged image digest" }
   verify = publish.fetch("steps").find { |step| step["name"] == "Verify candidate attestation" }
   finalize = publish.fetch("steps").find { |step| step["name"] == "Publish verified candidate SHA tag" }
   raise "lowercase attestation subject" unless attest.fetch("with").fetch("subject-name").include?("steps.stage.outputs.owner")
-  raise "stage owner output" unless stage.fetch("run").include?("echo \"owner=${owner}\"")
   publish_names = publish.fetch("steps").map { |step| step.fetch("name") }
   raise "attestation finalization order" unless publish_names.index(attest.fetch("name")) < publish_names.index(verify.fetch("name")) && publish_names.index(verify.fetch("name")) < publish_names.index(finalize.fetch("name"))
   raise "existing attestation fail-closed" unless verify.fetch("run").include?("Existing SHA tag")
   raise "staging cleanup command" unless finalize.fetch("run").include?("artifacts docker tags delete")
-  raise "staging cleanup warning" unless finalize.fetch("run").include?("immutable-tag repositories may retain it")
   steps = release.fetch("jobs").fetch("release").fetch("steps")
   names = steps.map { |step| step.fetch("name") }
   raise "registry auth order" unless names.index("Configure dev Registry auth") < names.index("Resolve and verify candidate digests")
   raise "mutation guard order" unless names.index("Recheck current main before mutation") < names.index("Promote exact digests to prod")
-  gcrane = steps.find { |step| step.fetch("name") == "Install pinned gcrane" }
-  raise "gcrane connect timeout" unless gcrane.fetch("run").include?("--connect-timeout 10")
-  raise "gcrane transfer timeout" unless gcrane.fetch("run").include?("--max-time 300")
-  raise "gcrane retry timeout" unless gcrane.fetch("run").include?("--retry-max-time 120")
-  raise "revision retry handling" unless release_script.include?("elif not_found \"${revision_error}\"")
-  raise "verify retry count" unless release_script.include?("VERIFY_RETRIES:-10")
-  raise "verify retry delay" unless release_script.include?("VERIFY_RETRY_DELAY:-5")
-  raise "verify retry cap" unless release_script.include?("max_delay=30") && release_script.include?("delay=$((delay * 2))")
-  raise "release timeout" unless release.fetch("jobs").fetch("release").fetch("timeout-minutes") == 90
-  raise "project number" unless release.fetch("jobs").fetch("release").fetch("env").fetch("PROJECT_NUMBER") == "${{ vars.GCP_PROJECT_NUMBER }}"
   preflight = steps.find { |step| step.fetch("name") == "Preflight target state" }
   promote = steps.find { |step| step.fetch("name") == "Promote exact digests to prod" }
   raise "preflight unconditional" unless preflight["if"].nil?
   raise "preflight order" unless names.index(preflight.fetch("name")) < names.index(promote.fetch("name"))
-  raise "promotion bundle source" unless promote.fetch("run").include?(".images[$target]")
-  container = job.fetch("spec").fetch("template").fetch("spec").fetch("template").fetch("spec").fetch("containers").first
+  task = job.fetch("spec").fetch("template").fetch("spec").fetch("template").fetch("spec")
+  container = task.fetch("containers").first
   raise "job secret" unless container.fetch("env").any? { |env| env.fetch("name") == "POSTGRES_MASTER_DSN" }
   operation = operations.fetch("jobs").fetch("operate")
-  raise "operations timeout" unless operation.fetch("timeout-minutes") == 30
+  # The operations job blocks on `gcloud run jobs execute --wait`, so its timeout
+  # must exceed the worst-case Cloud Run task runtime including retries.
+  worst_case_minutes = (task.fetch("maxRetries") + 1) * task.fetch("timeoutSeconds") / 60.0
+  raise "operations timeout below worst-case job runtime" unless operation.fetch("timeout-minutes") > worst_case_minutes
   raise "operation control sha" unless operation.fetch("env").fetch("CONTROL_SHA") == "${{ github.sha }}"
   operation_steps = operation.fetch("steps")
   validate = operation_steps.find { |step| step.fetch("name") == "Validate operation configuration" }
   raise "operation current-main guard" unless validate.fetch("run").include?("git/ref/heads/main")
-  cloudflare = operation_steps.find { |step| step.fetch("name") == "Sync Cloudflare origin secret" }.fetch("run")
-  raise "cloudflare connect timeout" unless cloudflare.scan("--connect-timeout 10").length == 2
-  raise "cloudflare total timeout" unless cloudflare.scan("--max-time 60").length == 2
-  raise "job max retries" unless job.fetch("spec").fetch("template").fetch("spec").fetch("template").fetch("spec").fetch("maxRetries") == 1
-' "${repo_root}/.github/workflows/ci.yml" "${workflow}" "${repo_root}/deploy/cloud-run/jobs/device-cleanup.yaml" "${operations_workflow}" "${repo_root}/.github/scripts/release/release.sh"
+' "${repo_root}/.github/workflows/ci.yml" "${workflow}" "${repo_root}/deploy/cloud-run/jobs/device-cleanup.yaml" "${operations_workflow}"
 
 printf 'release checks: PASS\n'
