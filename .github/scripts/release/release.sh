@@ -151,18 +151,28 @@ resolve_candidate() {
   done < <(impact_path_args)
   test "${#path_args[@]}" -gt 0 || die 'impact path manifest is empty'
 
-  candidates=$(git rev-list --first-parent --max-count=50 "${CONTROL_SHA}") \
-    || die "git rev-list failed while scanning candidates"
-  test -n "${candidates}" || die 'git rev-list returned no candidates'
+  if [ -n "${REQUESTED_SHA:-}" ]; then
+    is_sha "${REQUESTED_SHA}" || die 'invalid REQUESTED_SHA'
+    git cat-file -e "${REQUESTED_SHA}^{commit}" || die 'REQUESTED_SHA is not available locally'
+    git merge-base --is-ancestor "${REQUESTED_SHA}" "${CONTROL_SHA}" \
+      || die 'REQUESTED_SHA is not an ancestor of the current main control commit'
+    candidates="${REQUESTED_SHA}"
+  else
+    candidates=$(git rev-list --first-parent --max-count=50 "${CONTROL_SHA}") \
+      || die "git rev-list failed while scanning candidates"
+    test -n "${candidates}" || die 'git rev-list returned no candidates'
+  fi
   while IFS= read -r candidate <&3; do
     # A candidate can only be promoted when everything after it is outside the
     # release contract. This is what permits docs-only commits without rebuilds.
-    if git diff --quiet "${candidate}..${CONTROL_SHA}" -- "${path_args[@]}"; then
-      :
-    else
-      diff_status=$?
-      [ "${diff_status}" -eq 1 ] || die "git diff failed while scanning candidate ${candidate}"
-      continue
+    if [ -z "${REQUESTED_SHA:-}" ]; then
+      if git diff --quiet "${candidate}..${CONTROL_SHA}" -- "${path_args[@]}"; then
+        :
+      else
+        diff_status=$?
+        [ "${diff_status}" -eq 1 ] || die "git diff failed while scanning candidate ${candidate}"
+        continue
+      fi
     fi
     images='{}'
     complete=true
@@ -190,6 +200,9 @@ resolve_candidate() {
     printf 'release_sha=%s\npath=%s\n' "${candidate}" "${bundle}" >> "${GITHUB_OUTPUT:-/dev/stdout}"
     return 0
   done 3<<<"${candidates}"
+  if [ -n "${REQUESTED_SHA:-}" ]; then
+    die "pinned candidate ${REQUESTED_SHA} has no complete attested image set"
+  fi
   die 'no complete candidate ancestor is compatible with the current main control commit'
 }
 
@@ -293,9 +306,27 @@ baseline_digest() {
     --project="${PROJECT_ID}" --format='value(image_summary.fully_qualified_digest)'
 }
 
+baseline_is_compatible() {
+  if [ -n "${REQUESTED_SHA:-}" ]; then
+    git merge-base --is-ancestor "${baseline}" "${CONTROL_SHA}" || return 1
+    git merge-base --is-ancestor "${baseline}" "${RELEASE_SHA}" \
+      || git merge-base --is-ancestor "${RELEASE_SHA}" "${baseline}"
+  else
+    git merge-base --is-ancestor "${baseline}" "${RELEASE_SHA}"
+  fi
+}
+
 preflight() {
   required RELEASE_SHA
   is_sha "${RELEASE_SHA}" || die 'invalid RELEASE_SHA'
+  if [ -n "${REQUESTED_SHA:-}" ]; then
+    required CONTROL_SHA
+    is_sha "${CONTROL_SHA}" || die 'invalid CONTROL_SHA'
+    [ "${REQUESTED_SHA}" = "${RELEASE_SHA}" ] || die 'pinned release SHA does not match REQUESTED_SHA'
+    git cat-file -e "${CONTROL_SHA}^{commit}" || die 'CONTROL_SHA is not available locally'
+    git merge-base --is-ancestor "${RELEASE_SHA}" "${CONTROL_SHA}" \
+      || die 'pinned RELEASE_SHA is not an ancestor of the current main control commit'
+  fi
   validate_bundle
   state=$(snapshot) || die 'cannot snapshot Cloud Run state'
   expected_targets=$(jq -c 'keys | sort' "$(targets_file)")
@@ -351,13 +382,23 @@ preflight() {
     if [ "${baseline}" = "${RELEASE_SHA}" ]; then
       :
     else
-      git merge-base --is-ancestor "${baseline}" "${RELEASE_SHA}" \
-        || die 'target is not a forward release from the current baseline'
+      if [ -n "${REQUESTED_SHA:-}" ]; then
+        baseline_is_compatible \
+          || die 'pinned release is not compatible with the current target baseline'
+      else
+        git merge-base --is-ancestor "${baseline}" "${RELEASE_SHA}" \
+          || die 'target is not a forward release from the current baseline'
+      fi
     fi
   elif [ "${count}" -eq 2 ] && jq -e --arg target "${RELEASE_SHA}" 'index($target) != null' <<<"${labels}" >/dev/null; then
     baseline=$(jq -r --arg target "${RELEASE_SHA}" '.[] | select(. != $target)' <<<"${labels}")
-    git merge-base --is-ancestor "${baseline}" "${RELEASE_SHA}" \
-      || die 'partial release baseline is not an ancestor of target'
+    if [ -n "${REQUESTED_SHA:-}" ]; then
+      baseline_is_compatible \
+        || die 'pinned release is not compatible with the partial target baseline'
+    else
+      git merge-base --is-ancestor "${baseline}" "${RELEASE_SHA}" \
+        || die 'partial release baseline is not an ancestor of target'
+    fi
   else
     die 'Cloud Run resources have divergent release state'
   fi

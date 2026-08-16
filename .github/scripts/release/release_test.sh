@@ -130,6 +130,19 @@ state "${parent}" '' '' true false true
 preflight >/dev/null 2>&1 && fail baseline-with-missing
 state "${future}" "${future}" "${future}" true true true
 preflight >/dev/null 2>&1 && fail rollback
+state "${future}" "${future}" "${future}" true true true
+pinned_rollback_output="${temp_dir}/pinned-rollback-preflight.txt"
+if ! (
+  cd "${git_dir}"
+  RELEASE_SHA="${sha}" REQUESTED_SHA="${sha}" CONTROL_SHA="${future}" BUNDLE_FILE="${bundle}" RELEASE_STATE_FILE="${temp_dir}/state.json" \
+    REGISTRY="${TEST_REGISTRY:-registry.example}" OWNER=repo \
+    RELEASE_BASELINE_DIGESTS_FILE="${baseline_map}" ALLOW_RELEASE_FIXTURES=true \
+    bash "${script_dir}/release.sh" preflight
+) >"${pinned_rollback_output}" 2>&1; then
+  fail pinned-rollback-preflight
+fi
+[ "$(jq -r .baseline_sha "${pinned_rollback_output}")" = "${future}" ] \
+  || fail pinned-rollback-baseline
 state broken broken broken true true true
 preflight >/dev/null 2>&1 && fail malformed-label
 state "${parent}" "${parent}" "${sha}" true true true
@@ -354,6 +367,13 @@ if [ "${MOCK_INVALID_DIGEST:-false}" = true ]; then
   printf 'registry.example/repo/radar:latest\n'
   exit 0
 fi
+if [ -n "${MOCK_MISSING_IMAGE_TARGET:-}" ]; then
+  case "$*" in
+    *"artifacts docker images describe registry.example/repo/${MOCK_MISSING_IMAGE_TARGET}:${MOCK_CANDIDATE_SHA}"*)
+      printf 'ERROR: (gcloud.artifacts.docker.images.describe) NOT_FOUND: requested image was not found.\n' >&2
+      exit 1 ;;
+  esac
+fi
 case "$*" in
   *"artifacts docker images describe registry.example/repo/radar:${MOCK_CANDIDATE_SHA}"*)
     printf 'registry.example/repo/radar@sha256:%s\n' "$(printf 'a%.0s' {1..64})" ;;
@@ -369,6 +389,21 @@ cat > "${resolver_bin}/gh" <<'MOCK'
 exit 0
 MOCK
 chmod +x "${resolver_bin}/gcloud" "${resolver_bin}/gh"
+run_resolver() {
+  local control_sha=$1 output_file=$2 requested_sha=${3:-} missing_image_target=${4:-}
+  (
+    cd "${resolver_dir}"
+    PATH="${resolver_bin}:${PATH}" \
+      CONTROL_SHA="${control_sha}" REQUESTED_SHA="${requested_sha}" \
+      DEV_PROJECT_ID=test DEV_REGISTRY=registry.example OWNER=repo \
+      GITHUB_REPOSITORY=repo/test GITHUB_OUTPUT="${output_file}" \
+      RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
+      MOCK_MISSING_IMAGE_TARGET="${missing_image_target}" \
+      TARGETS_FILE="${repo_root}/.github/scripts/release/targets.json" \
+      IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
+      bash "${script_dir}/release.sh" resolve-candidate
+  )
+}
 resolver_output="${temp_dir}/resolver-output"
 resolver_bundle="${temp_dir}/resolver-bundle.json"
 (
@@ -389,6 +424,22 @@ expected_targets=$(jq -c 'keys | sort' "${repo_root}/.github/scripts/release/tar
 jq -e --arg sha "${resolver_candidate}" --argjson expected "${expected_targets}" \
   '.release_sha == $sha and (.images | keys | sort) == $expected' "${resolver_bundle}" >/dev/null \
   || fail resolver-bundle-content
+resolver_unrelated=$(git -C "${resolver_dir}" commit-tree "$(git -C "${resolver_dir}" rev-parse "${resolver_control}^{tree}")" -m unrelated)
+resolver_pin_non_ancestor_output="${temp_dir}/resolver-pin-non-ancestor-output"
+if run_resolver "${resolver_control}" "${temp_dir}/resolver-pin-non-ancestor-env" "${resolver_unrelated}" \
+  >"${resolver_pin_non_ancestor_output}" 2>&1; then
+  fail resolver-pin-non-ancestor-open
+fi
+grep -F 'not an ancestor' "${resolver_pin_non_ancestor_output}" >/dev/null \
+  || fail resolver-pin-non-ancestor-message
+resolver_pin_incomplete_output="${temp_dir}/resolver-pin-incomplete-output"
+if run_resolver "${resolver_control}" "${temp_dir}/resolver-pin-incomplete-env" "${resolver_candidate}" device-cleanup \
+  >"${resolver_pin_incomplete_output}" 2>&1; then
+  fail resolver-pin-incomplete-open
+fi
+grep -F "pinned candidate ${resolver_candidate} has no complete attested image set" \
+  "${resolver_pin_incomplete_output}" >/dev/null \
+  || fail resolver-pin-incomplete-message
 
 resolver_git_fail_bin="${temp_dir}/resolver-git-fail-bin"
 mkdir -p "${resolver_git_fail_bin}"
@@ -488,6 +539,13 @@ printf 'release-impact\n' > "${resolver_dir}/Dockerfile"
 git -C "${resolver_dir}" add Dockerfile
 git -C "${resolver_dir}" commit -q -m release-impact
 resolver_impact_control=$(git -C "${resolver_dir}" rev-parse HEAD)
+resolver_pinned_output="${temp_dir}/resolver-pinned-output"
+run_resolver "${resolver_impact_control}" "${resolver_pinned_output}" "${resolver_candidate}"
+grep -F "release_sha=${resolver_candidate}" "${resolver_pinned_output}" >/dev/null \
+  || fail resolver-pinned-sha
+resolver_pinned_bundle=$(sed -n 's/^path=//p' "${resolver_pinned_output}")
+jq -e --arg sha "${resolver_candidate}" '.release_sha == $sha' "${resolver_pinned_bundle}" >/dev/null \
+  || fail resolver-pinned-bundle
 if (
   cd "${resolver_dir}"
   PATH="${resolver_bin}:${PATH}" \
@@ -583,14 +641,30 @@ ruby -ryaml -e '
   raise "attestation finalization order" unless publish_names.index(attest.fetch("name")) < publish_names.index(verify.fetch("name")) && publish_names.index(verify.fetch("name")) < publish_names.index(finalize.fetch("name"))
   raise "existing attestation fail-closed" unless verify.fetch("run").include?("Existing SHA tag")
   raise "staging cleanup command" unless finalize.fetch("run").include?("artifacts docker tags delete")
+  workflow_dispatch = release.fetch(true).fetch("workflow_dispatch")
+  release_sha_input = workflow_dispatch.fetch("inputs").fetch("release_sha")
+  raise "release sha input description" unless release_sha_input.fetch("description") == "Pin a specific candidate commit SHA (40 hex). Empty = newest candidate."
+  raise "release sha input required" unless release_sha_input.fetch("required") == false
+  raise "release sha input default" unless release_sha_input.fetch("default") == ""
+  raise "release sha input type" unless release_sha_input.fetch("type") == "string"
+  release_env = release.fetch("jobs").fetch("release").fetch("env")
+  raise "requested sha env" unless release_env.fetch("REQUESTED_SHA") == "${{ inputs.release_sha }}"
   steps = release.fetch("jobs").fetch("release").fetch("steps")
   names = steps.map { |step| step.fetch("name") }
+  raise "release sha inline" if steps.any? { |step| step.fetch("run", "").include?("${{ inputs.release_sha }}") }
   raise "registry auth order" unless names.index("Configure dev Registry auth") < names.index("Resolve and verify candidate digests")
   raise "mutation guard order" unless names.index("Recheck current main before mutation") < names.index("Promote exact digests to prod")
   preflight = steps.find { |step| step.fetch("name") == "Preflight target state" }
   promote = steps.find { |step| step.fetch("name") == "Promote exact digests to prod" }
   raise "preflight unconditional" unless preflight["if"].nil?
   raise "preflight order" unless names.index(preflight.fetch("name")) < names.index(promote.fetch("name"))
+  migrations = steps.find { |step| step.fetch("name") == "Detect migration phases" }
+  raise "migration pin guard" unless migrations.fetch("run").include?("if [ -n \"${REQUESTED_SHA:-}\" ]; then")
+  raise "migration pin outputs" unless migrations.fetch("run").include?("pre=false\\nshared=false\\npost=false\\nany=false")
+  raise "migration pin notice" unless migrations.fetch("run").include?("Pinned release: migrations skipped")
+  summary = steps.find { |step| step.fetch("name") == "Write release summary" }
+  raise "summary candidate mode" unless summary.fetch("run").include?("Candidate mode:")
+  raise "summary migration status" unless summary.fetch("run").include?("Migrations:")
   task = job.fetch("spec").fetch("template").fetch("spec").fetch("template").fetch("spec")
   container = task.fetch("containers").first
   raise "job secret" unless container.fetch("env").any? { |env| env.fetch("name") == "POSTGRES_MASTER_DSN" }

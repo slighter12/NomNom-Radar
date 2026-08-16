@@ -8,6 +8,11 @@ on:
         required: true
         type: choice
         options: [dev, prod]
+      release_sha:
+        description: "Pin a specific candidate commit SHA (40 hex). Empty = newest candidate."
+        required: false
+        default: ""
+        type: string
 
 env:
   GCRANE_VERSION: v0.21.9
@@ -28,6 +33,7 @@ jobs:
     env:
       CONTROL_SHA: ${{ github.sha }}
       TARGET_ENVIRONMENT: ${{ inputs.environment }}
+      REQUESTED_SHA: ${{ inputs.release_sha }}
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       PROJECT_NUMBER: ${{ vars.GCP_PROJECT_NUMBER }}
       REGION: ${{ vars.GCP_REGION }}
@@ -116,6 +122,11 @@ jobs:
           BASELINE_SHA: ${{ steps.preflight.outputs.baseline_sha }}
         run: |
           set -euo pipefail
+          if [ -n "${REQUESTED_SHA:-}" ]; then
+            printf 'pre=false\nshared=false\npost=false\nany=false\n' >> "${GITHUB_OUTPUT}"
+            echo "::notice::Pinned release: migrations skipped. Handle schema separately."
+            exit 0
+          fi
           changed() {
             if git diff --quiet "${BASELINE_SHA}..${RELEASE_SHA}" -- "$1"; then
               return 1
@@ -293,11 +304,23 @@ jobs:
         env:
           RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
           BUNDLE_FILE: ${{ inputs.environment == 'prod' && steps.promote.outputs.path || steps.candidate.outputs.path }}
+          MIGRATIONS_ANY: ${{ steps.migrations.outputs.any }}
         run: |
           {
             echo '## Cloud Run release'
             echo
             echo "Environment: \`${TARGET_ENVIRONMENT}\`"
+            if [ -n "${REQUESTED_SHA:-}" ]; then
+              echo "Candidate mode: pinned (\`${RELEASE_SHA}\`)"
+              echo 'Migrations: skipped (pinned release; handle schema separately)'
+            else
+              echo "Candidate mode: newest compatible ancestor (\`${RELEASE_SHA}\`)"
+              if [ "${MIGRATIONS_ANY}" = true ]; then
+                echo 'Migrations: selected phases executed'
+              else
+                echo 'Migrations: none required'
+              fi
+            fi
             echo "Release SHA: \`${RELEASE_SHA}\`"
             echo '| Target | Image |'
             echo '| --- | --- |'
