@@ -204,7 +204,26 @@ if [ "${MOCK_REVISION_NOT_FOUND_ONCE:-false}" = true ] \
   && [ "${1:-}" = run ] && [ "${2:-}" = revisions ] && [ "${3:-}" = describe ] \
   && [ "${4:-}" = radar-ready ] && [ ! -e "${MOCK_REVISION_MARKER}" ]; then
   : > "${MOCK_REVISION_MARKER}"
-  printf 'NOT_FOUND\n' >&2
+  printf 'ERROR: (gcloud.run.revisions.describe) Cannot find revision [%s].\n' "${4:-}" >&2
+  exit 1
+fi
+if [ -n "${MOCK_MISSING_TARGET:-}" ] \
+  && [ "${1:-}" = run ] \
+  && { [ "${2:-}" = jobs ] || [ "${2:-}" = services ]; } \
+  && [ "${3:-}" = describe ] \
+  && [ "${4:-}" = "${MOCK_MISSING_TARGET}" ]; then
+  resource_kind=${2%s}
+  printf 'ERROR: (gcloud.run.%s.describe) Cannot find %s [%s].\n' \
+    "${2}" "${resource_kind}" "${4}" >&2
+  exit 1
+fi
+if [ -n "${MOCK_DESCRIBE_ERROR_TARGET:-}" ] \
+  && [ "${1:-}" = run ] \
+  && { [ "${2:-}" = jobs ] || [ "${2:-}" = services ]; } \
+  && [ "${3:-}" = describe ] \
+  && [ "${4:-}" = "${MOCK_DESCRIBE_ERROR_TARGET}" ]; then
+  printf 'ERROR: (gcloud.run.%s.describe) PERMISSION_DENIED: test failure for %s.\n' \
+    "${2}" "${4}" >&2
   exit 1
 fi
 case "$*" in
@@ -227,7 +246,39 @@ esac
 exit 0
 MOCK
 chmod +x "${temp_dir}/bin/kubectl" "${temp_dir}/bin/gcloud"
-common_env=(PATH="${temp_dir}/bin:${PATH}" RELEASE_SHA="${sha}" BUNDLE_FILE="${bundle}" PROJECT_ID=test PROJECT_NUMBER=123456 REGION=region RUNTIME_SA_EMAIL=runtime@example.invalid ALLOWED_HOST=radar.example.invalid GOOGLE_OAUTH_CLIENT_ID=oauth MOCK_JOB_MANIFEST="${temp_dir}/captured-job.yaml" MOCK_MUTATION_MARKER="${temp_dir}/mutation.marker")
+release_functions="${temp_dir}/release-functions.sh"
+sed '/^case "${1:-}" in$/,$d' "${script_dir}/release.sh" > "${release_functions}"
+common_env=(PATH="${temp_dir}/bin:${PATH}" RELEASE_SHA="${sha}" BUNDLE_FILE="${bundle}" PROJECT_ID=test PROJECT_NUMBER=123456 REGION=region REGISTRY=registry.example OWNER=repo RUNTIME_SA_EMAIL=runtime@example.invalid ALLOWED_HOST=radar.example.invalid GOOGLE_OAUTH_CLIENT_ID=oauth MOCK_JOB_MANIFEST="${temp_dir}/captured-job.yaml" MOCK_MUTATION_MARKER="${temp_dir}/mutation.marker")
+assert_missing_cloud_run_target() {
+  local target=$1 snapshot_output preflight_output
+  snapshot_output=$(
+    cd "${git_dir}"
+    env "${common_env[@]}" MOCK_SHA="${sha}" MOCK_RADAR="${digest_a}" MOCK_GEOWORKER="${digest_b}" MOCK_CLEANUP="${digest_c}" \
+      MOCK_MISSING_TARGET="${target}" \
+      bash -c 'source "$1"; snapshot' "${script_dir}/release.sh" "${release_functions}"
+  )
+  jq -e --arg target "${target}" '.[$target].exists == false' <<<"${snapshot_output}" >/dev/null \
+    || fail "${target}-not-found-snapshot"
+  preflight_output="${temp_dir}/${target}-not-found-preflight.txt"
+  if ! env "${common_env[@]}" MOCK_SHA="${sha}" MOCK_RADAR="${digest_a}" MOCK_GEOWORKER="${digest_b}" MOCK_CLEANUP="${digest_c}" \
+    MOCK_MISSING_TARGET="${target}" \
+    bash "${script_dir}/release.sh" preflight >"${preflight_output}" 2>&1; then
+    fail "${target}-not-found-preflight"
+  fi
+}
+assert_missing_cloud_run_target device-cleanup
+assert_missing_cloud_run_target geoworker
+describe_error_output="${temp_dir}/describe-error-preflight.txt"
+if env "${common_env[@]}" MOCK_SHA="${sha}" MOCK_RADAR="${digest_a}" MOCK_GEOWORKER="${digest_b}" MOCK_CLEANUP="${digest_c}" \
+  MOCK_DESCRIBE_ERROR_TARGET=device-cleanup \
+  bash "${script_dir}/release.sh" preflight >"${describe_error_output}" 2>&1; then
+  fail describe-error-preflight-open
+fi
+grep -F 'cannot snapshot device-cleanup' "${describe_error_output}" >/dev/null \
+  || fail describe-error-source-message
+if grep -F 'invalid Cloud Run state' "${describe_error_output}" >/dev/null; then
+  fail describe-error-reached-jq
+fi
 env "${common_env[@]}" TARGET_ENVIRONMENT=dev bash "${script_dir}/release.sh" deploy
 env "${common_env[@]}" TARGET_ENVIRONMENT=prod CLOUDFLARE_ORIGIN_SECRET='safe/+value=' bash "${script_dir}/release.sh" deploy
 [ -s "${temp_dir}/captured-job.yaml" ] || fail job-manifest-capture
@@ -310,7 +361,7 @@ case "$*" in
     printf 'registry.example/repo/geoworker@sha256:%s\n' "$(printf 'b%.0s' {1..64})" ;;
   *"artifacts docker images describe registry.example/repo/device-cleanup:${MOCK_CANDIDATE_SHA}"*)
     printf 'registry.example/repo/device-cleanup@sha256:%s\n' "$(printf 'c%.0s' {1..64})" ;;
-  *) echo 'NOT_FOUND' >&2; exit 1 ;;
+  *) printf 'ERROR: (gcloud.artifacts.docker.images.describe) NOT_FOUND: requested image was not found.\n' >&2; exit 1 ;;
 esac
 MOCK
 cat > "${resolver_bin}/gh" <<'MOCK'

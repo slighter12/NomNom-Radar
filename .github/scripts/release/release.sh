@@ -122,7 +122,7 @@ resolve_candidate_image() {
     --project="${DEV_PROJECT_ID}" --format='value(image_summary.fully_qualified_digest)' 2>"${error_file}"); then
     rm -f "${error_file}"
   else
-    if grep -Eiq 'not[[:space:]_-]*found|NOT_FOUND|does not exist|could not find|resource.*missing' "${error_file}"; then
+    if grep -Eiq 'NOT_FOUND|not[[:space:]_-]*found|does not exist|cannot find|could not find|resource.*missing' "${error_file}"; then
       rm -f "${error_file}"
       return 1
     fi
@@ -207,7 +207,7 @@ validate_bundle() {
   ' "${BUNDLE_FILE}" >/dev/null || die 'invalid release bundle'
 }
 
-not_found() { grep -Eiq 'NOT_FOUND|not found|does not exist' "$1"; }
+not_found() { grep -Eiq 'NOT_FOUND|not[[:space:]_-]*found|does not exist|cannot find|could not find|resource.*missing' "$1"; }
 
 describe_resource() {
   type=$1 name=$2
@@ -269,8 +269,10 @@ snapshot() {
   required PROJECT_ID REGION
   state='{}'
   while IFS= read -r target; do
-    kind=$(target_kind "${target}")
-    resource=$(describe_resource "${kind}" "${target}")
+    kind=$(target_kind "${target}") \
+      || die "cannot resolve kind for ${target}"
+    resource=$(describe_resource "${kind}" "${target}") \
+      || die "cannot snapshot ${target}"
     state=$(jq -c --arg target "${target}" --argjson resource "${resource}" '. + {($target):$resource}' <<<"${state}")
   done < <(target_names)
   printf '%s\n' "${state}"
@@ -295,7 +297,7 @@ preflight() {
   required RELEASE_SHA
   is_sha "${RELEASE_SHA}" || die 'invalid RELEASE_SHA'
   validate_bundle
-  state=$(snapshot)
+  state=$(snapshot) || die 'cannot snapshot Cloud Run state'
   expected_targets=$(jq -c 'keys | sort' "$(targets_file)")
   jq -e --argjson expected_targets "${expected_targets}" \
     '(keys | sort) == $expected_targets and all(.[]; has("exists") and has("label"))' \

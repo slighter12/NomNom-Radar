@@ -168,7 +168,7 @@ jobs:
             } >> "${GITHUB_OUTPUT}"
             exit 0
           fi
-          if ! grep -Eiq 'not[[:space:]_-]*found|NOT_FOUND|does not exist|could not find|resource.*missing' "${describe_error}"; then
+          if ! grep -Eiq 'NOT_FOUND|not[[:space:]_-]*found|does not exist|cannot find|could not find|resource.*missing' "${describe_error}"; then
             cat "${describe_error}" >&2
             rm -f "${describe_error}"
             echo "::error::Unable to inspect candidate image for ${TARGET}."

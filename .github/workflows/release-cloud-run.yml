@@ -219,7 +219,7 @@ jobs:
                 exit 1
               }
             else
-              grep -Eiq 'NOT_FOUND|not found|does not exist' "${describe_error}" || {
+              grep -Eiq 'NOT_FOUND|not[[:space:]_-]*found|does not exist|cannot find|could not find|resource.*missing' "${describe_error}" || {
                 cat "${describe_error}" >&2
                 rm -f "${describe_error}"
                 echo "::error::Unable to inspect prod image: ${target}"
