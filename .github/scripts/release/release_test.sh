@@ -8,6 +8,21 @@ temp_dir=$(mktemp -d "${TMPDIR:-/tmp}/nomnom-release-test.XXXXXX")
 trap 'rm -rf "${temp_dir}"' EXIT HUP INT TERM
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+# shellcheck source=.github/scripts/release/not_found.sh
+source "${repo_root}/.github/scripts/release/not_found.sh"
+
+status_fixture="${temp_dir}/not-found-status.txt"
+printf 'ERROR: (gcloud.artifacts.docker.images.describe) NOT_FOUND: image was not found.\n' > "${status_fixture}"
+not_found_status "${status_fixture}" || fail not-found-status
+printf 'ERROR: (gcloud...) PERMISSION_DENIED: Could not find valid credentials.\n' > "${status_fixture}"
+if not_found_status "${status_fixture}"; then
+  fail permission-error-not-not-found
+fi
+printf 'ERROR: (gcloud...) INVALID_ARGUMENT: The requested location does not exist.\n' > "${status_fixture}"
+if not_found_status "${status_fixture}"; then
+  fail invalid-argument-not-not-found
+fi
+
 git_dir="${temp_dir}/git"
 git init -q "${git_dir}"
 git -C "${git_dir}" config user.email test@example.invalid
@@ -235,7 +250,7 @@ if [ -n "${MOCK_DESCRIBE_ERROR_TARGET:-}" ] \
   && { [ "${2:-}" = jobs ] || [ "${2:-}" = services ]; } \
   && [ "${3:-}" = describe ] \
   && [ "${4:-}" = "${MOCK_DESCRIBE_ERROR_TARGET}" ]; then
-  printf 'ERROR: (gcloud.run.%s.describe) PERMISSION_DENIED: test failure for %s.\n' \
+  printf 'ERROR: (gcloud.run.%s.describe) PERMISSION_DENIED: Could not find valid credentials for %s.\n' \
     "${2}" "${4}" >&2
   exit 1
 fi

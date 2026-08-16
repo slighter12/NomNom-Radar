@@ -124,6 +124,8 @@ jobs:
           SCHEDULE_TIME_ZONE: ${{ inputs.schedule_time_zone }}
         run: |
           set -euo pipefail
+          # shellcheck source=.github/scripts/release/not_found.sh
+          source .github/scripts/release/not_found.sh
           uri="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/device-cleanup:run"
           common=(
             --project="${PROJECT_ID}"
@@ -143,7 +145,7 @@ jobs:
             --location="${REGION}" >/dev/null 2>"${describe_error}"; then
             gcloud scheduler jobs update http "${SCHEDULER_NAME}" "${common[@]}"
           else
-            if ! grep -Eiq 'NOT_FOUND|not[[:space:]_-]*found|does not exist|cannot find|could not find|resource.*missing' "${describe_error}"; then
+            if ! not_found_status "${describe_error}"; then
               cat "${describe_error}" >&2
               echo "::error::Unable to inspect the fixed Cloud Scheduler job."
               exit 1

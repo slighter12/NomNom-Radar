@@ -8,6 +8,8 @@ set -euo pipefail
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 default_targets_file="${repo_root}/.github/scripts/release/targets.json"
 default_impact_paths_file="${repo_root}/.github/scripts/release/impact-paths.txt"
+# shellcheck source=.github/scripts/release/not_found.sh
+source "${repo_root}/.github/scripts/release/not_found.sh"
 
 die() { printf 'release: %s\n' "$*" >&2; exit 1; }
 integrity_die() { printf 'release: %s\n' "$*" >&2; exit 3; }
@@ -122,7 +124,7 @@ resolve_candidate_image() {
     --project="${DEV_PROJECT_ID}" --format='value(image_summary.fully_qualified_digest)' 2>"${error_file}"); then
     rm -f "${error_file}"
   else
-    if grep -Eiq 'NOT_FOUND|not[[:space:]_-]*found|does not exist|cannot find|could not find|resource.*missing' "${error_file}"; then
+    if not_found_status "${error_file}"; then
       rm -f "${error_file}"
       return 1
     fi
@@ -220,14 +222,14 @@ validate_bundle() {
   ' "${BUNDLE_FILE}" >/dev/null || die 'invalid release bundle'
 }
 
-not_found() { grep -Eiq 'NOT_FOUND|not[[:space:]_-]*found|does not exist|cannot find|could not find|resource.*missing' "$1"; }
+not_found() { not_found_status "$3" || grep -Fqi "Cannot find $1 [$2]" "$3"; }
 
 describe_resource() {
   type=$1 name=$2
   error_file=$(mktemp "${RUNNER_TEMP:-/tmp}/release-error.XXXXXX")
   if [ "${type}" = service ]; then
     if ! json=$(gcloud run services describe "${name}" --project="${PROJECT_ID}" --region="${REGION}" --format=json 2>"${error_file}"); then
-      if not_found "${error_file}"; then
+      if not_found "${type}" "${name}" "${error_file}"; then
         rm -f "${error_file}"
         jq -cn '{exists:false,label:"",desired_label:"",ready:false,image:""}'
         return
@@ -246,7 +248,7 @@ describe_resource() {
         rm -f "${revision_error}"
         label=$(jq -r '.metadata.labels["release-sha"] // .spec.template.metadata.labels["release-sha"] // ""' <<<"${revision_json}")
         image=$(jq -r '.spec.containers[0].image // .spec.template.spec.containers[0].image // ""' <<<"${revision_json}")
-      elif not_found "${revision_error}"; then
+      elif not_found revision "${revision}" "${revision_error}"; then
         rm -f "${revision_error}"
         ready=False
       else
@@ -260,7 +262,7 @@ describe_resource() {
       '{exists:true,label:$label,desired_label:$desired,ready:$ready,image:$image}'
   else
     if ! json=$(gcloud run jobs describe "${name}" --project="${PROJECT_ID}" --region="${REGION}" --format=json 2>"${error_file}"); then
-      if not_found "${error_file}"; then
+      if not_found "${type}" "${name}" "${error_file}"; then
         rm -f "${error_file}"
         jq -cn '{exists:false,label:"",desired_label:"",ready:true,image:""}'
         return
