@@ -628,6 +628,81 @@ printf '%s\n' "${goose_version}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || fail 
 workflow="${repo_root}/.github/workflows/release-cloud-run.yml"
 ci_workflow="${repo_root}/.github/workflows/ci.yml"
 operations_workflow="${repo_root}/.github/workflows/cloud-run-operations.yml"
+
+# Execute the production promotion step with mocked registry tools so a
+# permission error cannot silently authorize a gcrane copy.
+promote_run="${temp_dir}/promote-run.sh"
+ruby -ryaml -e '
+  workflow = YAML.load_file(ARGV.fetch(0))
+  run = workflow.fetch("jobs").fetch("release").fetch("steps").find { |step| step.fetch("name") == "Promote exact digests to prod" }.fetch("run")
+  print run
+' "${workflow}" > "${promote_run}"
+promote_targets="${temp_dir}/promote-targets.json"
+printf '{"radar":{"kind":"service","overlay":"radar","order":1}}\n' > "${promote_targets}"
+promote_runner="${temp_dir}/promote-runner"
+promote_bin="${temp_dir}/promote-bin"
+mkdir -p "${promote_runner}/gcrane" "${promote_bin}"
+cat > "${promote_bin}/gcloud" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "${1:-}" = auth ]; then
+  exit 0
+fi
+if [ "${1:-}" = artifacts ] && [ "${2:-}" = docker ] && [ "${3:-}" = images ] && [ "${4:-}" = describe ]; then
+  count=0
+  if [ -f "${MOCK_PROMOTE_DESCRIBE_COUNT}" ]; then
+    count=$(<"${MOCK_PROMOTE_DESCRIBE_COUNT}")
+  fi
+  count=$((count + 1))
+  printf '%s\n' "${count}" > "${MOCK_PROMOTE_DESCRIBE_COUNT}"
+  if [ "${count}" -eq 1 ]; then
+    case "${MOCK_PROMOTE_ERROR:-}" in
+      permission)
+        printf 'ERROR: (gcloud.artifacts.docker.images.describe) PERMISSION_DENIED: Could not find valid credentials.\n' >&2
+        exit 1
+        ;;
+      not-found)
+        printf 'ERROR: (gcloud.artifacts.docker.images.describe) NOT_FOUND: requested image was not found.\n' >&2
+        exit 1
+        ;;
+    esac
+  fi
+  printf '%s\n' "${MOCK_PROMOTE_IMAGE}"
+  exit 0
+fi
+printf 'unexpected gcloud invocation: %s\n' "$*" >&2
+exit 1
+MOCK
+cat > "${promote_runner}/gcrane/gcrane" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+: > "${MOCK_PROMOTE_COPY_MARKER}"
+MOCK
+chmod +x "${promote_bin}/gcloud" "${promote_runner}/gcrane/gcrane"
+promote_image="prod.example/repo/radar@sha256:$(printf 'a%.0s' {1..64})"
+run_promote() {
+  local error_mode=$1 copy_marker=$2 describe_count=$3 output_file=$4
+  (
+    cd "${repo_root}"
+    PATH="${promote_bin}:${PATH}" \
+      OWNER=repo DEV_REGISTRY=dev.example REGISTRY=prod.example PROJECT_ID=test \
+      SOURCE_BUNDLE="${bundle}" RELEASE_SHA="${sha}" TARGETS_FILE="${promote_targets}" \
+      RUNNER_TEMP="${promote_runner}" GITHUB_OUTPUT="${output_file}" \
+      MOCK_PROMOTE_ERROR="${error_mode}" MOCK_PROMOTE_COPY_MARKER="${copy_marker}" \
+      MOCK_PROMOTE_DESCRIBE_COUNT="${describe_count}" MOCK_PROMOTE_IMAGE="${promote_image}" \
+      bash "${promote_run}"
+  )
+}
+promote_permission_marker="${temp_dir}/promote-permission-copy.marker"
+if run_promote permission "${promote_permission_marker}" "${temp_dir}/promote-permission-count" "${temp_dir}/promote-permission-output" >/dev/null 2>&1; then
+  fail prod-promote-permission-accepted
+fi
+[ ! -e "${promote_permission_marker}" ] || fail prod-promote-copy-after-permission
+promote_not_found_marker="${temp_dir}/promote-not-found-copy.marker"
+run_promote not-found "${promote_not_found_marker}" "${temp_dir}/promote-not-found-count" "${temp_dir}/promote-not-found-output" >/dev/null 2>&1 \
+  || fail prod-promote-not-found-fallback
+[ -e "${promote_not_found_marker}" ] || fail prod-promote-copy-missing
+
 grep -F 'group: candidate-${{ github.sha }}-${{ matrix.target }}' "${ci_workflow}" >/dev/null || fail matrix-concurrency-scope
 ! grep -F 'verified=false' "${repo_root}/.github/scripts/release/release.sh" >/dev/null || fail attestation-fallback
 grep -F 'has no valid attestation for' "${repo_root}/.github/scripts/release/release.sh" >/dev/null || fail attestation-fail-closed

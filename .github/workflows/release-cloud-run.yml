@@ -212,6 +212,8 @@ jobs:
           RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
         run: |
           set -euo pipefail
+          # shellcheck source=.github/scripts/release/not_found.sh
+          source .github/scripts/release/not_found.sh
           owner=$(printf '%s' "${OWNER}" | tr '[:upper:]' '[:lower:]')
           dev_host=$(printf '%s' "${DEV_REGISTRY}" | cut -d/ -f1)
           prod_host=$(printf '%s' "${REGISTRY}" | cut -d/ -f1)
@@ -230,7 +232,7 @@ jobs:
                 exit 1
               }
             else
-              grep -Eiq 'NOT_FOUND|not[[:space:]_-]*found|does not exist|cannot find|could not find|resource.*missing' "${describe_error}" || {
+              not_found_status "${describe_error}" || {
                 cat "${describe_error}" >&2
                 rm -f "${describe_error}"
                 echo "::error::Unable to inspect prod image: ${target}"
