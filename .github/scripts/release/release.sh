@@ -380,14 +380,13 @@ preflight() {
   blank=$(jq '[.[] | select(.exists == true and (.label // "") == "")] | length' <<<"${state}")
   labels=$(jq -c '[.[] | select(.exists == true and (.label // "") != "") | .label] | unique' <<<"${state}")
   count=$(jq length <<<"${labels}")
-  target_count=$(jq length <<<"${expected_targets}")
   baseline=
 
-  if [ "${missing}" -eq "${target_count}" ]; then
+  # An absent target, or one deployed before release-sha labelling existed,
+  # leaves no fleet-wide baseline to diff against. Keep the baseline empty so
+  # every migration phase runs; goose skips versions it already applied.
+  if [ "${missing}" -gt 0 ] || [ "${blank}" -gt 0 ]; then
     :
-  elif [ "${missing}" -gt 0 ] || [ "${blank}" -gt 0 ]; then
-    [ "${count}" -eq 1 ] && [ "$(jq -r '.[0]' <<<"${labels}")" = "${RELEASE_SHA}" ] \
-      || die 'missing or unlabeled resources are accepted only for a target-SHA retry'
   elif [ "${count}" -eq 1 ]; then
     baseline=$(jq -r '.[0]' <<<"${labels}")
     if [ "${baseline}" != "${RELEASE_SHA}" ]; then
