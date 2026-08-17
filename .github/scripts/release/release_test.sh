@@ -245,6 +245,16 @@ if [ -n "${MOCK_MISSING_TARGET:-}" ] \
     "${2}" "${resource_kind}" "${4}" >&2
   exit 1
 fi
+if [ -n "${MOCK_STATUS_COLLISION_TARGET:-}" ] \
+  && [ "${1:-}" = run ] \
+  && { [ "${2:-}" = jobs ] || [ "${2:-}" = services ]; } \
+  && [ "${3:-}" = describe ] \
+  && [ "${4:-}" = "${MOCK_STATUS_COLLISION_TARGET}" ]; then
+  resource_kind=${2%s}
+  printf 'ERROR: (gcloud.run.%s.describe) PERMISSION_DENIED: Cannot find %s [%s].\n' \
+    "${2}" "${resource_kind}" "${4}" >&2
+  exit 1
+fi
 if [ -n "${MOCK_DESCRIBE_ERROR_TARGET:-}" ] \
   && [ "${1:-}" = run ] \
   && { [ "${2:-}" = jobs ] || [ "${2:-}" = services ]; } \
@@ -306,6 +316,17 @@ grep -F 'cannot snapshot device-cleanup' "${describe_error_output}" >/dev/null \
   || fail describe-error-source-message
 if grep -F 'invalid Cloud Run state' "${describe_error_output}" >/dev/null; then
   fail describe-error-reached-jq
+fi
+status_collision_output="${temp_dir}/status-collision-preflight.txt"
+if env "${common_env[@]}" MOCK_SHA="${sha}" MOCK_RADAR="${digest_a}" MOCK_GEOWORKER="${digest_b}" MOCK_CLEANUP="${digest_c}" \
+  MOCK_STATUS_COLLISION_TARGET=device-cleanup \
+  bash "${script_dir}/release.sh" preflight >"${status_collision_output}" 2>&1; then
+  fail status-collision-preflight-open
+fi
+grep -F 'cannot snapshot device-cleanup' "${status_collision_output}" >/dev/null \
+  || fail status-collision-source-message
+if grep -F 'invalid Cloud Run state' "${status_collision_output}" >/dev/null; then
+  fail status-collision-reached-jq
 fi
 env "${common_env[@]}" TARGET_ENVIRONMENT=dev bash "${script_dir}/release.sh" deploy
 env "${common_env[@]}" TARGET_ENVIRONMENT=prod CLOUDFLARE_ORIGIN_SECRET='safe/+value=' bash "${script_dir}/release.sh" deploy
@@ -676,10 +697,19 @@ MOCK
 cat > "${promote_runner}/gcrane/gcrane" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
+if [ "${1:-}" != copy ] \
+  || [ "${2:-}" != "${MOCK_PROMOTE_EXPECTED_SOURCE}" ] \
+  || [ "${3:-}" != "${MOCK_PROMOTE_EXPECTED_DESTINATION}" ] \
+  || [ "$#" -ne 3 ]; then
+  printf 'unexpected gcrane invocation: %s\n' "$*" >&2
+  exit 1
+fi
 : > "${MOCK_PROMOTE_COPY_MARKER}"
 MOCK
 chmod +x "${promote_bin}/gcloud" "${promote_runner}/gcrane/gcrane"
 promote_image="prod.example/repo/radar@sha256:$(printf 'a%.0s' {1..64})"
+promote_source="${digest_a}"
+promote_destination="prod.example/repo/radar:${sha}"
 run_promote() {
   local error_mode=$1 copy_marker=$2 describe_count=$3 output_file=$4
   (
@@ -690,6 +720,7 @@ run_promote() {
       RUNNER_TEMP="${promote_runner}" GITHUB_OUTPUT="${output_file}" \
       MOCK_PROMOTE_ERROR="${error_mode}" MOCK_PROMOTE_COPY_MARKER="${copy_marker}" \
       MOCK_PROMOTE_DESCRIBE_COUNT="${describe_count}" MOCK_PROMOTE_IMAGE="${promote_image}" \
+      MOCK_PROMOTE_EXPECTED_SOURCE="${promote_source}" MOCK_PROMOTE_EXPECTED_DESTINATION="${promote_destination}" \
       bash "${promote_run}"
   )
 }

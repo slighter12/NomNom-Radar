@@ -222,7 +222,14 @@ validate_bundle() {
   ' "${BUNDLE_FILE}" >/dev/null || die 'invalid release bundle'
 }
 
-not_found() { not_found_status "$3" || grep -Fqi "Cannot find $1 [$2]" "$3"; }
+not_found() {
+  not_found_status "$3" && return 0
+  # Cloud Run renders not-found without a status token. Explicitly reject
+  # other gcloud status codes before accepting its resource-specific wording.
+  grep -Eq '(^|[[:space:]])(PERMISSION_DENIED|UNAUTHENTICATED|INVALID_ARGUMENT|FAILED_PRECONDITION|RESOURCE_EXHAUSTED|UNAVAILABLE|INTERNAL|ABORTED|UNKNOWN)([:[:space:]]|$)' "$3" \
+    && return 1
+  grep -Fqi "Cannot find $1 [$2]" "$3"
+}
 
 describe_resource() {
   type=$1 name=$2

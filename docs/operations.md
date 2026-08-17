@@ -89,9 +89,10 @@ label. A normal release requires one valid baseline SHA shared by all three
 resources and ancestral to the selected candidate. A pinned release requires
 the selected SHA to be an ancestor of current `main`; it permits a forward or
 rollback move only when the current baseline and selected SHA are comparable
-ancestors of current `main`. A new environment with no resources bootstraps by
-checking every migration phase. A partial retry is accepted only when labels
-contain that consistent baseline and the current target, or when
+ancestors of current `main`. An unpinned release to a new environment with no
+resources bootstraps by checking every migration phase. Pinned releases skip
+migrations and require separate schema handling. A partial retry is accepted only
+when labels contain that consistent baseline and the current target, or when
 missing/unlabeled resources are paired only with the target.
 
 Divergent history, a third SHA, invalid labels, and label/image drift fail
