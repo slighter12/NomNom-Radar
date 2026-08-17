@@ -146,6 +146,8 @@ jobs:
         id: stage
         run: |
           set -euo pipefail
+          # shellcheck source=.github/scripts/release/not_found.sh
+          source .github/scripts/release/not_found.sh
           owner=$(printf '%s' "${OWNER}" | tr '[:upper:]' '[:lower:]')
           echo "owner=${owner}" >> "${GITHUB_OUTPUT}"
           built=$(git show -s --format=%cI "${RELEASE_SHA}")
@@ -168,7 +170,7 @@ jobs:
             } >> "${GITHUB_OUTPUT}"
             exit 0
           fi
-          if ! grep -Eiq 'not[[:space:]_-]*found|NOT_FOUND|does not exist|could not find|resource.*missing' "${describe_error}"; then
+          if ! not_found_status "${describe_error}"; then
             cat "${describe_error}" >&2
             rm -f "${describe_error}"
             echo "::error::Unable to inspect candidate image for ${TARGET}."

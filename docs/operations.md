@@ -86,16 +86,19 @@ selected immutable `main` candidate. Changed directories run in this order:
 
 `radar`, `geoworker`, and `device-cleanup` use the `release-sha` Cloud Run
 label. A normal release requires one valid baseline SHA shared by all three
-resources and ancestral to the selected candidate. A new environment with no
-resources bootstraps by checking every migration phase. A partial retry is
-accepted only when labels contain that consistent baseline and the current
-target, or when missing/unlabeled resources are paired only with the target.
+resources and ancestral to the selected candidate. A pinned release requires
+the selected SHA to be an ancestor of current `main`; it permits a forward or
+rollback move only when the current baseline and selected SHA are comparable
+ancestors of current `main`. An unpinned release to a new environment with no
+resources bootstraps by checking every migration phase. Pinned releases skip
+migrations and require separate schema handling. A partial retry is accepted only
+when labels contain that consistent baseline and the current target, or when
+missing/unlabeled resources are paired only with the target.
 
-Rollbacks, divergent history, a third SHA, invalid labels, and label/image
-drift fail closed. Resolve those states through approved break-glass recovery;
-the normal workflow does not infer arbitrary history. Database changes remain
-forward-only, and a same-target retry relies on goose to no-op versions already
-applied.
+Divergent history, a third SHA, invalid labels, and label/image drift fail
+closed. A pinned rollback skips all migration phases and requires schema
+handling separately; database changes remain forward-only. A same-target retry
+relies on goose to no-op versions already applied.
 
 The dedicated GCP Secret Manager secret `postgres-migration-dsn` is required.
 There is no fallback to `postgres-master-dsn`. Supabase migrations must use a
@@ -154,11 +157,14 @@ older candidate in that case.
 
 ### Release Cloud Run
 
-`Release Cloud Run` has one input: `environment`, either `dev` or `prod`. The
-workflow must be dispatched from the current `main` HEAD. It executes only
-current protected automation (`CONTROL_SHA`) and walks first-parent history to
-select the newest ancestor with all three complete, attested candidate images
-(`RELEASE_SHA`).
+`Release Cloud Run` has a required `environment` input, either `dev` or `prod`,
+and an optional `release_sha` input containing a full 40-character commit SHA.
+An empty `release_sha` makes the workflow execute only current protected
+automation (`CONTROL_SHA`) and walk first-parent history to select the newest
+ancestor with all three complete, attested candidate images (`RELEASE_SHA`).
+When `release_sha` is supplied, the resolver selects that SHA directly, still
+requires complete immutable images and valid attestations, and skips the
+impact-path freshness check.
 
 This separation allows a docs-only commit after a verified dev release to
 promote that same candidate without rebuilding it. The resolver rejects any
@@ -179,7 +185,8 @@ remain main-only without a required reviewer.
 A release processes the complete bundle in this order:
 
 1. For prod, verify dev and copy exact digests into the prod registry.
-2. Run required migration phases.
+2. Run required migration phases; pinned releases skip migrations and require
+   separate schema handling.
 3. Deploy `geoworker`, `device-cleanup`, then `radar`.
 4. Verify `release-sha`, exact digest, readiness, and Radar `/health`.
 
@@ -279,6 +286,9 @@ record this rollout before declaring readiness:
   newest compatible ancestor without rebuilding; a release-impacting commit
   without a complete candidate fails closed and is recovered by publishing a
   new candidate.
+- [ ] A pinned release SHA is a current-main ancestor with complete attested
+  images; pinned releases skip migrations and are used for approved rollback
+  or version pinning.
 - [ ] `postgres-migration-dsn` is release-only and verified as the intended
   direct/session-mode port `5432` database.
 - [ ] Prod Cloudflare secrets and identifiers match the deployed origin rule;

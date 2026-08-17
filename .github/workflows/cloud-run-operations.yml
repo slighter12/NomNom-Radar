@@ -95,6 +95,13 @@ jobs:
             fi
           fi
 
+      - name: Checkout trusted operations automation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
       - name: Google Auth
         if: inputs.operation != 'sync-cloudflare-origin-secret'
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
@@ -124,6 +131,8 @@ jobs:
           SCHEDULE_TIME_ZONE: ${{ inputs.schedule_time_zone }}
         run: |
           set -euo pipefail
+          # shellcheck source=.github/scripts/release/not_found.sh
+          source .github/scripts/release/not_found.sh
           uri="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/device-cleanup:run"
           common=(
             --project="${PROJECT_ID}"
@@ -143,7 +152,7 @@ jobs:
             --location="${REGION}" >/dev/null 2>"${describe_error}"; then
             gcloud scheduler jobs update http "${SCHEDULER_NAME}" "${common[@]}"
           else
-            if ! grep -Eiq 'not[[:space:]_-]*found|NOT_FOUND|does not exist|could not find|resource.*missing' "${describe_error}"; then
+            if ! not_found_status "${describe_error}"; then
               cat "${describe_error}" >&2
               echo "::error::Unable to inspect the fixed Cloud Scheduler job."
               exit 1

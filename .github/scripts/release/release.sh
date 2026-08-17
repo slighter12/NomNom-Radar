@@ -8,6 +8,8 @@ set -euo pipefail
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 default_targets_file="${repo_root}/.github/scripts/release/targets.json"
 default_impact_paths_file="${repo_root}/.github/scripts/release/impact-paths.txt"
+# shellcheck source=.github/scripts/release/not_found.sh
+source "${repo_root}/.github/scripts/release/not_found.sh"
 
 die() { printf 'release: %s\n' "$*" >&2; exit 1; }
 integrity_die() { printf 'release: %s\n' "$*" >&2; exit 3; }
@@ -122,7 +124,7 @@ resolve_candidate_image() {
     --project="${DEV_PROJECT_ID}" --format='value(image_summary.fully_qualified_digest)' 2>"${error_file}"); then
     rm -f "${error_file}"
   else
-    if grep -Eiq 'not[[:space:]_-]*found|NOT_FOUND|does not exist|could not find|resource.*missing' "${error_file}"; then
+    if not_found_status "${error_file}"; then
       rm -f "${error_file}"
       return 1
     fi
@@ -151,18 +153,28 @@ resolve_candidate() {
   done < <(impact_path_args)
   test "${#path_args[@]}" -gt 0 || die 'impact path manifest is empty'
 
-  candidates=$(git rev-list --first-parent --max-count=50 "${CONTROL_SHA}") \
-    || die "git rev-list failed while scanning candidates"
-  test -n "${candidates}" || die 'git rev-list returned no candidates'
+  if [ -n "${REQUESTED_SHA:-}" ]; then
+    is_sha "${REQUESTED_SHA}" || die 'invalid REQUESTED_SHA'
+    git cat-file -e "${REQUESTED_SHA}^{commit}" || die 'REQUESTED_SHA is not available locally'
+    git merge-base --is-ancestor "${REQUESTED_SHA}" "${CONTROL_SHA}" \
+      || die 'REQUESTED_SHA is not an ancestor of the current main control commit'
+    candidates="${REQUESTED_SHA}"
+  else
+    candidates=$(git rev-list --first-parent --max-count=50 "${CONTROL_SHA}") \
+      || die "git rev-list failed while scanning candidates"
+    test -n "${candidates}" || die 'git rev-list returned no candidates'
+  fi
   while IFS= read -r candidate <&3; do
     # A candidate can only be promoted when everything after it is outside the
     # release contract. This is what permits docs-only commits without rebuilds.
-    if git diff --quiet "${candidate}..${CONTROL_SHA}" -- "${path_args[@]}"; then
-      :
-    else
-      diff_status=$?
-      [ "${diff_status}" -eq 1 ] || die "git diff failed while scanning candidate ${candidate}"
-      continue
+    if [ -z "${REQUESTED_SHA:-}" ]; then
+      if git diff --quiet "${candidate}..${CONTROL_SHA}" -- "${path_args[@]}"; then
+        :
+      else
+        diff_status=$?
+        [ "${diff_status}" -eq 1 ] || die "git diff failed while scanning candidate ${candidate}"
+        continue
+      fi
     fi
     images='{}'
     complete=true
@@ -190,6 +202,9 @@ resolve_candidate() {
     printf 'release_sha=%s\npath=%s\n' "${candidate}" "${bundle}" >> "${GITHUB_OUTPUT:-/dev/stdout}"
     return 0
   done 3<<<"${candidates}"
+  if [ -n "${REQUESTED_SHA:-}" ]; then
+    die "pinned candidate ${REQUESTED_SHA} has no complete attested image set"
+  fi
   die 'no complete candidate ancestor is compatible with the current main control commit'
 }
 
@@ -207,14 +222,21 @@ validate_bundle() {
   ' "${BUNDLE_FILE}" >/dev/null || die 'invalid release bundle'
 }
 
-not_found() { grep -Eiq 'NOT_FOUND|not found|does not exist' "$1"; }
+not_found() {
+  not_found_status "$3" && return 0
+  # Cloud Run renders not-found without a status token. Explicitly reject
+  # other gcloud status codes before accepting its resource-specific wording.
+  grep -Eq '(^|[[:space:]])(PERMISSION_DENIED|UNAUTHENTICATED|INVALID_ARGUMENT|FAILED_PRECONDITION|RESOURCE_EXHAUSTED|UNAVAILABLE|INTERNAL|ABORTED|UNKNOWN)([:[:space:]]|$)' "$3" \
+    && return 1
+  grep -Fqi "Cannot find $1 [$2]" "$3"
+}
 
 describe_resource() {
   type=$1 name=$2
   error_file=$(mktemp "${RUNNER_TEMP:-/tmp}/release-error.XXXXXX")
   if [ "${type}" = service ]; then
     if ! json=$(gcloud run services describe "${name}" --project="${PROJECT_ID}" --region="${REGION}" --format=json 2>"${error_file}"); then
-      if not_found "${error_file}"; then
+      if not_found "${type}" "${name}" "${error_file}"; then
         rm -f "${error_file}"
         jq -cn '{exists:false,label:"",desired_label:"",ready:false,image:""}'
         return
@@ -233,7 +255,7 @@ describe_resource() {
         rm -f "${revision_error}"
         label=$(jq -r '.metadata.labels["release-sha"] // .spec.template.metadata.labels["release-sha"] // ""' <<<"${revision_json}")
         image=$(jq -r '.spec.containers[0].image // .spec.template.spec.containers[0].image // ""' <<<"${revision_json}")
-      elif not_found "${revision_error}"; then
+      elif not_found revision "${revision}" "${revision_error}"; then
         rm -f "${revision_error}"
         ready=False
       else
@@ -247,7 +269,7 @@ describe_resource() {
       '{exists:true,label:$label,desired_label:$desired,ready:$ready,image:$image}'
   else
     if ! json=$(gcloud run jobs describe "${name}" --project="${PROJECT_ID}" --region="${REGION}" --format=json 2>"${error_file}"); then
-      if not_found "${error_file}"; then
+      if not_found "${type}" "${name}" "${error_file}"; then
         rm -f "${error_file}"
         jq -cn '{exists:false,label:"",desired_label:"",ready:true,image:""}'
         return
@@ -269,8 +291,10 @@ snapshot() {
   required PROJECT_ID REGION
   state='{}'
   while IFS= read -r target; do
-    kind=$(target_kind "${target}")
-    resource=$(describe_resource "${kind}" "${target}")
+    kind=$(target_kind "${target}") \
+      || die "cannot resolve kind for ${target}"
+    resource=$(describe_resource "${kind}" "${target}") \
+      || die "cannot snapshot ${target}"
     state=$(jq -c --arg target "${target}" --argjson resource "${resource}" '. + {($target):$resource}' <<<"${state}")
   done < <(target_names)
   printf '%s\n' "${state}"
@@ -291,11 +315,32 @@ baseline_digest() {
     --project="${PROJECT_ID}" --format='value(image_summary.fully_qualified_digest)'
 }
 
+# A pinned release may move backwards, so its baseline only has to be
+# comparable; an unpinned release must move strictly forward.
+baseline_is_compatible() {
+  candidate_baseline=$1
+  if [ -n "${REQUESTED_SHA:-}" ]; then
+    git merge-base --is-ancestor "${candidate_baseline}" "${CONTROL_SHA}" || return 1
+    git merge-base --is-ancestor "${candidate_baseline}" "${RELEASE_SHA}" \
+      || git merge-base --is-ancestor "${RELEASE_SHA}" "${candidate_baseline}"
+  else
+    git merge-base --is-ancestor "${candidate_baseline}" "${RELEASE_SHA}"
+  fi
+}
+
 preflight() {
   required RELEASE_SHA
   is_sha "${RELEASE_SHA}" || die 'invalid RELEASE_SHA'
+  if [ -n "${REQUESTED_SHA:-}" ]; then
+    required CONTROL_SHA
+    is_sha "${CONTROL_SHA}" || die 'invalid CONTROL_SHA'
+    [ "${REQUESTED_SHA}" = "${RELEASE_SHA}" ] || die 'pinned release SHA does not match REQUESTED_SHA'
+    git cat-file -e "${CONTROL_SHA}^{commit}" || die 'CONTROL_SHA is not available locally'
+    git merge-base --is-ancestor "${RELEASE_SHA}" "${CONTROL_SHA}" \
+      || die 'pinned RELEASE_SHA is not an ancestor of the current main control commit'
+  fi
   validate_bundle
-  state=$(snapshot)
+  state=$(snapshot) || die 'cannot snapshot Cloud Run state'
   expected_targets=$(jq -c 'keys | sort' "$(targets_file)")
   jq -e --argjson expected_targets "${expected_targets}" \
     '(keys | sort) == $expected_targets and all(.[]; has("exists") and has("label"))' \
@@ -346,16 +391,14 @@ preflight() {
       || die 'missing or unlabeled resources are accepted only for a target-SHA retry'
   elif [ "${count}" -eq 1 ]; then
     baseline=$(jq -r '.[0]' <<<"${labels}")
-    if [ "${baseline}" = "${RELEASE_SHA}" ]; then
-      :
-    else
-      git merge-base --is-ancestor "${baseline}" "${RELEASE_SHA}" \
-        || die 'target is not a forward release from the current baseline'
+    if [ "${baseline}" != "${RELEASE_SHA}" ]; then
+      baseline_is_compatible "${baseline}" \
+        || die "release is not compatible with the current target baseline ${baseline}"
     fi
   elif [ "${count}" -eq 2 ] && jq -e --arg target "${RELEASE_SHA}" 'index($target) != null' <<<"${labels}" >/dev/null; then
     baseline=$(jq -r --arg target "${RELEASE_SHA}" '.[] | select(. != $target)' <<<"${labels}")
-    git merge-base --is-ancestor "${baseline}" "${RELEASE_SHA}" \
-      || die 'partial release baseline is not an ancestor of target'
+    baseline_is_compatible "${baseline}" \
+      || die "release is not compatible with the partial target baseline ${baseline}"
   else
     die 'Cloud Run resources have divergent release state'
   fi

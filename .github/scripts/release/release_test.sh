@@ -8,6 +8,21 @@ temp_dir=$(mktemp -d "${TMPDIR:-/tmp}/nomnom-release-test.XXXXXX")
 trap 'rm -rf "${temp_dir}"' EXIT HUP INT TERM
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+# shellcheck source=.github/scripts/release/not_found.sh
+source "${repo_root}/.github/scripts/release/not_found.sh"
+
+status_fixture="${temp_dir}/not-found-status.txt"
+printf 'ERROR: (gcloud.artifacts.docker.images.describe) NOT_FOUND: image was not found.\n' > "${status_fixture}"
+not_found_status "${status_fixture}" || fail not-found-status
+printf 'ERROR: (gcloud...) PERMISSION_DENIED: Could not find valid credentials.\n' > "${status_fixture}"
+if not_found_status "${status_fixture}"; then
+  fail permission-error-not-not-found
+fi
+printf 'ERROR: (gcloud...) INVALID_ARGUMENT: The requested location does not exist.\n' > "${status_fixture}"
+if not_found_status "${status_fixture}"; then
+  fail invalid-argument-not-not-found
+fi
+
 git_dir="${temp_dir}/git"
 git init -q "${git_dir}"
 git -C "${git_dir}" config user.email test@example.invalid
@@ -130,6 +145,19 @@ state "${parent}" '' '' true false true
 preflight >/dev/null 2>&1 && fail baseline-with-missing
 state "${future}" "${future}" "${future}" true true true
 preflight >/dev/null 2>&1 && fail rollback
+state "${future}" "${future}" "${future}" true true true
+pinned_rollback_output="${temp_dir}/pinned-rollback-preflight.txt"
+if ! (
+  cd "${git_dir}"
+  RELEASE_SHA="${sha}" REQUESTED_SHA="${sha}" CONTROL_SHA="${future}" BUNDLE_FILE="${bundle}" RELEASE_STATE_FILE="${temp_dir}/state.json" \
+    REGISTRY="${TEST_REGISTRY:-registry.example}" OWNER=repo \
+    RELEASE_BASELINE_DIGESTS_FILE="${baseline_map}" ALLOW_RELEASE_FIXTURES=true \
+    bash "${script_dir}/release.sh" preflight
+) >"${pinned_rollback_output}" 2>&1; then
+  fail pinned-rollback-preflight
+fi
+[ "$(jq -r .baseline_sha "${pinned_rollback_output}")" = "${future}" ] \
+  || fail pinned-rollback-baseline
 state broken broken broken true true true
 preflight >/dev/null 2>&1 && fail malformed-label
 state "${parent}" "${parent}" "${sha}" true true true
@@ -204,7 +232,36 @@ if [ "${MOCK_REVISION_NOT_FOUND_ONCE:-false}" = true ] \
   && [ "${1:-}" = run ] && [ "${2:-}" = revisions ] && [ "${3:-}" = describe ] \
   && [ "${4:-}" = radar-ready ] && [ ! -e "${MOCK_REVISION_MARKER}" ]; then
   : > "${MOCK_REVISION_MARKER}"
-  printf 'NOT_FOUND\n' >&2
+  printf 'ERROR: (gcloud.run.revisions.describe) Cannot find revision [%s].\n' "${4:-}" >&2
+  exit 1
+fi
+if [ -n "${MOCK_MISSING_TARGET:-}" ] \
+  && [ "${1:-}" = run ] \
+  && { [ "${2:-}" = jobs ] || [ "${2:-}" = services ]; } \
+  && [ "${3:-}" = describe ] \
+  && [ "${4:-}" = "${MOCK_MISSING_TARGET}" ]; then
+  resource_kind=${2%s}
+  printf 'ERROR: (gcloud.run.%s.describe) Cannot find %s [%s].\n' \
+    "${2}" "${resource_kind}" "${4}" >&2
+  exit 1
+fi
+if [ -n "${MOCK_STATUS_COLLISION_TARGET:-}" ] \
+  && [ "${1:-}" = run ] \
+  && { [ "${2:-}" = jobs ] || [ "${2:-}" = services ]; } \
+  && [ "${3:-}" = describe ] \
+  && [ "${4:-}" = "${MOCK_STATUS_COLLISION_TARGET}" ]; then
+  resource_kind=${2%s}
+  printf 'ERROR: (gcloud.run.%s.describe) PERMISSION_DENIED: Cannot find %s [%s].\n' \
+    "${2}" "${resource_kind}" "${4}" >&2
+  exit 1
+fi
+if [ -n "${MOCK_DESCRIBE_ERROR_TARGET:-}" ] \
+  && [ "${1:-}" = run ] \
+  && { [ "${2:-}" = jobs ] || [ "${2:-}" = services ]; } \
+  && [ "${3:-}" = describe ] \
+  && [ "${4:-}" = "${MOCK_DESCRIBE_ERROR_TARGET}" ]; then
+  printf 'ERROR: (gcloud.run.%s.describe) PERMISSION_DENIED: Could not find valid credentials for %s.\n' \
+    "${2}" "${4}" >&2
   exit 1
 fi
 case "$*" in
@@ -227,7 +284,50 @@ esac
 exit 0
 MOCK
 chmod +x "${temp_dir}/bin/kubectl" "${temp_dir}/bin/gcloud"
-common_env=(PATH="${temp_dir}/bin:${PATH}" RELEASE_SHA="${sha}" BUNDLE_FILE="${bundle}" PROJECT_ID=test PROJECT_NUMBER=123456 REGION=region RUNTIME_SA_EMAIL=runtime@example.invalid ALLOWED_HOST=radar.example.invalid GOOGLE_OAUTH_CLIENT_ID=oauth MOCK_JOB_MANIFEST="${temp_dir}/captured-job.yaml" MOCK_MUTATION_MARKER="${temp_dir}/mutation.marker")
+release_functions="${temp_dir}/release-functions.sh"
+sed '/^case "${1:-}" in$/,$d' "${script_dir}/release.sh" > "${release_functions}"
+common_env=(PATH="${temp_dir}/bin:${PATH}" RELEASE_SHA="${sha}" BUNDLE_FILE="${bundle}" PROJECT_ID=test PROJECT_NUMBER=123456 REGION=region REGISTRY=registry.example OWNER=repo RUNTIME_SA_EMAIL=runtime@example.invalid ALLOWED_HOST=radar.example.invalid GOOGLE_OAUTH_CLIENT_ID=oauth MOCK_JOB_MANIFEST="${temp_dir}/captured-job.yaml" MOCK_MUTATION_MARKER="${temp_dir}/mutation.marker")
+assert_missing_cloud_run_target() {
+  local target=$1 snapshot_output preflight_output
+  snapshot_output=$(
+    cd "${git_dir}"
+    env "${common_env[@]}" MOCK_SHA="${sha}" MOCK_RADAR="${digest_a}" MOCK_GEOWORKER="${digest_b}" MOCK_CLEANUP="${digest_c}" \
+      MOCK_MISSING_TARGET="${target}" \
+      bash -c 'source "$1"; snapshot' "${script_dir}/release.sh" "${release_functions}"
+  )
+  jq -e --arg target "${target}" '.[$target].exists == false' <<<"${snapshot_output}" >/dev/null \
+    || fail "${target}-not-found-snapshot"
+  preflight_output="${temp_dir}/${target}-not-found-preflight.txt"
+  if ! env "${common_env[@]}" MOCK_SHA="${sha}" MOCK_RADAR="${digest_a}" MOCK_GEOWORKER="${digest_b}" MOCK_CLEANUP="${digest_c}" \
+    MOCK_MISSING_TARGET="${target}" \
+    bash "${script_dir}/release.sh" preflight >"${preflight_output}" 2>&1; then
+    fail "${target}-not-found-preflight"
+  fi
+}
+assert_missing_cloud_run_target device-cleanup
+assert_missing_cloud_run_target geoworker
+describe_error_output="${temp_dir}/describe-error-preflight.txt"
+if env "${common_env[@]}" MOCK_SHA="${sha}" MOCK_RADAR="${digest_a}" MOCK_GEOWORKER="${digest_b}" MOCK_CLEANUP="${digest_c}" \
+  MOCK_DESCRIBE_ERROR_TARGET=device-cleanup \
+  bash "${script_dir}/release.sh" preflight >"${describe_error_output}" 2>&1; then
+  fail describe-error-preflight-open
+fi
+grep -F 'cannot snapshot device-cleanup' "${describe_error_output}" >/dev/null \
+  || fail describe-error-source-message
+if grep -F 'invalid Cloud Run state' "${describe_error_output}" >/dev/null; then
+  fail describe-error-reached-jq
+fi
+status_collision_output="${temp_dir}/status-collision-preflight.txt"
+if env "${common_env[@]}" MOCK_SHA="${sha}" MOCK_RADAR="${digest_a}" MOCK_GEOWORKER="${digest_b}" MOCK_CLEANUP="${digest_c}" \
+  MOCK_STATUS_COLLISION_TARGET=device-cleanup \
+  bash "${script_dir}/release.sh" preflight >"${status_collision_output}" 2>&1; then
+  fail status-collision-preflight-open
+fi
+grep -F 'cannot snapshot device-cleanup' "${status_collision_output}" >/dev/null \
+  || fail status-collision-source-message
+if grep -F 'invalid Cloud Run state' "${status_collision_output}" >/dev/null; then
+  fail status-collision-reached-jq
+fi
 env "${common_env[@]}" TARGET_ENVIRONMENT=dev bash "${script_dir}/release.sh" deploy
 env "${common_env[@]}" TARGET_ENVIRONMENT=prod CLOUDFLARE_ORIGIN_SECRET='safe/+value=' bash "${script_dir}/release.sh" deploy
 [ -s "${temp_dir}/captured-job.yaml" ] || fail job-manifest-capture
@@ -303,6 +403,13 @@ if [ "${MOCK_INVALID_DIGEST:-false}" = true ]; then
   printf 'registry.example/repo/radar:latest\n'
   exit 0
 fi
+if [ -n "${MOCK_MISSING_IMAGE_TARGET:-}" ]; then
+  case "$*" in
+    *"artifacts docker images describe registry.example/repo/${MOCK_MISSING_IMAGE_TARGET}:${MOCK_CANDIDATE_SHA}"*)
+      printf 'ERROR: (gcloud.artifacts.docker.images.describe) NOT_FOUND: requested image was not found.\n' >&2
+      exit 1 ;;
+  esac
+fi
 case "$*" in
   *"artifacts docker images describe registry.example/repo/radar:${MOCK_CANDIDATE_SHA}"*)
     printf 'registry.example/repo/radar@sha256:%s\n' "$(printf 'a%.0s' {1..64})" ;;
@@ -310,7 +417,7 @@ case "$*" in
     printf 'registry.example/repo/geoworker@sha256:%s\n' "$(printf 'b%.0s' {1..64})" ;;
   *"artifacts docker images describe registry.example/repo/device-cleanup:${MOCK_CANDIDATE_SHA}"*)
     printf 'registry.example/repo/device-cleanup@sha256:%s\n' "$(printf 'c%.0s' {1..64})" ;;
-  *) echo 'NOT_FOUND' >&2; exit 1 ;;
+  *) printf 'ERROR: (gcloud.artifacts.docker.images.describe) NOT_FOUND: requested image was not found.\n' >&2; exit 1 ;;
 esac
 MOCK
 cat > "${resolver_bin}/gh" <<'MOCK'
@@ -318,6 +425,21 @@ cat > "${resolver_bin}/gh" <<'MOCK'
 exit 0
 MOCK
 chmod +x "${resolver_bin}/gcloud" "${resolver_bin}/gh"
+run_resolver() {
+  local control_sha=$1 output_file=$2 requested_sha=${3:-} missing_image_target=${4:-}
+  (
+    cd "${resolver_dir}"
+    PATH="${resolver_bin}:${PATH}" \
+      CONTROL_SHA="${control_sha}" REQUESTED_SHA="${requested_sha}" \
+      DEV_PROJECT_ID=test DEV_REGISTRY=registry.example OWNER=repo \
+      GITHUB_REPOSITORY=repo/test GITHUB_OUTPUT="${output_file}" \
+      RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
+      MOCK_MISSING_IMAGE_TARGET="${missing_image_target}" \
+      TARGETS_FILE="${repo_root}/.github/scripts/release/targets.json" \
+      IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
+      bash "${script_dir}/release.sh" resolve-candidate
+  )
+}
 resolver_output="${temp_dir}/resolver-output"
 resolver_bundle="${temp_dir}/resolver-bundle.json"
 (
@@ -338,6 +460,22 @@ expected_targets=$(jq -c 'keys | sort' "${repo_root}/.github/scripts/release/tar
 jq -e --arg sha "${resolver_candidate}" --argjson expected "${expected_targets}" \
   '.release_sha == $sha and (.images | keys | sort) == $expected' "${resolver_bundle}" >/dev/null \
   || fail resolver-bundle-content
+resolver_unrelated=$(git -C "${resolver_dir}" commit-tree "$(git -C "${resolver_dir}" rev-parse "${resolver_control}^{tree}")" -m unrelated)
+resolver_pin_non_ancestor_output="${temp_dir}/resolver-pin-non-ancestor-output"
+if run_resolver "${resolver_control}" "${temp_dir}/resolver-pin-non-ancestor-env" "${resolver_unrelated}" \
+  >"${resolver_pin_non_ancestor_output}" 2>&1; then
+  fail resolver-pin-non-ancestor-open
+fi
+grep -F 'not an ancestor' "${resolver_pin_non_ancestor_output}" >/dev/null \
+  || fail resolver-pin-non-ancestor-message
+resolver_pin_incomplete_output="${temp_dir}/resolver-pin-incomplete-output"
+if run_resolver "${resolver_control}" "${temp_dir}/resolver-pin-incomplete-env" "${resolver_candidate}" device-cleanup \
+  >"${resolver_pin_incomplete_output}" 2>&1; then
+  fail resolver-pin-incomplete-open
+fi
+grep -F "pinned candidate ${resolver_candidate} has no complete attested image set" \
+  "${resolver_pin_incomplete_output}" >/dev/null \
+  || fail resolver-pin-incomplete-message
 
 resolver_git_fail_bin="${temp_dir}/resolver-git-fail-bin"
 mkdir -p "${resolver_git_fail_bin}"
@@ -437,6 +575,13 @@ printf 'release-impact\n' > "${resolver_dir}/Dockerfile"
 git -C "${resolver_dir}" add Dockerfile
 git -C "${resolver_dir}" commit -q -m release-impact
 resolver_impact_control=$(git -C "${resolver_dir}" rev-parse HEAD)
+resolver_pinned_output="${temp_dir}/resolver-pinned-output"
+run_resolver "${resolver_impact_control}" "${resolver_pinned_output}" "${resolver_candidate}"
+grep -F "release_sha=${resolver_candidate}" "${resolver_pinned_output}" >/dev/null \
+  || fail resolver-pinned-sha
+resolver_pinned_bundle=$(sed -n 's/^path=//p' "${resolver_pinned_output}")
+jq -e --arg sha "${resolver_candidate}" '.release_sha == $sha' "${resolver_pinned_bundle}" >/dev/null \
+  || fail resolver-pinned-bundle
 if (
   cd "${resolver_dir}"
   PATH="${resolver_bin}:${PATH}" \
@@ -504,6 +649,91 @@ printf '%s\n' "${goose_version}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || fail 
 workflow="${repo_root}/.github/workflows/release-cloud-run.yml"
 ci_workflow="${repo_root}/.github/workflows/ci.yml"
 operations_workflow="${repo_root}/.github/workflows/cloud-run-operations.yml"
+
+# Execute the production promotion step with mocked registry tools so a
+# permission error cannot silently authorize a gcrane copy.
+promote_run="${temp_dir}/promote-run.sh"
+ruby -ryaml -e '
+  workflow = YAML.load_file(ARGV.fetch(0))
+  run = workflow.fetch("jobs").fetch("release").fetch("steps").find { |step| step.fetch("name") == "Promote exact digests to prod" }.fetch("run")
+  print run
+' "${workflow}" > "${promote_run}"
+promote_targets="${temp_dir}/promote-targets.json"
+printf '{"radar":{"kind":"service","overlay":"radar","order":1}}\n' > "${promote_targets}"
+promote_runner="${temp_dir}/promote-runner"
+promote_bin="${temp_dir}/promote-bin"
+mkdir -p "${promote_runner}/gcrane" "${promote_bin}"
+cat > "${promote_bin}/gcloud" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "${1:-}" = auth ]; then
+  exit 0
+fi
+if [ "${1:-}" = artifacts ] && [ "${2:-}" = docker ] && [ "${3:-}" = images ] && [ "${4:-}" = describe ]; then
+  count=0
+  if [ -f "${MOCK_PROMOTE_DESCRIBE_COUNT}" ]; then
+    count=$(<"${MOCK_PROMOTE_DESCRIBE_COUNT}")
+  fi
+  count=$((count + 1))
+  printf '%s\n' "${count}" > "${MOCK_PROMOTE_DESCRIBE_COUNT}"
+  if [ "${count}" -eq 1 ]; then
+    case "${MOCK_PROMOTE_ERROR:-}" in
+      permission)
+        printf 'ERROR: (gcloud.artifacts.docker.images.describe) PERMISSION_DENIED: Could not find valid credentials.\n' >&2
+        exit 1
+        ;;
+      not-found)
+        printf 'ERROR: (gcloud.artifacts.docker.images.describe) NOT_FOUND: requested image was not found.\n' >&2
+        exit 1
+        ;;
+    esac
+  fi
+  printf '%s\n' "${MOCK_PROMOTE_IMAGE}"
+  exit 0
+fi
+printf 'unexpected gcloud invocation: %s\n' "$*" >&2
+exit 1
+MOCK
+cat > "${promote_runner}/gcrane/gcrane" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "${1:-}" != copy ] \
+  || [ "${2:-}" != "${MOCK_PROMOTE_EXPECTED_SOURCE}" ] \
+  || [ "${3:-}" != "${MOCK_PROMOTE_EXPECTED_DESTINATION}" ] \
+  || [ "$#" -ne 3 ]; then
+  printf 'unexpected gcrane invocation: %s\n' "$*" >&2
+  exit 1
+fi
+: > "${MOCK_PROMOTE_COPY_MARKER}"
+MOCK
+chmod +x "${promote_bin}/gcloud" "${promote_runner}/gcrane/gcrane"
+promote_image="prod.example/repo/radar@sha256:$(printf 'a%.0s' {1..64})"
+promote_source="${digest_a}"
+promote_destination="prod.example/repo/radar:${sha}"
+run_promote() {
+  local error_mode=$1 copy_marker=$2 describe_count=$3 output_file=$4
+  (
+    cd "${repo_root}"
+    PATH="${promote_bin}:${PATH}" \
+      OWNER=repo DEV_REGISTRY=dev.example REGISTRY=prod.example PROJECT_ID=test \
+      SOURCE_BUNDLE="${bundle}" RELEASE_SHA="${sha}" TARGETS_FILE="${promote_targets}" \
+      RUNNER_TEMP="${promote_runner}" GITHUB_OUTPUT="${output_file}" \
+      MOCK_PROMOTE_ERROR="${error_mode}" MOCK_PROMOTE_COPY_MARKER="${copy_marker}" \
+      MOCK_PROMOTE_DESCRIBE_COUNT="${describe_count}" MOCK_PROMOTE_IMAGE="${promote_image}" \
+      MOCK_PROMOTE_EXPECTED_SOURCE="${promote_source}" MOCK_PROMOTE_EXPECTED_DESTINATION="${promote_destination}" \
+      bash "${promote_run}"
+  )
+}
+promote_permission_marker="${temp_dir}/promote-permission-copy.marker"
+if run_promote permission "${promote_permission_marker}" "${temp_dir}/promote-permission-count" "${temp_dir}/promote-permission-output" >/dev/null 2>&1; then
+  fail prod-promote-permission-accepted
+fi
+[ ! -e "${promote_permission_marker}" ] || fail prod-promote-copy-after-permission
+promote_not_found_marker="${temp_dir}/promote-not-found-copy.marker"
+run_promote not-found "${promote_not_found_marker}" "${temp_dir}/promote-not-found-count" "${temp_dir}/promote-not-found-output" >/dev/null 2>&1 \
+  || fail prod-promote-not-found-fallback
+[ -e "${promote_not_found_marker}" ] || fail prod-promote-copy-missing
+
 grep -F 'group: candidate-${{ github.sha }}-${{ matrix.target }}' "${ci_workflow}" >/dev/null || fail matrix-concurrency-scope
 ! grep -F 'verified=false' "${repo_root}/.github/scripts/release/release.sh" >/dev/null || fail attestation-fallback
 grep -F 'has no valid attestation for' "${repo_root}/.github/scripts/release/release.sh" >/dev/null || fail attestation-fail-closed
@@ -532,14 +762,24 @@ ruby -ryaml -e '
   raise "attestation finalization order" unless publish_names.index(attest.fetch("name")) < publish_names.index(verify.fetch("name")) && publish_names.index(verify.fetch("name")) < publish_names.index(finalize.fetch("name"))
   raise "existing attestation fail-closed" unless verify.fetch("run").include?("Existing SHA tag")
   raise "staging cleanup command" unless finalize.fetch("run").include?("artifacts docker tags delete")
+  workflow_dispatch = release.fetch(true).fetch("workflow_dispatch")
+  release_sha_input = workflow_dispatch.fetch("inputs").fetch("release_sha")
+  raise "release sha input required" unless release_sha_input.fetch("required") == false
+  raise "release sha input default" unless release_sha_input.fetch("default") == ""
+  raise "release sha input type" unless release_sha_input.fetch("type") == "string"
+  release_env = release.fetch("jobs").fetch("release").fetch("env")
+  raise "requested sha env" unless release_env.fetch("REQUESTED_SHA") == "${{ inputs.release_sha }}"
   steps = release.fetch("jobs").fetch("release").fetch("steps")
   names = steps.map { |step| step.fetch("name") }
+  raise "release sha inline" if steps.any? { |step| step.fetch("run", "").include?("${{ inputs.release_sha }}") }
   raise "registry auth order" unless names.index("Configure dev Registry auth") < names.index("Resolve and verify candidate digests")
   raise "mutation guard order" unless names.index("Recheck current main before mutation") < names.index("Promote exact digests to prod")
   preflight = steps.find { |step| step.fetch("name") == "Preflight target state" }
   promote = steps.find { |step| step.fetch("name") == "Promote exact digests to prod" }
   raise "preflight unconditional" unless preflight["if"].nil?
   raise "preflight order" unless names.index(preflight.fetch("name")) < names.index(promote.fetch("name"))
+  migrations = steps.find { |step| step.fetch("name") == "Detect migration phases" }
+  raise "migration pin guard" unless migrations.fetch("run").include?("REQUESTED_SHA")
   task = job.fetch("spec").fetch("template").fetch("spec").fetch("template").fetch("spec")
   container = task.fetch("containers").first
   raise "job secret" unless container.fetch("env").any? { |env| env.fetch("name") == "POSTGRES_MASTER_DSN" }
@@ -552,6 +792,13 @@ ruby -ryaml -e '
   operation_steps = operation.fetch("steps")
   validate = operation_steps.find { |step| step.fetch("name") == "Validate operation configuration" }
   raise "operation current-main guard" unless validate.fetch("run").include?("git/ref/heads/main")
+  checkout = operation_steps.find { |step| step.fetch("name") == "Checkout trusted operations automation" }
+  raise "operation checkout pinned" unless checkout.fetch("uses") =~ %r{\Aactions/checkout@[0-9a-f]{40}\z}
+  raise "operation checkout ref" unless checkout.fetch("with").fetch("ref") == "${{ github.sha }}"
+  raise "operation checkout credentials" unless checkout.fetch("with").fetch("persist-credentials") == false
+  operation_names = operation_steps.map { |step| step.fetch("name") }
+  auth = operation_steps.find { |step| step.fetch("name") == "Google Auth" }
+  raise "operation checkout order" unless operation_names.index(validate.fetch("name")) < operation_names.index(checkout.fetch("name")) && operation_names.index(checkout.fetch("name")) < operation_names.index(auth.fetch("name"))
 ' "${repo_root}/.github/workflows/ci.yml" "${workflow}" "${repo_root}/deploy/cloud-run/jobs/device-cleanup.yaml" "${operations_workflow}"
 
 printf 'release checks: PASS\n'
