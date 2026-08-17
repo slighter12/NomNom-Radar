@@ -23,6 +23,31 @@ if not_found_status "${status_fixture}"; then
   fail invalid-argument-not-not-found
 fi
 
+image_fixture="${temp_dir}/image-not-found.txt"
+# Command: gcloud artifacts docker images describe <image-ref>
+# Source: Go CI run 32002042274, observed 2026-08-17.
+printf 'ERROR: (gcloud.artifacts.docker.images.describe) Image not found.\n' > "${image_fixture}"
+image_not_found "${image_fixture}" || fail image-not-found-real-ar
+
+# Command: gcloud artifacts docker images describe <image-ref>
+# Source: synthetic NOT_FOUND status-contract fixture; no production capture claimed.
+printf 'ERROR: (gcloud.artifacts.docker.images.describe) NOT_FOUND: requested image was not found.\n' > "${image_fixture}"
+image_not_found "${image_fixture}" || fail image-not-found-status
+
+# Command: gcloud artifacts docker images describe <image-ref>
+# Source: synthetic status-collision fixture; no production capture claimed.
+printf 'ERROR: (gcloud.artifacts.docker.images.describe) PERMISSION_DENIED: Image not found.\n' > "${image_fixture}"
+if image_not_found "${image_fixture}"; then
+  fail image-not-found-permission-collision
+fi
+
+# Command: gcloud artifacts docker images describe <image-ref>
+# Source: synthetic permission-error fixture; no production capture claimed.
+printf 'ERROR: (gcloud.artifacts.docker.images.describe) PERMISSION_DENIED: Could not find valid credentials.\n' > "${image_fixture}"
+if image_not_found "${image_fixture}"; then
+  fail image-not-found-permission-error
+fi
+
 git_dir="${temp_dir}/git"
 git init -q "${git_dir}"
 git -C "${git_dir}" config user.email test@example.invalid
@@ -406,7 +431,7 @@ fi
 if [ -n "${MOCK_MISSING_IMAGE_TARGET:-}" ]; then
   case "$*" in
     *"artifacts docker images describe registry.example/repo/${MOCK_MISSING_IMAGE_TARGET}:${MOCK_CANDIDATE_SHA}"*)
-      printf 'ERROR: (gcloud.artifacts.docker.images.describe) NOT_FOUND: requested image was not found.\n' >&2
+      printf 'ERROR: (gcloud.artifacts.docker.images.describe) Image not found.\n' >&2
       exit 1 ;;
   esac
 fi
@@ -417,7 +442,7 @@ case "$*" in
     printf 'registry.example/repo/geoworker@sha256:%s\n' "$(printf 'b%.0s' {1..64})" ;;
   *"artifacts docker images describe registry.example/repo/device-cleanup:${MOCK_CANDIDATE_SHA}"*)
     printf 'registry.example/repo/device-cleanup@sha256:%s\n' "$(printf 'c%.0s' {1..64})" ;;
-  *) printf 'ERROR: (gcloud.artifacts.docker.images.describe) NOT_FOUND: requested image was not found.\n' >&2; exit 1 ;;
+  *) printf 'ERROR: (gcloud.artifacts.docker.images.describe) Image not found.\n' >&2; exit 1 ;;
 esac
 MOCK
 cat > "${resolver_bin}/gh" <<'MOCK'
@@ -683,7 +708,7 @@ if [ "${1:-}" = artifacts ] && [ "${2:-}" = docker ] && [ "${3:-}" = images ] &&
         exit 1
         ;;
       not-found)
-        printf 'ERROR: (gcloud.artifacts.docker.images.describe) NOT_FOUND: requested image was not found.\n' >&2
+        printf 'ERROR: (gcloud.artifacts.docker.images.describe) Image not found.\n' >&2
         exit 1
         ;;
     esac

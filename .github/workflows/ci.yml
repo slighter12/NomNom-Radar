@@ -170,7 +170,7 @@ jobs:
             } >> "${GITHUB_OUTPUT}"
             exit 0
           fi
-          if ! not_found_status "${describe_error}"; then
+          if ! image_not_found "${describe_error}"; then
             cat "${describe_error}" >&2
             rm -f "${describe_error}"
             echo "::error::Unable to inspect candidate image for ${TARGET}."
