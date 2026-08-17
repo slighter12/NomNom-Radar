@@ -48,6 +48,13 @@ if image_not_found "${image_fixture}"; then
   fail image-not-found-permission-error
 fi
 
+# Command: gcloud artifacts docker images describe <image-ref>
+# Source: synthetic unlisted-status fixture; no production capture claimed.
+printf 'ERROR: (gcloud.artifacts.docker.images.describe) DEADLINE_EXCEEDED: Image not found.\n' > "${image_fixture}"
+if image_not_found "${image_fixture}"; then
+  fail image-not-found-unlisted-status
+fi
+
 git_dir="${temp_dir}/git"
 git init -q "${git_dir}"
 git -C "${git_dir}" config user.email test@example.invalid
