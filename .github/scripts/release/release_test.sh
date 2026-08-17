@@ -175,7 +175,7 @@ state "${sha}" '' '' true false true
 expect_empty_baseline target-missing-unlabeled
 state "${parent}" '' '' true false true
 expect_empty_baseline stale-label-with-missing
-state '' '' '' true true false
+state '' '' '' true true true
 expect_empty_baseline handover-from-unlabeled-fleet
 state "${future}" "${future}" "${future}" true true true
 preflight >/dev/null 2>&1 && fail rollback
