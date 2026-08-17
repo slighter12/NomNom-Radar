@@ -761,6 +761,14 @@ ruby -ryaml -e '
   operation_steps = operation.fetch("steps")
   validate = operation_steps.find { |step| step.fetch("name") == "Validate operation configuration" }
   raise "operation current-main guard" unless validate.fetch("run").include?("git/ref/heads/main")
+  checkout = operation_steps.find { |step| step.fetch("name") == "Checkout trusted operations automation" }
+  raise "operation checkout action" unless checkout.fetch("uses") == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+  raise "operation checkout ref" unless checkout.fetch("with").fetch("ref") == "${{ github.sha }}"
+  raise "operation checkout depth" unless checkout.fetch("with").fetch("fetch-depth") == 1
+  raise "operation checkout credentials" unless checkout.fetch("with").fetch("persist-credentials") == false
+  operation_names = operation_steps.map { |step| step.fetch("name") }
+  auth = operation_steps.find { |step| step.fetch("name") == "Google Auth" }
+  raise "operation checkout order" unless operation_names.index(validate.fetch("name")) < operation_names.index(checkout.fetch("name")) && operation_names.index(checkout.fetch("name")) < operation_names.index(auth.fetch("name"))
 ' "${repo_root}/.github/workflows/ci.yml" "${workflow}" "${repo_root}/deploy/cloud-run/jobs/device-cleanup.yaml" "${operations_workflow}"
 
 printf 'release checks: PASS\n'
