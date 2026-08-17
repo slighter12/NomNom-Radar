@@ -124,7 +124,7 @@ resolve_candidate_image() {
     --project="${DEV_PROJECT_ID}" --format='value(image_summary.fully_qualified_digest)' 2>"${error_file}"); then
     rm -f "${error_file}"
   else
-    if not_found_status "${error_file}"; then
+    if image_not_found "${error_file}"; then
       rm -f "${error_file}"
       return 1
     fi
@@ -226,8 +226,7 @@ not_found() {
   not_found_status "$3" && return 0
   # Cloud Run renders not-found without a status token. Explicitly reject
   # other gcloud status codes before accepting its resource-specific wording.
-  grep -Eq '(^|[[:space:]])(PERMISSION_DENIED|UNAUTHENTICATED|INVALID_ARGUMENT|FAILED_PRECONDITION|RESOURCE_EXHAUSTED|UNAVAILABLE|INTERNAL|ABORTED|UNKNOWN)([:[:space:]]|$)' "$3" \
-    && return 1
+  other_gcloud_status "$3" && return 1
   grep -Fqi "Cannot find $1 [$2]" "$3"
 }
 

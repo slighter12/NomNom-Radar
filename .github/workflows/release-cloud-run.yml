@@ -232,7 +232,7 @@ jobs:
                 exit 1
               }
             else
-              not_found_status "${describe_error}" || {
+              image_not_found "${describe_error}" || {
                 cat "${describe_error}" >&2
                 rm -f "${describe_error}"
                 echo "::error::Unable to inspect prod image: ${target}"
