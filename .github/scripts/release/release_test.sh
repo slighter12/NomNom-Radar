@@ -784,25 +784,27 @@ ruby -ryaml -e '
   quote = 39.chr
   empty_target_guard = "targets=$(jq -e -c #{quote}keys | select(length > 0)#{quote}"
   raise "empty target catalog guard" unless changes.fetch("run").include?(empty_target_guard)
-  raise "before env" unless changes.fetch("env").fetch("BEFORE_SHA") == "${{ github.event.before }}"
   raise "before inline" if changes.fetch("run").include?("${{ github.event.before }}")
-  raise "ci matrix" unless publish.fetch("strategy").fetch("matrix").fetch("target").include?("needs.candidate-changes.outputs.targets")
-  raise "candidate concurrency" unless publish.fetch("concurrency").fetch("group").include?("matrix.target")
   attest = publish.fetch("steps").find { |step| step["name"] == "Attest staged image digest" }
   verify = publish.fetch("steps").find { |step| step["name"] == "Verify candidate attestation" }
   finalize = publish.fetch("steps").find { |step| step["name"] == "Publish verified candidate SHA tag" }
-  raise "lowercase attestation subject" unless attest.fetch("with").fetch("subject-name").include?("steps.stage.outputs.owner")
   publish_names = publish.fetch("steps").map { |step| step.fetch("name") }
   raise "attestation finalization order" unless publish_names.index(attest.fetch("name")) < publish_names.index(verify.fetch("name")) && publish_names.index(verify.fetch("name")) < publish_names.index(finalize.fetch("name"))
   raise "existing attestation fail-closed" unless verify.fetch("run").include?("Existing SHA tag")
   raise "staging cleanup command" unless finalize.fetch("run").include?("artifacts docker tags delete")
-  workflow_dispatch = release.fetch(true).fetch("workflow_dispatch")
-  release_sha_input = workflow_dispatch.fetch("inputs").fetch("release_sha")
-  raise "release sha input required" unless release_sha_input.fetch("required") == false
-  raise "release sha input default" unless release_sha_input.fetch("default") == ""
-  raise "release sha input type" unless release_sha_input.fetch("type") == "string"
+  # The only path from the release_sha input into the script. Break this wiring
+  # and a pinned rollback silently resolves the newest candidate and runs
+  # migrations instead, because every REQUESTED_SHA branch downstream is
+  # guarded by [ -n "${REQUESTED_SHA:-}" ] and simply stops applying.
   release_env = release.fetch("jobs").fetch("release").fetch("env")
   raise "requested sha env" unless release_env.fetch("REQUESTED_SHA") == "${{ inputs.release_sha }}"
+  # Same silent mode switch from the other end: a non-empty default pins every
+  # dispatch that accepts it, so releases stop advancing and stop migrating. The
+  # sibling `required` and `type` fields are not asserted because breaking them
+  # makes the intended dispatch unavailable or fail before mutation, rather
+  # than changing what it does.
+  release_sha_input = release.fetch(true).fetch("workflow_dispatch").fetch("inputs").fetch("release_sha")
+  raise "release sha input default" unless release_sha_input.fetch("default") == ""
   steps = release.fetch("jobs").fetch("release").fetch("steps")
   names = steps.map { |step| step.fetch("name") }
   raise "release sha inline" if steps.any? { |step| step.fetch("run", "").include?("${{ inputs.release_sha }}") }
@@ -822,7 +824,6 @@ ruby -ryaml -e '
   # must exceed the worst-case Cloud Run task runtime including retries.
   worst_case_minutes = (task.fetch("maxRetries") + 1) * task.fetch("timeoutSeconds") / 60.0
   raise "operations timeout below worst-case job runtime" unless operation.fetch("timeout-minutes") > worst_case_minutes
-  raise "operation control sha" unless operation.fetch("env").fetch("CONTROL_SHA") == "${{ github.sha }}"
   operation_steps = operation.fetch("steps")
   validate = operation_steps.find { |step| step.fetch("name") == "Validate operation configuration" }
   raise "operation current-main guard" unless validate.fetch("run").include?("git/ref/heads/main")

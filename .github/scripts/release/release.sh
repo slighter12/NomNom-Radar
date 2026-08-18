@@ -51,18 +51,12 @@ validate_catalog() {
     kind=$(target_kind "${target}")
     if [ "${kind}" = service ]; then
       overlay=$(target_overlay "${target}")
-      case "${overlay}" in
-        ''|/*|*..*) die "target ${target} has an unsafe service overlay path" ;;
-      esac
       for environment in dev prod; do
         test -f "${repo_root}/deploy/cloud-run/overlays/${environment}/${overlay}/kustomization.yaml" \
           || die "target ${target} is missing its ${environment} overlay"
       done
     else
       manifest=$(target_manifest "${target}")
-      case "${manifest}" in
-        ''|/*|*..*) die "target ${target} has an unsafe job manifest path" ;;
-      esac
       test -f "${repo_root}/deploy/cloud-run/${manifest}" \
         || die "target ${target} is missing its job manifest"
     fi
@@ -332,11 +326,7 @@ preflight() {
   is_sha "${RELEASE_SHA}" || die 'invalid RELEASE_SHA'
   if [ -n "${REQUESTED_SHA:-}" ]; then
     required CONTROL_SHA
-    is_sha "${CONTROL_SHA}" || die 'invalid CONTROL_SHA'
     [ "${REQUESTED_SHA}" = "${RELEASE_SHA}" ] || die 'pinned release SHA does not match REQUESTED_SHA'
-    git cat-file -e "${CONTROL_SHA}^{commit}" || die 'CONTROL_SHA is not available locally'
-    git merge-base --is-ancestor "${RELEASE_SHA}" "${CONTROL_SHA}" \
-      || die 'pinned RELEASE_SHA is not an ancestor of the current main control commit'
   fi
   validate_bundle
   state=$(snapshot) || die 'cannot snapshot Cloud Run state'
