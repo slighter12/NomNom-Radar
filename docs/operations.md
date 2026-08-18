@@ -240,9 +240,10 @@ Candidate variables are `GCP_DEV_PROJECT_ID`, `GCP_DEV_REGISTRY`, and
 `GOOGLEOAUTH_CLIENTID`, and `HTTP_ALLOWEDHOST`.
 
 `GCP_SA_EMAIL` is the Cloud Run runtime identity.
-`GCP_SCHEDULER_SA_EMAIL` must be a different scheduler caller identity with
-only job-scoped `roles/run.invoker` on `device-cleanup`. The operations
-identity needs scheduler edit permission and `actAs` on that scheduler caller.
+`GCP_SCHEDULER_SA_EMAIL` must be a different identity, and its permission to
+invoke Cloud Run must be limited to `device-cleanup` alone. Nothing in this
+repository grants that permission, so the scope has to be established outside
+it.
 
 The prod GitHub Environment continues to hold `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ORIGIN_SECRET`; `CLOUDFLARE_ZONE_ID` and

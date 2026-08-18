@@ -67,10 +67,10 @@ Use `Cloud Run Operations` with
 Job-specific prerequisites:
 
 - `cloudscheduler.googleapis.com` is enabled in the target project.
-- The operations identity can edit scheduler jobs and `actAs` the configured
+- The operations identity can edit scheduler jobs and act as the configured
   scheduler caller.
-- `GCP_SCHEDULER_SA_EMAIL` differs from the Cloud Run runtime identity and has
-  only job-scoped `roles/run.invoker` on `device-cleanup`.
+- `GCP_SCHEDULER_SA_EMAIL` differs from the Cloud Run runtime identity, and its
+  permission to invoke Cloud Run is limited to `device-cleanup` alone.
 
 The workflow describes the fixed job first, updates it when it exists, and
 creates it only when the describe returns NOT_FOUND. It does not grant IAM.
