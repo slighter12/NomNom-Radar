@@ -182,6 +182,19 @@ actor who triggered the run must not approve it. Before approval, the reviewer
 must confirm the run's `github.sha` is the current remote `main` HEAD. Dev may
 remain main-only without a required reviewer.
 
+`Release Cloud Run` also runs automatically against dev after every successful
+`Go CI` build of `main`, and stops before the first mutation. The optional
+`dry_run` input performs the same read-only pass on demand, which is the cheap
+way to check a prod release before requesting reviewer approval. A dry run
+resolves the candidate, runs preflight, selects migration phases, and for prod
+also verifies dev, then skips promotion, migrations, deployment, and release
+verification. It never promotes, migrates, or deploys.
+
+Every step that mutates opts out of a dry run explicitly, and `release_test.sh`
+fails if a step invoking `release.sh deploy`, `gcrane copy`, or `goose up` lacks
+that guard. Because the automatic run only fires after `Go CI` succeeds, the
+new commit already has candidate images to resolve.
+
 A release processes the complete bundle in this order:
 
 1. For prod, verify dev and copy exact digests into the prod registry.
@@ -243,6 +256,31 @@ Candidate variables are `GCP_DEV_PROJECT_ID`, `GCP_DEV_REGISTRY`, and
 `GCP_SCHEDULER_SA_EMAIL` must be a different scheduler caller identity with
 only job-scoped `roles/run.invoker` on `device-cleanup`. The operations
 identity needs scheduler edit permission and `actAs` on that scheduler caller.
+
+### Cross-project grants for the prod release identity
+
+Promotion reads dev and writes prod, so the prod `GCP_RELEASE_SA_KEY` identity
+needs read access in the dev project. Without it a prod release stops at
+`Resolve and verify candidate digests` with `PERMISSION_DENIED` on
+`artifactregistry.repositories.get`. The classifier refuses to read that as a
+missing image, so the run fails closed instead of resolving an older candidate.
+
+| Role on the dev project | Required by |
+|------|------|
+| `roles/artifactregistry.reader` | `Resolve and verify candidate digests`, attestation verification, and the `gcrane` copy source |
+| `roles/run.viewer` | `Final prod gate against dev`, which snapshots dev Cloud Run state |
+
+```bash
+for role in roles/artifactregistry.reader roles/run.viewer; do
+  gcloud projects add-iam-policy-binding "${DEV_PROJECT_ID}" \
+    --member="serviceAccount:${PROD_RELEASE_SA}" \
+    --role="${role}"
+done
+```
+
+Creating these bindings requires `roles/resourcemanager.projectIamAdmin` or
+`roles/owner` on the dev project. `roles/editor` is not sufficient because it
+excludes `setIamPolicy`.
 
 The prod GitHub Environment continues to hold `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ORIGIN_SECRET`; `CLOUDFLARE_ZONE_ID` and

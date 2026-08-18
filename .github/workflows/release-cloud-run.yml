@@ -1,6 +1,14 @@
 name: Release Cloud Run
 
 on:
+  # A dry run after every green main build keeps the read-only half of this
+  # workflow exercised, so a break surfaces minutes after merge instead of
+  # whenever someone next deploys. Waiting for Go CI rather than the push
+  # itself guarantees the new commit already has candidate images to resolve.
+  workflow_run:
+    workflows: [Go CI]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       environment:
@@ -13,6 +21,11 @@ on:
         required: false
         default: ""
         type: string
+      dry_run:
+        description: "Run the read-only checks and stop before the first mutation"
+        required: false
+        default: false
+        type: boolean
 
 env:
   GCRANE_VERSION: v0.21.9
@@ -20,19 +33,23 @@ env:
 
 jobs:
   release:
-    name: Release current candidate to ${{ inputs.environment }}
+    name: ${{ (github.event_name == 'workflow_run' || inputs.dry_run) && 'Dry run against' || 'Release current candidate to' }} ${{ inputs.environment || 'dev' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    environment: ${{ inputs.environment }}
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    environment: ${{ inputs.environment || 'dev' }}
+    # A dry run mutates nothing, so it must never queue behind or block a real
+    # release; a newer one supersedes the one it overtakes.
     concurrency:
-      group: cloud-run-release
-      cancel-in-progress: false
+      group: cloud-run-release${{ (github.event_name == 'workflow_run' || inputs.dry_run) && '-dry-run' || '' }}
+      cancel-in-progress: ${{ github.event_name == 'workflow_run' || inputs.dry_run }}
     permissions:
       contents: read
       attestations: read
     env:
       CONTROL_SHA: ${{ github.sha }}
-      TARGET_ENVIRONMENT: ${{ inputs.environment }}
+      TARGET_ENVIRONMENT: ${{ inputs.environment || 'dev' }}
+      DRY_RUN: ${{ github.event_name == 'workflow_run' || inputs.dry_run }}
       REQUESTED_SHA: ${{ inputs.release_sha }}
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       PROJECT_NUMBER: ${{ vars.GCP_PROJECT_NUMBER }}
@@ -78,7 +95,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # Staleness only matters when something is about to change, and an
+      # automatic dry run can be overtaken by the next merge while it queues.
+      # Failing it there would train operators to ignore a red dry run.
       - name: Require current remote main HEAD
+        if: env.DRY_RUN != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -169,7 +190,7 @@ jobs:
           go install "github.com/pressly/goose/v3/cmd/goose@${goose_version}"
 
       - name: Install pinned gcrane
-        if: inputs.environment == 'prod'
+        if: env.TARGET_ENVIRONMENT == 'prod'
         run: |
           set -euo pipefail
           archive="${RUNNER_TEMP}/go-containerregistry.tar.gz"
@@ -184,7 +205,7 @@ jobs:
           test -x "${RUNNER_TEMP}/gcrane/gcrane"
 
       - name: Final prod gate against dev
-        if: inputs.environment == 'prod'
+        if: env.TARGET_ENVIRONMENT == 'prod'
         env:
           PROJECT_ID: ${{ env.DEV_PROJECT_ID }}
           REGION: ${{ env.DEV_REGION }}
@@ -194,6 +215,7 @@ jobs:
         run: bash .github/scripts/release/release.sh verify
 
       - name: Recheck current main before mutation
+        if: env.DRY_RUN != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -205,7 +227,7 @@ jobs:
           }
 
       - name: Promote exact digests to prod
-        if: inputs.environment == 'prod'
+        if: env.TARGET_ENVIRONMENT == 'prod' && env.DRY_RUN != 'true'
         id: promote
         env:
           SOURCE_BUNDLE: ${{ steps.candidate.outputs.path }}
@@ -253,7 +275,7 @@ jobs:
           echo "path=${bundle}" >> "${GITHUB_OUTPUT}"
 
       - name: Run selected migration phases
-        if: steps.migrations.outputs.any == 'true'
+        if: steps.migrations.outputs.any == 'true' && env.DRY_RUN != 'true'
         env:
           RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
           RUN_PRE: ${{ steps.migrations.outputs.pre }}
@@ -285,9 +307,10 @@ jobs:
           unset PG_URI
 
       - name: Deploy complete bundle
+        if: env.DRY_RUN != 'true'
         env:
           RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
-          BUNDLE_FILE: ${{ inputs.environment == 'prod' && steps.promote.outputs.path || steps.candidate.outputs.path }}
+          BUNDLE_FILE: ${{ env.TARGET_ENVIRONMENT == 'prod' && env.DRY_RUN != 'true' && steps.promote.outputs.path || steps.candidate.outputs.path }}
           CLOUDFLARE_ORIGIN_SECRET: ${{ secrets.CLOUDFLARE_ORIGIN_SECRET }}
         run: |
           set -euo pipefail
@@ -297,19 +320,26 @@ jobs:
           bash .github/scripts/release/release.sh deploy
 
       - name: Verify released digests and readiness
+        if: env.DRY_RUN != 'true'
         env:
           RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
-          BUNDLE_FILE: ${{ inputs.environment == 'prod' && steps.promote.outputs.path || steps.candidate.outputs.path }}
+          BUNDLE_FILE: ${{ env.TARGET_ENVIRONMENT == 'prod' && env.DRY_RUN != 'true' && steps.promote.outputs.path || steps.candidate.outputs.path }}
         run: bash .github/scripts/release/release.sh verify
 
       - name: Write release summary
         env:
           RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
-          BUNDLE_FILE: ${{ inputs.environment == 'prod' && steps.promote.outputs.path || steps.candidate.outputs.path }}
+          BUNDLE_FILE: ${{ env.TARGET_ENVIRONMENT == 'prod' && env.DRY_RUN != 'true' && steps.promote.outputs.path || steps.candidate.outputs.path }}
           MIGRATIONS_ANY: ${{ steps.migrations.outputs.any }}
         run: |
           {
-            echo '## Cloud Run release'
+            if [ "${DRY_RUN}" = true ]; then
+              echo '## Cloud Run dry run'
+              echo
+              echo 'Stopped after the read-only checks. Nothing was promoted, migrated, or deployed.'
+            else
+              echo '## Cloud Run release'
+            fi
             echo
             echo "Environment: \`${TARGET_ENVIRONMENT}\`"
             if [ -n "${REQUESTED_SHA:-}" ]; then
@@ -317,10 +347,12 @@ jobs:
               echo 'Migrations: skipped (pinned release; handle schema separately)'
             else
               echo "Candidate mode: newest compatible ancestor (\`${RELEASE_SHA}\`)"
-              if [ "${MIGRATIONS_ANY}" = true ]; then
-                echo 'Migrations: selected phases executed'
-              else
+              if [ "${MIGRATIONS_ANY}" != true ]; then
                 echo 'Migrations: none required'
+              elif [ "${DRY_RUN}" = true ]; then
+                echo 'Migrations: selected phases would run'
+              else
+                echo 'Migrations: selected phases executed'
               fi
             fi
             echo "Release SHA: \`${RELEASE_SHA}\`"

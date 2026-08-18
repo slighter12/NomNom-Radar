@@ -801,11 +801,21 @@ ruby -ryaml -e '
   raise "release sha input required" unless release_sha_input.fetch("required") == false
   raise "release sha input default" unless release_sha_input.fetch("default") == ""
   raise "release sha input type" unless release_sha_input.fetch("type") == "string"
+  raise "automatic dry run trigger" unless release.fetch(true).fetch("workflow_run").fetch("workflows") == ["Go CI"]
   release_env = release.fetch("jobs").fetch("release").fetch("env")
   raise "requested sha env" unless release_env.fetch("REQUESTED_SHA") == "${{ inputs.release_sha }}"
+  raise "dry run env" unless release_env.fetch("DRY_RUN").include?("inputs.dry_run")
   steps = release.fetch("jobs").fetch("release").fetch("steps")
   names = steps.map { |step| step.fetch("name") }
   raise "release sha inline" if steps.any? { |step| step.fetch("run", "").include?("${{ inputs.release_sha }}") }
+  # A dry run must reach the same read-only checks a real release does and stop
+  # there, so every step that mutates has to opt out of it explicitly.
+  mutations = ["release.sh deploy", "gcrane/gcrane\" copy", "postgres \"${PG_URI}\" up"]
+  steps.each do |step|
+    next unless mutations.any? { |fragment| step.fetch("run", "").include?(fragment) }
+    guard = "env.DRY_RUN != #{quote}true#{quote}"
+    raise "unguarded mutation: #{step.fetch(%q(name))}" unless step.fetch("if", "").include?(guard)
+  end
   raise "registry auth order" unless names.index("Configure dev Registry auth") < names.index("Resolve and verify candidate digests")
   raise "mutation guard order" unless names.index("Recheck current main before mutation") < names.index("Promote exact digests to prod")
   preflight = steps.find { |step| step.fetch("name") == "Preflight target state" }
