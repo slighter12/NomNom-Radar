@@ -184,8 +184,9 @@ remain main-only without a required reviewer.
 
 `Release Cloud Run` also runs automatically against dev after every successful
 `Go CI` build of `main`, and stops before the first mutation. The optional
-`dry_run` input performs the same read-only pass on demand, which is the cheap
-way to check a prod release before requesting reviewer approval. A dry run
+`dry_run` input performs the same read-only pass on demand. A prod dry run
+still enters the prod Environment and still requires reviewer approval, but the
+reviewer is approving a run that cannot promote, migrate, or deploy. A dry run
 resolves the candidate, runs preflight, selects migration phases, and for prod
 also verifies dev, then skips promotion, migrations, deployment, and release
 verification. It never promotes, migrates, or deploys.

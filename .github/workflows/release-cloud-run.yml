@@ -47,7 +47,7 @@ jobs:
       contents: read
       attestations: read
     env:
-      CONTROL_SHA: ${{ github.sha }}
+      CONTROL_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
       TARGET_ENVIRONMENT: ${{ inputs.environment || 'dev' }}
       DRY_RUN: ${{ github.event_name == 'workflow_run' || inputs.dry_run }}
       REQUESTED_SHA: ${{ inputs.release_sha }}
@@ -86,12 +86,14 @@ jobs:
             test -n "${!name:-}" || { echo "::error::Missing release configuration: ${name}"; exit 1; }
           done
 
-      # Always execute automation from the same protected commit that supplied
-      # this workflow. Candidate images are payload, never executable scripts.
+      # Always execute automation from the same protected commit the release was
+      # resolved against. Candidate images are payload, never executable scripts.
+      # For workflow_run that commit is the one Go CI validated, not whatever
+      # reached the default branch while this run queued.
       - name: Checkout trusted release automation
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
