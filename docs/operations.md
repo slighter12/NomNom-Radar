@@ -253,34 +253,8 @@ Candidate variables are `GCP_DEV_PROJECT_ID`, `GCP_DEV_REGISTRY`, and
 `GOOGLEOAUTH_CLIENTID`, and `HTTP_ALLOWEDHOST`.
 
 `GCP_SA_EMAIL` is the Cloud Run runtime identity.
-`GCP_SCHEDULER_SA_EMAIL` must be a different scheduler caller identity with
-only job-scoped `roles/run.invoker` on `device-cleanup`. The operations
-identity needs scheduler edit permission and `actAs` on that scheduler caller.
-
-### Cross-project grants for the prod release identity
-
-Promotion reads dev and writes prod, so the prod `GCP_RELEASE_SA_KEY` identity
-needs read access in the dev project. Without it a prod release stops at
-`Resolve and verify candidate digests` with `PERMISSION_DENIED` on
-`artifactregistry.repositories.get`. The classifier refuses to read that as a
-missing image, so the run fails closed instead of resolving an older candidate.
-
-| Role on the dev project | Required by |
-|------|------|
-| `roles/artifactregistry.reader` | `Resolve and verify candidate digests`, attestation verification, and the `gcrane` copy source |
-| `roles/run.viewer` | `Final prod gate against dev`, which snapshots dev Cloud Run state |
-
-```bash
-for role in roles/artifactregistry.reader roles/run.viewer; do
-  gcloud projects add-iam-policy-binding "${DEV_PROJECT_ID}" \
-    --member="serviceAccount:${PROD_RELEASE_SA}" \
-    --role="${role}"
-done
-```
-
-Creating these bindings requires `roles/resourcemanager.projectIamAdmin` or
-`roles/owner` on the dev project. `roles/editor` is not sufficient because it
-excludes `setIamPolicy`.
+`GCP_SCHEDULER_SA_EMAIL` must be a different identity, used only as the
+scheduler caller.
 
 The prod GitHub Environment continues to hold `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ORIGIN_SECRET`; `CLOUDFLARE_ZONE_ID` and
