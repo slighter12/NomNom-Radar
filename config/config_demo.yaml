@@ -74,7 +74,7 @@ passwordStrength:
   maxLength: 128
 
 testRoutes:
-  enabled: true
+  enabled: false
 
 locationNotification:
   userMaxLocations: 5
