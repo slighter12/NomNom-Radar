@@ -240,6 +240,14 @@ spec:
           value: PROJECT_ID_PLACEHOLDER
         - name: HTTP_CLOUDFLARESECRET
           value: HTTP_CLOUDFLARESECRET_PLACEHOLDER
+        - name: HTTP_RATELIMIT_ENABLED
+          value: HTTP_RATELIMIT_ENABLED_PLACEHOLDER
+        - name: HTTP_RATELIMIT_RATE
+          value: HTTP_RATELIMIT_RATE_PLACEHOLDER
+        - name: HTTP_RATELIMIT_BURST
+          value: HTTP_RATELIMIT_BURST_PLACEHOLDER
+        - name: HTTP_RATELIMIT_EXPIRESIN
+          value: HTTP_RATELIMIT_EXPIRESIN_PLACEHOLDER
 YAML
 MOCK
 cat > "${temp_dir}/bin/gcloud" <<'MOCK'
@@ -320,7 +328,7 @@ MOCK
 chmod +x "${temp_dir}/bin/kubectl" "${temp_dir}/bin/gcloud"
 release_functions="${temp_dir}/release-functions.sh"
 sed '/^case "${1:-}" in$/,$d' "${script_dir}/release.sh" > "${release_functions}"
-common_env=(PATH="${temp_dir}/bin:${PATH}" RELEASE_SHA="${sha}" BUNDLE_FILE="${bundle}" PROJECT_ID=test PROJECT_NUMBER=123456 REGION=region REGISTRY=registry.example OWNER=repo RUNTIME_SA_EMAIL=runtime@example.invalid ALLOWED_HOST=radar.example.invalid GOOGLE_OAUTH_CLIENT_ID=oauth MOCK_JOB_MANIFEST="${temp_dir}/captured-job.yaml" MOCK_MUTATION_MARKER="${temp_dir}/mutation.marker")
+common_env=(PATH="${temp_dir}/bin:${PATH}" RELEASE_SHA="${sha}" BUNDLE_FILE="${bundle}" PROJECT_ID=test PROJECT_NUMBER=123456 REGION=region REGISTRY=registry.example OWNER=repo RUNTIME_SA_EMAIL=runtime@example.invalid ALLOWED_HOST=radar.example.invalid CORS_ALLOWED_ORIGINS=https://app.example.invalid RATE_LIMIT_ENABLED=true RATE_LIMIT_RATE=12 RATE_LIMIT_BURST=40 RATE_LIMIT_EXPIRES_IN=5m GOOGLE_OAUTH_CLIENT_ID=oauth MOCK_JOB_MANIFEST="${temp_dir}/captured-job.yaml" MOCK_MUTATION_MARKER="${temp_dir}/mutation.marker")
 assert_missing_cloud_run_target() {
   local target=$1 snapshot_output preflight_output
   snapshot_output=$(

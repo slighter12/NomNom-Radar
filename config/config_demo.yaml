@@ -11,6 +11,12 @@ http:
   maxRequestBodySize: "100KB"
   allowedHost: "" # Optional host lock (example: api.whereisvendor.com)
   cloudflareSecret: "" # Optional Cloudflare origin secret header value
+  corsAllowedOrigins: "" # Comma-separated browser origins; empty disables CORS
+  rateLimit:
+    enabled: true
+    rate: 10
+    burst: 30
+    expiresIn: 3m
   timeouts:
     readTimeout: 30s
     readHeaderTimeout: 10s

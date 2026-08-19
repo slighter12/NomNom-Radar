@@ -95,7 +95,7 @@ func TestDeviceService_UpdateFCMToken_UpdateError(t *testing.T) {
 
 	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
-		UpdateFCMToken(ctx, deviceID, newToken).
+		UpdateFCMToken(ctx, userID, deviceID, newToken).
 		Return(expectedErr)
 
 	err := fx.service.UpdateFCMToken(ctx, userID, deviceID, newToken)
@@ -178,7 +178,7 @@ func TestDeviceService_DeactivateDevice_DeleteError(t *testing.T) {
 
 	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
-		SetDeviceActive(ctx, deviceID, false).
+		SetDeviceActive(ctx, userID, deviceID, false).
 		Return(expectedErr)
 
 	err := fx.service.DeactivateDevice(ctx, userID, deviceID)
@@ -255,7 +255,7 @@ func TestDeviceService_RegisterDevice_UpdateExisting_UpdateError(t *testing.T) {
 
 	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
-		UpdateFCMToken(ctx, deviceID, "new-fcm-token").
+		UpdateFCMToken(ctx, userID, deviceID, "new-fcm-token").
 		Return(expectedErr)
 
 	device, err := fx.service.RegisterDevice(ctx, userID, deviceInfo)
@@ -290,7 +290,7 @@ func TestDeviceService_RegisterDevice_UpdateExisting_FindByIDError(t *testing.T)
 		Return(existingDevice, nil)
 
 	fx.deviceRepo.EXPECT().
-		UpdateFCMToken(ctx, deviceID, "new-fcm-token").
+		UpdateFCMToken(ctx, userID, deviceID, "new-fcm-token").
 		Return(nil)
 
 	expectedErr := errors.New("database error")

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -28,6 +29,9 @@ const (
 	defaultLinkingTokenTTL      = 10 * time.Minute
 	defaultNotificationTimeout  = 10 * time.Second
 	defaultDeviceCleanupTimeout = 5 * time.Minute
+	defaultRateLimitRate        = 10.0
+	defaultRateLimitBurst       = 30
+	defaultRateLimitExpiresIn   = 3 * time.Minute
 )
 
 type Config struct {
@@ -39,10 +43,12 @@ type Config struct {
 	} `json:"env" yaml:"env"`
 
 	HTTP struct {
-		Port               int    `json:"port" yaml:"port"`
-		MaxRequestBodySize string `json:"maxRequestBodySize" yaml:"maxRequestBodySize"`
-		AllowedHost        string `json:"allowedHost" yaml:"allowedHost"`
-		CloudflareSecret   string `json:"cloudflareSecret" yaml:"cloudflareSecret"`
+		Port               int              `json:"port" yaml:"port"`
+		MaxRequestBodySize string           `json:"maxRequestBodySize" yaml:"maxRequestBodySize"`
+		AllowedHost        string           `json:"allowedHost" yaml:"allowedHost"`
+		CloudflareSecret   string           `json:"cloudflareSecret" yaml:"cloudflareSecret"`
+		CORSAllowedOrigins string           `json:"corsAllowedOrigins" yaml:"corsAllowedOrigins"`
+		RateLimit          *RateLimitConfig `json:"rateLimit" yaml:"rateLimit"`
 		Timeouts           struct {
 			ReadTimeout       time.Duration `json:"readTimeout" yaml:"readTimeout"`
 			ReadHeaderTimeout time.Duration `json:"readHeaderTimeout" yaml:"readHeaderTimeout"`
@@ -116,6 +122,52 @@ type AuthConfig struct {
 type LoginThrottleConfig struct {
 	MaxAttempts      int `json:"maxAttempts" yaml:"maxAttempts"`
 	LockoutDecayDays int `json:"lockoutDecayDays" yaml:"lockoutDecayDays"`
+}
+
+// RateLimitConfig defines the in-process rate limiter for authentication routes.
+type RateLimitConfig struct {
+	Enabled   *bool         `json:"enabled" yaml:"enabled"`
+	Rate      float64       `json:"rate" yaml:"rate"`
+	Burst     int           `json:"burst" yaml:"burst"`
+	ExpiresIn time.Duration `json:"expiresIn" yaml:"expiresIn"`
+}
+
+// DefaultRateLimitConfig returns the default authentication rate limiter configuration.
+func DefaultRateLimitConfig() RateLimitConfig {
+	enabled := true
+
+	return RateLimitConfig{
+		Enabled:   &enabled,
+		Rate:      defaultRateLimitRate,
+		Burst:     defaultRateLimitBurst,
+		ExpiresIn: defaultRateLimitExpiresIn,
+	}
+}
+
+// IsEnabled reports whether the rate limiter is enabled. A missing value defaults to enabled.
+func (cfg RateLimitConfig) IsEnabled() bool {
+	return cfg.Enabled == nil || *cfg.Enabled
+}
+
+// Validate checks the rate limiter values used by the authentication middleware.
+func (cfg RateLimitConfig) Validate() error {
+	if !cfg.IsEnabled() {
+		return nil
+	}
+	if math.IsNaN(cfg.Rate) || math.IsInf(cfg.Rate, 0) {
+		return fmt.Errorf("http.rateLimit.rate must be finite")
+	}
+	if cfg.Rate <= 0 {
+		return fmt.Errorf("http.rateLimit.rate must be greater than zero")
+	}
+	if cfg.Burst <= 0 {
+		return fmt.Errorf("http.rateLimit.burst must be greater than zero")
+	}
+	if cfg.ExpiresIn <= 0 {
+		return fmt.Errorf("http.rateLimit.expiresIn must be greater than zero")
+	}
+
+	return nil
 }
 
 // DefaultLoginThrottleConfig returns the default progressive login throttling configuration.
@@ -287,6 +339,9 @@ func New() (*Config, error) {
 	}
 
 	ApplyDefaults(cfg)
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 
 	// Build replicas from environment variables (POSTGRES_REPLICAS_0_HOST, POSTGRES_REPLICAS_0_PORT, etc.)
 	cfg.Postgres.Replicas = buildReplicasFromEnv()
@@ -311,12 +366,40 @@ func ApplyDefaults(cfg *Config) {
 	applyDeviceCleanupDefaults(cfg)
 }
 
+// Validate checks configuration values that must be safe before starting a service.
+func (cfg *Config) Validate() error {
+	if cfg == nil || cfg.HTTP.RateLimit == nil {
+		return nil
+	}
+
+	return cfg.HTTP.RateLimit.Validate()
+}
+
 func applyHTTPDefaults(cfg *Config) {
-	if strings.TrimSpace(cfg.HTTP.MaxRequestBodySize) != "" {
+	if strings.TrimSpace(cfg.HTTP.MaxRequestBodySize) == "" {
+		cfg.HTTP.MaxRequestBodySize = defaultMaxRequestBodySize
+	}
+
+	if cfg.HTTP.RateLimit == nil {
+		defaults := DefaultRateLimitConfig()
+		cfg.HTTP.RateLimit = &defaults
+
 		return
 	}
 
-	cfg.HTTP.MaxRequestBodySize = defaultMaxRequestBodySize
+	defaults := DefaultRateLimitConfig()
+	if cfg.HTTP.RateLimit.Enabled == nil {
+		cfg.HTTP.RateLimit.Enabled = defaults.Enabled
+	}
+	if cfg.HTTP.RateLimit.Rate == 0 {
+		cfg.HTTP.RateLimit.Rate = defaults.Rate
+	}
+	if cfg.HTTP.RateLimit.Burst == 0 {
+		cfg.HTTP.RateLimit.Burst = defaults.Burst
+	}
+	if cfg.HTTP.RateLimit.ExpiresIn == 0 {
+		cfg.HTTP.RateLimit.ExpiresIn = defaults.ExpiresIn
+	}
 }
 
 func applyAuthDefaults(cfg *Config) {

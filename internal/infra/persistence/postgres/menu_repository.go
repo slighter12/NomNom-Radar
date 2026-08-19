@@ -140,24 +140,32 @@ func (repo *menuRepository) ListMenuItemsByMerchant(ctx context.Context, merchan
 	return items, total, nil
 }
 
-func (repo *menuRepository) UpdateMenuItem(ctx context.Context, item *entity.MenuItem) error {
+func (repo *menuRepository) UpdateMenuItem(
+	ctx context.Context,
+	merchantID, itemID uuid.UUID,
+	update *entity.MenuItemUpdate,
+) error {
+	if update == nil {
+		return domainerrors.ErrValidationFailed.WithDetails("menu item update is required")
+	}
+
 	menuItem := repo.q.MenuItemModel
 	menuItemQuery := menuItem.WithContext(ctx)
 	assignments := []field.AssignExpr{
-		menuItem.Name.Value(item.Name),
-		nullableStringAssign(&menuItem.Description, item.Description),
-		menuItem.CategoryID.Value(item.CategoryID),
-		menuItem.Price.Value(item.Price),
-		menuItem.Currency.Value(item.Currency),
-		menuItem.PrepMinutes.Value(item.PrepMinutes),
-		menuItem.IsAvailable.Value(item.IsAvailable),
-		menuItem.IsPopular.Value(item.IsPopular),
-		nullableStringAssign(&menuItem.ImageURL, item.ImageURL),
-		nullableStringAssign(&menuItem.ExternalURL, item.ExternalURL),
+		menuItem.Name.Value(update.Name),
+		nullableStringAssign(&menuItem.Description, update.Description),
+		menuItem.CategoryID.Value(update.CategoryID),
+		menuItem.Price.Value(update.Price),
+		menuItem.Currency.Value(update.Currency),
+		menuItem.PrepMinutes.Value(update.PrepMinutes),
+		menuItem.IsAvailable.Value(update.IsAvailable),
+		menuItem.IsPopular.Value(update.IsPopular),
+		nullableStringAssign(&menuItem.ImageURL, update.ImageURL),
+		nullableStringAssign(&menuItem.ExternalURL, update.ExternalURL),
 	}
 
 	result, err := menuItemQuery.
-		Where(menuItem.ID.Eq(item.ID)).
+		Where(menuItemOwnerConditions(repo.q, merchantID, itemID)...).
 		UpdateSimple(assignments...)
 	if err != nil {
 		return repo.toMenuItemUpdateError(err)
@@ -166,19 +174,12 @@ func (repo *menuRepository) UpdateMenuItem(ctx context.Context, item *entity.Men
 		return domainerrors.ErrMenuItemNotFound
 	}
 
-	updatedItem, err := repo.FindMenuItemByID(ctx, item.ID)
-	if err != nil {
-		return err
-	}
-	item.CreatedAt = updatedItem.CreatedAt
-	item.UpdatedAt = updatedItem.UpdatedAt
-
 	return nil
 }
 
-func (repo *menuRepository) UpdateMenuItemAvailability(ctx context.Context, id uuid.UUID, isAvailable bool) error {
+func (repo *menuRepository) UpdateMenuItemAvailability(ctx context.Context, merchantID, id uuid.UUID, isAvailable bool) error {
 	result, err := repo.q.MenuItemModel.WithContext(ctx).
-		Where(repo.q.MenuItemModel.ID.Eq(id)).
+		Where(menuItemOwnerConditions(repo.q, merchantID, id)...).
 		Update(repo.q.MenuItemModel.IsAvailable, isAvailable)
 	if err != nil {
 		return repo.toMenuItemUpdateError(err)
@@ -200,10 +201,7 @@ func (repo *menuRepository) DeleteMenuItem(ctx context.Context, merchantID, menu
 		menuItemQuery := menuItem.WithContext(ctx)
 		itemM, err := menuItemQuery.
 			Clauses(clause.Locking{Strength: rowLockStrengthUpdate}).
-			Where(
-				menuItem.ID.Eq(menuItemID),
-				menuItem.MerchantID.Eq(merchantID),
-			).
+			Where(menuItemOwnerConditions(transactionQuery, merchantID, menuItemID)...).
 			Take()
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -214,7 +212,7 @@ func (repo *menuRepository) DeleteMenuItem(ctx context.Context, merchantID, menu
 		}
 
 		if _, err := menuItemQuery.
-			Where(menuItem.ID.Eq(menuItemID)).
+			Where(menuItemOwnerConditions(transactionQuery, merchantID, menuItemID)...).
 			Delete(); err != nil {
 			return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
 		}
@@ -230,6 +228,13 @@ func (repo *menuRepository) DeleteMenuItem(ctx context.Context, merchantID, menu
 
 		return nil
 	})
+}
+
+func menuItemOwnerConditions(q *query.Query, merchantID, itemID uuid.UUID) []gen.Condition {
+	return []gen.Condition{
+		q.MenuItemModel.ID.Eq(itemID),
+		q.MenuItemModel.MerchantID.Eq(merchantID),
+	}
 }
 
 func (repo *menuRepository) getNextDisplayOrder(ctx context.Context, transactionQuery *query.Query, merchantID uuid.UUID) (int, error) {

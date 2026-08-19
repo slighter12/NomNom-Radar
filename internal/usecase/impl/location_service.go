@@ -65,29 +65,6 @@ func (s *locationService) UpdateUserLocation(ctx context.Context, userID, locati
 	return s.updateLocation(ctx, userID, locationID, entity.OwnerTypeUserProfile, input)
 }
 
-// applyAddressUpdates applies the update input to an address
-func (s *locationService) applyAddressUpdates(address *entity.Address, input *usecase.UpdateLocationInput) {
-	if input.Label != nil {
-		address.Label = *input.Label
-	}
-	if input.FullAddress != nil {
-		address.FullAddress = *input.FullAddress
-	}
-	if input.Latitude != nil {
-		address.Latitude = *input.Latitude
-	}
-	if input.Longitude != nil {
-		address.Longitude = *input.Longitude
-	}
-	if input.IsPrimary != nil {
-		address.IsPrimary = *input.IsPrimary
-	}
-	if input.IsActive != nil {
-		address.IsActive = *input.IsActive
-	}
-	address.UpdatedAt = time.Now()
-}
-
 // DeleteUserLocation deletes a location for a user (soft delete)
 func (s *locationService) DeleteUserLocation(ctx context.Context, userID, locationID uuid.UUID) error {
 	return s.deleteLocation(ctx, userID, locationID, entity.OwnerTypeUserProfile)
@@ -159,14 +136,25 @@ func (s *locationService) updateLocation(
 	if input == nil {
 		return nil, domainerrors.ErrValidationFailed.WithDetails("location update input is required")
 	}
+	update := entity.AddressUpdate{
+		Label:       input.Label,
+		FullAddress: input.FullAddress,
+		Latitude:    input.Latitude,
+		Longitude:   input.Longitude,
+		IsPrimary:   input.IsPrimary,
+		IsActive:    input.IsActive,
+	}
+	if !update.HasChanges() {
+		return nil, domainerrors.ErrValidationFailed.WithDetails("location update must include at least one field")
+	}
 
 	address, err := s.findOwnedAddress(ctx, ownerID, locationID, ownerType)
 	if err != nil {
 		return nil, err
 	}
 
-	s.applyAddressUpdates(address, input)
-	if err := s.addressRepo.UpdateAddress(ctx, address); err != nil {
+	address.ApplyUpdate(update)
+	if err := s.addressRepo.UpdateAddress(ctx, ownerID, ownerType, locationID, &update); err != nil {
 		return nil, err
 	}
 
@@ -182,7 +170,7 @@ func (s *locationService) deleteLocation(
 		return err
 	}
 
-	if err := s.addressRepo.DeleteAddress(ctx, locationID); err != nil {
+	if err := s.addressRepo.DeleteAddress(ctx, ownerID, ownerType, locationID); err != nil {
 		return err
 	}
 

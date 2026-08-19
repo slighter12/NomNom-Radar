@@ -24,11 +24,11 @@ type AddressRepository interface {
 	// Returns ErrAddressNotFound if no primary address exists.
 	FindPrimaryAddressByOwner(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType) (*entity.Address, error)
 
-	// UpdateAddress updates an existing address record.
-	UpdateAddress(ctx context.Context, address *entity.Address) error
+	// UpdateAddress applies a partial update to an address owned by the specified owner.
+	UpdateAddress(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType, addressID uuid.UUID, update *entity.AddressUpdate) error
 
-	// DeleteAddress removes an address by its ID.
-	DeleteAddress(ctx context.Context, id uuid.UUID) error
+	// DeleteAddress removes an address owned by the specified owner.
+	DeleteAddress(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType, id uuid.UUID) error
 
 	// CountAddressesByOwner returns the total count of addresses for a specific owner.
 	// Used for checking location limits.

@@ -582,16 +582,16 @@ func (_c *MockDeviceRepository_RestoreAndUpdateDevice_Call) RunAndReturn(run fun
 }
 
 // SetDeviceActive provides a mock function for the type MockDeviceRepository
-func (_mock *MockDeviceRepository) SetDeviceActive(ctx context.Context, id uuid.UUID, isActive bool) error {
-	ret := _mock.Called(ctx, id, isActive)
+func (_mock *MockDeviceRepository) SetDeviceActive(ctx context.Context, userID uuid.UUID, id uuid.UUID, isActive bool) error {
+	ret := _mock.Called(ctx, userID, id, isActive)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SetDeviceActive")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, bool) error); ok {
-		r0 = returnFunc(ctx, id, isActive)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, bool) error); ok {
+		r0 = returnFunc(ctx, userID, id, isActive)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -605,13 +605,14 @@ type MockDeviceRepository_SetDeviceActive_Call struct {
 
 // SetDeviceActive is a helper method to define mock.On call
 //   - ctx context.Context
+//   - userID uuid.UUID
 //   - id uuid.UUID
 //   - isActive bool
-func (_e *MockDeviceRepository_Expecter) SetDeviceActive(ctx interface{}, id interface{}, isActive interface{}) *MockDeviceRepository_SetDeviceActive_Call {
-	return &MockDeviceRepository_SetDeviceActive_Call{Call: _e.mock.On("SetDeviceActive", ctx, id, isActive)}
+func (_e *MockDeviceRepository_Expecter) SetDeviceActive(ctx interface{}, userID interface{}, id interface{}, isActive interface{}) *MockDeviceRepository_SetDeviceActive_Call {
+	return &MockDeviceRepository_SetDeviceActive_Call{Call: _e.mock.On("SetDeviceActive", ctx, userID, id, isActive)}
 }
 
-func (_c *MockDeviceRepository_SetDeviceActive_Call) Run(run func(ctx context.Context, id uuid.UUID, isActive bool)) *MockDeviceRepository_SetDeviceActive_Call {
+func (_c *MockDeviceRepository_SetDeviceActive_Call) Run(run func(ctx context.Context, userID uuid.UUID, id uuid.UUID, isActive bool)) *MockDeviceRepository_SetDeviceActive_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -621,14 +622,19 @@ func (_c *MockDeviceRepository_SetDeviceActive_Call) Run(run func(ctx context.Co
 		if args[1] != nil {
 			arg1 = args[1].(uuid.UUID)
 		}
-		var arg2 bool
+		var arg2 uuid.UUID
 		if args[2] != nil {
-			arg2 = args[2].(bool)
+			arg2 = args[2].(uuid.UUID)
+		}
+		var arg3 bool
+		if args[3] != nil {
+			arg3 = args[3].(bool)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -639,7 +645,7 @@ func (_c *MockDeviceRepository_SetDeviceActive_Call) Return(err error) *MockDevi
 	return _c
 }
 
-func (_c *MockDeviceRepository_SetDeviceActive_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID, isActive bool) error) *MockDeviceRepository_SetDeviceActive_Call {
+func (_c *MockDeviceRepository_SetDeviceActive_Call) RunAndReturn(run func(ctx context.Context, userID uuid.UUID, id uuid.UUID, isActive bool) error) *MockDeviceRepository_SetDeviceActive_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -711,16 +717,16 @@ func (_c *MockDeviceRepository_SoftDeleteStaleDevices_Call) RunAndReturn(run fun
 }
 
 // UpdateFCMToken provides a mock function for the type MockDeviceRepository
-func (_mock *MockDeviceRepository) UpdateFCMToken(ctx context.Context, deviceID uuid.UUID, fcmToken string) error {
-	ret := _mock.Called(ctx, deviceID, fcmToken)
+func (_mock *MockDeviceRepository) UpdateFCMToken(ctx context.Context, userID uuid.UUID, deviceID uuid.UUID, fcmToken string) error {
+	ret := _mock.Called(ctx, userID, deviceID, fcmToken)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateFCMToken")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, string) error); ok {
-		r0 = returnFunc(ctx, deviceID, fcmToken)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string) error); ok {
+		r0 = returnFunc(ctx, userID, deviceID, fcmToken)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -734,13 +740,14 @@ type MockDeviceRepository_UpdateFCMToken_Call struct {
 
 // UpdateFCMToken is a helper method to define mock.On call
 //   - ctx context.Context
+//   - userID uuid.UUID
 //   - deviceID uuid.UUID
 //   - fcmToken string
-func (_e *MockDeviceRepository_Expecter) UpdateFCMToken(ctx interface{}, deviceID interface{}, fcmToken interface{}) *MockDeviceRepository_UpdateFCMToken_Call {
-	return &MockDeviceRepository_UpdateFCMToken_Call{Call: _e.mock.On("UpdateFCMToken", ctx, deviceID, fcmToken)}
+func (_e *MockDeviceRepository_Expecter) UpdateFCMToken(ctx interface{}, userID interface{}, deviceID interface{}, fcmToken interface{}) *MockDeviceRepository_UpdateFCMToken_Call {
+	return &MockDeviceRepository_UpdateFCMToken_Call{Call: _e.mock.On("UpdateFCMToken", ctx, userID, deviceID, fcmToken)}
 }
 
-func (_c *MockDeviceRepository_UpdateFCMToken_Call) Run(run func(ctx context.Context, deviceID uuid.UUID, fcmToken string)) *MockDeviceRepository_UpdateFCMToken_Call {
+func (_c *MockDeviceRepository_UpdateFCMToken_Call) Run(run func(ctx context.Context, userID uuid.UUID, deviceID uuid.UUID, fcmToken string)) *MockDeviceRepository_UpdateFCMToken_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -750,14 +757,19 @@ func (_c *MockDeviceRepository_UpdateFCMToken_Call) Run(run func(ctx context.Con
 		if args[1] != nil {
 			arg1 = args[1].(uuid.UUID)
 		}
-		var arg2 string
+		var arg2 uuid.UUID
 		if args[2] != nil {
-			arg2 = args[2].(string)
+			arg2 = args[2].(uuid.UUID)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -768,7 +780,7 @@ func (_c *MockDeviceRepository_UpdateFCMToken_Call) Return(err error) *MockDevic
 	return _c
 }
 
-func (_c *MockDeviceRepository_UpdateFCMToken_Call) RunAndReturn(run func(ctx context.Context, deviceID uuid.UUID, fcmToken string) error) *MockDeviceRepository_UpdateFCMToken_Call {
+func (_c *MockDeviceRepository_UpdateFCMToken_Call) RunAndReturn(run func(ctx context.Context, userID uuid.UUID, deviceID uuid.UUID, fcmToken string) error) *MockDeviceRepository_UpdateFCMToken_Call {
 	_c.Call.Return(run)
 	return _c
 }

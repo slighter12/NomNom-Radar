@@ -45,11 +45,11 @@ type DeviceRepository interface {
 	// FindDeviceByUserAndDeviceIDIncludingDeleted retrieves a device by user ID and client device ID, including soft-deleted records.
 	FindDeviceByUserAndDeviceIDIncludingDeleted(ctx context.Context, userID uuid.UUID, deviceID string) (*entity.UserDevice, error)
 
-	// UpdateFCMToken updates the FCM token for a specific device.
-	UpdateFCMToken(ctx context.Context, deviceID uuid.UUID, fcmToken string) error
+	// UpdateFCMToken updates the FCM token for a device owned by the user.
+	UpdateFCMToken(ctx context.Context, userID, deviceID uuid.UUID, fcmToken string) error
 
-	// SetDeviceActive updates the device active state without soft-deleting it.
-	SetDeviceActive(ctx context.Context, id uuid.UUID, isActive bool) error
+	// SetDeviceActive updates the active state for a device owned by the user.
+	SetDeviceActive(ctx context.Context, userID, id uuid.UUID, isActive bool) error
 
 	// RestoreAndUpdateDevice restores a soft-deleted device owned by a user and refreshes its token state.
 	RestoreAndUpdateDevice(ctx context.Context, userID, id uuid.UUID, fcmToken string) error

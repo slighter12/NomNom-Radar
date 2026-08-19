@@ -245,7 +245,7 @@ func TestSubscriptionService_SubscribeToMerchant_WithDevice_UpdateTokenError(t *
 
 	expectedErr := errors.New("database error")
 	fx.deviceRepo.EXPECT().
-		UpdateFCMToken(ctx, deviceID, "new-token").
+		UpdateFCMToken(ctx, userID, deviceID, "new-token").
 		Return(expectedErr)
 
 	subscription, err := fx.service.SubscribeToMerchant(ctx, userID, merchantID, deviceInfo)
