@@ -181,6 +181,30 @@ func TestRouter_DiscoveryValuesRequireAuthentication(t *testing.T) {
 	}
 }
 
+func TestRouter_APIV1AuthenticationRunsBeforeRateLimiter(t *testing.T) {
+	rate := 0.001
+	burst := 1
+	expiresIn := time.Minute
+	cfg := &config.Config{}
+	cfg.HTTP.APIRateLimit = &config.RateLimitConfig{
+		Rate:      &rate,
+		Burst:     &burst,
+		ExpiresIn: &expiresIn,
+	}
+	e := newRouterTestEchoWithConfig(cfg)
+
+	for i := range 2 {
+		req := newRouterTestRequest(http.MethodGet, "/api/v1/discovery/categories", "")
+		req.RemoteAddr = "192.0.2.1:1000"
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusUnauthorized, rec.Code, "request %d should be rejected by authentication", i+1)
+		assert.NotEqual(t, http.StatusTooManyRequests, rec.Code)
+	}
+}
+
 func TestRouter_PublicMerchantSearchStillRequiresUserRole(t *testing.T) {
 	e := newRouterTestEcho()
 	req := newRouterTestRequest(http.MethodGet, "/api/v1/merchants", testMerchantToken)
@@ -291,6 +315,10 @@ func TestRouter_TestRoutesDisabledByDefault(t *testing.T) {
 }
 
 func newRouterTestEcho() *echo.Echo {
+	return newRouterTestEchoWithConfig(&config.Config{})
+}
+
+func newRouterTestEchoWithConfig(cfg *config.Config) *echo.Echo {
 	userID := uuid.New()
 	tokenSvc := &routerTestTokenService{
 		claims: map[string]*service.Claims{
@@ -308,9 +336,9 @@ func newRouterTestEcho() *echo.Echo {
 	}
 
 	e := echo.New()
-	e.IPExtractor = apimiddleware.NewClientIPExtractor(&config.Config{})
+	e.IPExtractor = apimiddleware.NewClientIPExtractor(cfg)
 	e.Validator = apivalidator.New()
-	authMiddleware := apimiddleware.NewAuthMiddleware(tokenSvc, &config.Config{})
+	authMiddleware := apimiddleware.NewAuthMiddleware(tokenSvc, cfg)
 	r := NewRouter(RouterParams{
 		UserHandler: handler.NewUserHandler(handler.UserHandlerParams{
 			ProfileUC: &routerTestProfileUsecase{},
@@ -321,7 +349,7 @@ func newRouterTestEcho() *echo.Echo {
 			Logger:      slog.Default(),
 		}),
 		AuthMiddleware: authMiddleware,
-		Config:         &config.Config{},
+		Config:         cfg,
 	})
 	if err := r.RegisterRoutes(e); err != nil {
 		panic(err)

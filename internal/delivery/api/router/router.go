@@ -67,7 +67,9 @@ func (r *router) RegisterRoutes(e *echo.Echo) error {
 		return err
 	}
 	r.registerAuthenticatedRootRoutes(e)
-	r.registerAPIV1Routes(e)
+	if err := r.registerAPIV1Routes(e); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -118,14 +120,24 @@ func (r *router) registerAuthenticatedRootRoutes(e *echo.Echo) {
 	}
 }
 
-func (r *router) registerAPIV1Routes(e *echo.Echo) {
+func (r *router) registerAPIV1Routes(e *echo.Echo) error {
+	apiRateLimiter, err := middleware.NewAPIRateLimiter(r.config)
+	if err != nil {
+		return fmt.Errorf("configure API rate limiter: %w", err)
+	}
+
 	apiV1 := e.Group("/api/v1")
 	apiV1.Use(r.authMiddleware.Authenticate)
+	if apiRateLimiter != nil {
+		apiV1.Use(apiRateLimiter)
+	}
 
 	r.registerAPIV1UserRoutes(apiV1)
 	r.registerAPIV1SharedRoutes(apiV1)
 	r.registerAPIV1ConsumerRoutes(apiV1)
 	r.registerAPIV1MerchantRoutes(apiV1)
+
+	return nil
 }
 
 func (r *router) registerAPIV1UserRoutes(apiV1 *echo.Group) {

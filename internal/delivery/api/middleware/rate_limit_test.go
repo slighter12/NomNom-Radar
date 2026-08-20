@@ -9,6 +9,7 @@ import (
 
 	"radar/config"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -67,6 +68,107 @@ func TestAuthRateLimiter_RejectsInvalidConfiguration(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestAPIRateLimiter_UsesSeparateBucketPerUser(t *testing.T) {
+	settings := newRateLimitConfig(0.001, 1, time.Minute)
+	cfg := &config.Config{}
+	cfg.HTTP.APIRateLimit = settings
+	limiter, err := NewAPIRateLimiter(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, limiter)
+
+	e := newUserRateLimitEcho(limiter)
+	remoteAddr := "192.0.2.1:1000"
+	userA := uuid.New()
+	userB := uuid.New()
+
+	userARequest := newUserRateLimitRequest("/api/v1/one", remoteAddr, userA)
+	userAResponse := httptest.NewRecorder()
+	e.ServeHTTP(userAResponse, userARequest)
+	assert.Equal(t, http.StatusNoContent, userAResponse.Code)
+
+	userBRequest := newUserRateLimitRequest("/api/v1/one", remoteAddr, userB)
+	userBResponse := httptest.NewRecorder()
+	e.ServeHTTP(userBResponse, userBRequest)
+	assert.Equal(t, http.StatusNoContent, userBResponse.Code)
+
+	secondUserARequest := newUserRateLimitRequest("/api/v1/one", remoteAddr, userA)
+	secondUserAResponse := httptest.NewRecorder()
+	e.ServeHTTP(secondUserAResponse, secondUserARequest)
+	assert.Equal(t, http.StatusTooManyRequests, secondUserAResponse.Code)
+}
+
+func TestAPIRateLimiter_SharesBucketAcrossAPIRoutes(t *testing.T) {
+	settings := newRateLimitConfig(0.001, 1, time.Minute)
+	cfg := &config.Config{}
+	cfg.HTTP.APIRateLimit = settings
+	limiter, err := NewAPIRateLimiter(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, limiter)
+
+	e := newUserRateLimitEcho(limiter)
+	userID := uuid.New()
+	remoteAddr := "192.0.2.1:1000"
+
+	firstRequest := newUserRateLimitRequest("/api/v1/one", remoteAddr, userID)
+	firstResponse := httptest.NewRecorder()
+	e.ServeHTTP(firstResponse, firstRequest)
+	assert.Equal(t, http.StatusNoContent, firstResponse.Code)
+
+	secondRequest := newUserRateLimitRequest("/api/v1/two", remoteAddr, userID)
+	secondResponse := httptest.NewRecorder()
+	e.ServeHTTP(secondResponse, secondRequest)
+	assert.Equal(t, http.StatusTooManyRequests, secondResponse.Code)
+}
+
+func TestAPIRateLimiter_FallsBackToIPWithoutUserID(t *testing.T) {
+	settings := newRateLimitConfig(0.001, 1, time.Minute)
+	cfg := &config.Config{}
+	cfg.HTTP.APIRateLimit = settings
+	limiter, err := NewAPIRateLimiter(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, limiter)
+
+	e := echo.New()
+	e.IPExtractor = NewClientIPExtractor(&config.Config{})
+	e.Use(limiter)
+	e.POST("/api/v1/one", func(c echo.Context) error { return c.NoContent(http.StatusNoContent) })
+
+	firstRequest := newRateLimitRequest("/api/v1/one", "192.0.2.1:1000")
+	firstResponse := httptest.NewRecorder()
+	e.ServeHTTP(firstResponse, firstRequest)
+	assert.Equal(t, http.StatusNoContent, firstResponse.Code)
+
+	secondRequest := newRateLimitRequest("/api/v1/one", "192.0.2.1:1000")
+	secondResponse := httptest.NewRecorder()
+	e.ServeHTTP(secondResponse, secondRequest)
+	assert.Equal(t, http.StatusTooManyRequests, secondResponse.Code)
+
+	otherIPRequest := newRateLimitRequest("/api/v1/one", "192.0.2.2:1000")
+	otherIPResponse := httptest.NewRecorder()
+	e.ServeHTTP(otherIPResponse, otherIPRequest)
+	assert.Equal(t, http.StatusNoContent, otherIPResponse.Code)
+}
+
+func TestAPIRateLimiter_Disabled(t *testing.T) {
+	enabled := false
+	cfg := &config.Config{}
+	cfg.HTTP.APIRateLimit = &config.RateLimitConfig{Enabled: &enabled}
+
+	limiter, err := NewAPIRateLimiter(cfg)
+	require.NoError(t, err)
+	assert.Nil(t, limiter)
+}
+
+func TestAPIRateLimiter_RejectsInvalidConfiguration(t *testing.T) {
+	settings := newRateLimitConfig(-1, 1, time.Minute)
+	cfg := &config.Config{}
+	cfg.HTTP.APIRateLimit = settings
+
+	limiter, err := NewAPIRateLimiter(cfg)
+	assert.Nil(t, limiter)
+	assert.Error(t, err)
+}
+
 func newRateLimitRequest(target, remoteAddr string) *http.Request {
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, target, nil)
 	req.RemoteAddr = remoteAddr
@@ -80,4 +182,32 @@ func newRateLimitConfig(rate float64, burst int, expiresIn time.Duration) *confi
 		Burst:     &burst,
 		ExpiresIn: &expiresIn,
 	}
+}
+
+func newUserRateLimitEcho(limiter echo.MiddlewareFunc) *echo.Echo {
+	e := echo.New()
+	e.IPExtractor = NewClientIPExtractor(&config.Config{})
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			userID, err := uuid.Parse(c.Request().Header.Get("X-Test-User-ID"))
+			if err == nil {
+				c.Set(string(contextKeyUserID), userID)
+			}
+
+			return next(c)
+		}
+	})
+	e.Use(limiter)
+	handler := func(c echo.Context) error { return c.NoContent(http.StatusNoContent) }
+	e.POST("/api/v1/one", handler)
+	e.POST("/api/v1/two", handler)
+
+	return e
+}
+
+func newUserRateLimitRequest(target, remoteAddr string, userID uuid.UUID) *http.Request {
+	req := newRateLimitRequest(target, remoteAddr)
+	req.Header.Set("X-Test-User-ID", userID.String())
+
+	return req
 }
