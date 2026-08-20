@@ -22,3 +22,49 @@ type Address struct {
 	CreatedAt   time.Time `json:"created_at"`   // Timestamp of when this address was created.
 	UpdatedAt   time.Time `json:"updated_at"`   // Timestamp of the last modification.
 }
+
+// AddressUpdate describes the mutable fields of an address partial update.
+// A nil field is left unchanged; a non-nil pointer is applied even when it
+// contains the field's zero value.
+type AddressUpdate struct {
+	Label       *string
+	FullAddress *string
+	Latitude    *float64
+	Longitude   *float64
+	IsPrimary   *bool
+	IsActive    *bool
+}
+
+// HasChanges reports whether the update contains at least one field change.
+func (update AddressUpdate) HasChanges() bool {
+	return update.Label != nil ||
+		update.FullAddress != nil ||
+		update.Latitude != nil ||
+		update.Longitude != nil ||
+		update.IsPrimary != nil ||
+		update.IsActive != nil
+}
+
+// ApplyUpdate applies a partial address update to the entity.
+func (address *Address) ApplyUpdate(update AddressUpdate) {
+	if update.Label != nil {
+		address.Label = *update.Label
+	}
+	if update.FullAddress != nil {
+		address.FullAddress = *update.FullAddress
+	}
+	if update.Latitude != nil {
+		address.Latitude = *update.Latitude
+	}
+	if update.Longitude != nil {
+		address.Longitude = *update.Longitude
+	}
+	if update.IsPrimary != nil {
+		address.IsPrimary = *update.IsPrimary
+	}
+	if update.IsActive != nil {
+		address.IsActive = *update.IsActive
+	}
+
+	address.UpdatedAt = time.Now()
+}

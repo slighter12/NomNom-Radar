@@ -240,6 +240,14 @@ spec:
           value: PROJECT_ID_PLACEHOLDER
         - name: HTTP_CLOUDFLARESECRET
           value: HTTP_CLOUDFLARESECRET_PLACEHOLDER
+        - name: HTTP_RATELIMIT_ENABLED
+          value: HTTP_RATELIMIT_ENABLED_PLACEHOLDER
+        - name: HTTP_RATELIMIT_RATE
+          value: HTTP_RATELIMIT_RATE_PLACEHOLDER
+        - name: HTTP_RATELIMIT_BURST
+          value: HTTP_RATELIMIT_BURST_PLACEHOLDER
+        - name: HTTP_RATELIMIT_EXPIRESIN
+          value: HTTP_RATELIMIT_EXPIRESIN_PLACEHOLDER
 YAML
 MOCK
 cat > "${temp_dir}/bin/gcloud" <<'MOCK'
@@ -320,7 +328,7 @@ MOCK
 chmod +x "${temp_dir}/bin/kubectl" "${temp_dir}/bin/gcloud"
 release_functions="${temp_dir}/release-functions.sh"
 sed '/^case "${1:-}" in$/,$d' "${script_dir}/release.sh" > "${release_functions}"
-common_env=(PATH="${temp_dir}/bin:${PATH}" RELEASE_SHA="${sha}" BUNDLE_FILE="${bundle}" PROJECT_ID=test PROJECT_NUMBER=123456 REGION=region REGISTRY=registry.example OWNER=repo RUNTIME_SA_EMAIL=runtime@example.invalid ALLOWED_HOST=radar.example.invalid GOOGLE_OAUTH_CLIENT_ID=oauth MOCK_JOB_MANIFEST="${temp_dir}/captured-job.yaml" MOCK_MUTATION_MARKER="${temp_dir}/mutation.marker")
+common_env=(PATH="${temp_dir}/bin:${PATH}" RELEASE_SHA="${sha}" BUNDLE_FILE="${bundle}" PROJECT_ID=test PROJECT_NUMBER=123456 REGION=region REGISTRY=registry.example OWNER=repo RUNTIME_SA_EMAIL=runtime@example.invalid ALLOWED_HOST=radar.example.invalid CORS_ALLOWED_ORIGINS=https://app.example.invalid RATE_LIMIT_ENABLED=true RATE_LIMIT_RATE=12 RATE_LIMIT_BURST=40 RATE_LIMIT_EXPIRES_IN=5m GOOGLE_OAUTH_CLIENT_ID=oauth MOCK_JOB_MANIFEST="${temp_dir}/captured-job.yaml" MOCK_MUTATION_MARKER="${temp_dir}/mutation.marker")
 assert_missing_cloud_run_target() {
   local target=$1 snapshot_output preflight_output
   snapshot_output=$(
@@ -365,6 +373,28 @@ fi
 env "${common_env[@]}" TARGET_ENVIRONMENT=dev bash "${script_dir}/release.sh" deploy
 env "${common_env[@]}" TARGET_ENVIRONMENT=prod CLOUDFLARE_ORIGIN_SECRET='safe/+value=' bash "${script_dir}/release.sh" deploy
 [ -s "${temp_dir}/captured-job.yaml" ] || fail job-manifest-capture
+assert_rejected_runtime_line() {
+  local label=$1
+  local expected=$2
+  local output_file="${temp_dir}/${label}.txt"
+  shift 2
+  rm -f "${temp_dir}/mutation.marker"
+  if env "${common_env[@]}" TARGET_ENVIRONMENT=dev "$@" bash "${script_dir}/release.sh" deploy >"${output_file}" 2>&1; then
+    fail "${label}-accepted"
+  fi
+  grep -F -- "${expected}" "${output_file}" >/dev/null || fail "${label}-reason"
+  [ ! -e "${temp_dir}/mutation.marker" ] || fail "${label}-mutated"
+}
+assert_rejected_runtime_line cors-crlf 'CORS_ALLOWED_ORIGINS must not contain CR or LF' \
+  $'CORS_ALLOWED_ORIGINS=https://app.example.invalid\r\nhttps://evil.example.invalid'
+assert_rejected_runtime_line rate-enabled-crlf 'RATE_LIMIT_ENABLED must not contain CR or LF' \
+  $'RATE_LIMIT_ENABLED=true\nfalse'
+assert_rejected_runtime_line rate-crlf 'RATE_LIMIT_RATE must not contain CR or LF' \
+  $'RATE_LIMIT_RATE=12\n13'
+assert_rejected_runtime_line burst-crlf 'RATE_LIMIT_BURST must not contain CR or LF' \
+  $'RATE_LIMIT_BURST=40\n41'
+assert_rejected_runtime_line expires-crlf 'RATE_LIMIT_EXPIRES_IN must not contain CR or LF' \
+  $'RATE_LIMIT_EXPIRES_IN=5m\n6m'
 rm -f "${temp_dir}/mutation.marker"
 if env "${common_env[@]}" PROJECT_NUMBER= TARGET_ENVIRONMENT=dev bash "${script_dir}/release.sh" deploy >/dev/null 2>&1; then
   fail deploy-project-number-guard

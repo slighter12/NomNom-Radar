@@ -4,6 +4,12 @@ import "testing"
 
 func TestCanonicalizeEnvKey_UsesExistingCamelCaseKeys(t *testing.T) {
 	existing := map[string]any{
+		"http": map[string]any{
+			"rateLimit": map[string]any{
+				"enabled":   true,
+				"expiresIn": "3m",
+			},
+		},
 		"postgres": map[string]any{
 			"sslMode": "disable",
 			"master": map[string]any{
@@ -26,6 +32,8 @@ func TestCanonicalizeEnvKey_UsesExistingCamelCaseKeys(t *testing.T) {
 		{envKey: "POSTGRES_MASTER_USERNAME", want: "postgres.master.userName"},
 		{envKey: "PUBSUB_TOPICID", want: "pubsub.topicId"},
 		{envKey: "SECRETKEY_ACCESS", want: "secretKey.access"},
+		{envKey: "HTTP_RATELIMIT_ENABLED", want: "http.rateLimit.enabled"},
+		{envKey: "HTTP_RATELIMIT_EXPIRESIN", want: "http.rateLimit.expiresIn"},
 		{envKey: "NEW_FEATURE_FLAG", want: "new.feature.flag"},
 	}
 

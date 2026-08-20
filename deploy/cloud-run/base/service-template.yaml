@@ -48,6 +48,16 @@ spec:
               value: "100KB"
             - name: HTTP_ALLOWEDHOST
               value: "HTTP_ALLOWEDHOST_PLACEHOLDER"
+            - name: HTTP_CORSALLOWEDORIGINS
+              value: "HTTP_CORSALLOWEDORIGINS_PLACEHOLDER"
+            - name: HTTP_RATELIMIT_ENABLED
+              value: "HTTP_RATELIMIT_ENABLED_PLACEHOLDER"
+            - name: HTTP_RATELIMIT_RATE
+              value: "HTTP_RATELIMIT_RATE_PLACEHOLDER"
+            - name: HTTP_RATELIMIT_BURST
+              value: "HTTP_RATELIMIT_BURST_PLACEHOLDER"
+            - name: HTTP_RATELIMIT_EXPIRESIN
+              value: "HTTP_RATELIMIT_EXPIRESIN_PLACEHOLDER"
             # Cloud Run should emit structured JSON logs for queryability.
             - name: ENV_LOG_PRETTY
               value: "false"

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -40,6 +41,7 @@ type ServerParams struct {
 
 func NewServer(params ServerParams) (delivery.Delivery, error) {
 	echoServer := echo.New()
+	echoServer.IPExtractor = apimiddleware.NewClientIPExtractor(params.Cfg)
 	echoServer.HideBanner = true
 	echoServer.Server.ReadTimeout = params.Cfg.HTTP.Timeouts.ReadTimeout
 	echoServer.Server.ReadHeaderTimeout = params.Cfg.HTTP.Timeouts.ReadHeaderTimeout
@@ -70,7 +72,13 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 	echoServer.Use(domainGuard.ValidateHost)
 
 	// 6. CORS middleware
-	echoServer.Use(echomiddleware.CORS())
+	corsMiddleware, err := apimiddleware.NewCORSMiddleware(params.Cfg)
+	if err != nil {
+		return nil, fmt.Errorf("configure CORS middleware: %w", err)
+	}
+	if corsMiddleware != nil {
+		echoServer.Use(corsMiddleware)
+	}
 
 	// 7. Request body size limit
 	echoServer.Use(echomiddleware.BodyLimit(params.Cfg.HTTP.MaxRequestBodySize))
@@ -82,7 +90,9 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 	echoServer.Validator = validator.New()
 
 	r := router.NewRouter(params.RouterParams)
-	r.RegisterRoutes(echoServer)
+	if err := r.RegisterRoutes(echoServer); err != nil {
+		return nil, fmt.Errorf("register API routes: %w", err)
+	}
 	r.RegisterTestRoutes(echoServer)
 
 	srv := &apiServer{

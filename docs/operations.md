@@ -237,7 +237,26 @@ Candidate variables are `GCP_DEV_PROJECT_ID`, `GCP_DEV_REGISTRY`, and
 `GCP_DEV_REGION`. Each Environment provides `GCP_PROJECT_ID`,
 `GCP_PROJECT_NUMBER`, `GCP_REGION`,
 `GCP_REGISTRY`, `GCP_SA_EMAIL`, `GCP_SCHEDULER_SA_EMAIL`,
-`GOOGLEOAUTH_CLIENTID`, and `HTTP_ALLOWEDHOST`.
+`GOOGLEOAUTH_CLIENTID`, `HTTP_ALLOWEDHOST`, and
+`HTTP_CORSALLOWEDORIGINS`, `HTTP_RATELIMIT_ENABLED`,
+`HTTP_RATELIMIT_RATE`, `HTTP_RATELIMIT_BURST`, and
+`HTTP_RATELIMIT_EXPIRESIN`.
+
+`HTTP_CORSALLOWEDORIGINS` is a comma-separated list of complete browser
+origins such as `https://app.example.com`. Wildcards are rejected. An empty
+value disables CORS instead of allowing every origin. Cloud Run releases may
+leave this variable empty when no browser cross-origin client is required;
+browser clients must otherwise be configured explicitly in each environment.
+
+Authentication endpoints use one configurable in-process Echo rate limiter for
+`/auth/*` and `/oauth/*`. The defaults are 10 requests/second, a burst of 30,
+and three-minute visitor cleanup. The limiter is keyed by the client IP, is
+local to each Cloud Run instance, and is not a global distributed limiter.
+`HTTP_RATELIMIT_ENABLED=false` disables it explicitly. In Cloudflare-backed
+environments the client IP comes from the authenticated `CF-Connecting-IP`
+header; direct environments ignore forwarded IP headers and use the network
+peer address. This application-layer limiter does not replace a Cloudflare-wide
+rate-limiting rule.
 
 `GCP_SA_EMAIL` is the Cloud Run runtime identity.
 `GCP_SCHEDULER_SA_EMAIL` must be a different identity, and its permission to

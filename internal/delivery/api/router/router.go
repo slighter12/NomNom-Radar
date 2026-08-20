@@ -1,6 +1,8 @@
 package router
 
 import (
+	"fmt"
+
 	"radar/config"
 	"radar/internal/delivery/api/middleware"
 	"radar/internal/delivery/api/router/handler"
@@ -57,17 +59,29 @@ func NewRouter(params RouterParams) *router {
 }
 
 // RegisterRoutes sets up all the API routes for the application.
-func (r *router) RegisterRoutes(e *echo.Echo) {
+func (r *router) RegisterRoutes(e *echo.Echo) error {
 	// Health check endpoint
 	e.GET("/health", handler.HealthCheck)
 
-	r.registerPublicRoutes(e)
+	if err := r.registerPublicRoutes(e); err != nil {
+		return err
+	}
 	r.registerAuthenticatedRootRoutes(e)
 	r.registerAPIV1Routes(e)
+
+	return nil
 }
 
-func (r *router) registerPublicRoutes(e *echo.Echo) {
+func (r *router) registerPublicRoutes(e *echo.Echo) error {
+	authRateLimiter, err := middleware.NewAuthRateLimiter(r.config)
+	if err != nil {
+		return fmt.Errorf("configure auth rate limiter: %w", err)
+	}
+
 	authGroup := e.Group("/auth")
+	if authRateLimiter != nil {
+		authGroup.Use(authRateLimiter)
+	}
 	{
 		authGroup.POST("/register/user", r.userHandler.RegisterUser)
 		authGroup.POST("/register/merchant", r.userHandler.RegisterMerchant)
@@ -79,9 +93,14 @@ func (r *router) registerPublicRoutes(e *echo.Echo) {
 	}
 
 	oauthGroup := e.Group("/oauth")
+	if authRateLimiter != nil {
+		oauthGroup.Use(authRateLimiter)
+	}
 	{
 		oauthGroup.POST("/google/callback", r.userHandler.GoogleCallback)
 	}
+
+	return nil
 }
 
 func (r *router) registerAuthenticatedRootRoutes(e *echo.Echo) {

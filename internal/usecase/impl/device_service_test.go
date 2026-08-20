@@ -103,7 +103,7 @@ func TestDeviceService_RegisterDevice_UpdateExisting(t *testing.T) {
 		Return(existingDevice, nil)
 
 	fx.deviceRepo.EXPECT().
-		UpdateFCMToken(ctx, deviceID, "new-fcm-token").
+		UpdateFCMToken(ctx, userID, deviceID, "new-fcm-token").
 		Return(nil)
 
 	fx.deviceRepo.EXPECT().
@@ -219,7 +219,7 @@ func TestDeviceService_UpdateFCMToken_Success(t *testing.T) {
 		Return(existingDevice, nil)
 
 	fx.deviceRepo.EXPECT().
-		UpdateFCMToken(ctx, deviceID, newToken).
+		UpdateFCMToken(ctx, userID, deviceID, newToken).
 		Return(nil)
 
 	err := fx.service.UpdateFCMToken(ctx, userID, deviceID, newToken)
@@ -266,7 +266,7 @@ func TestDeviceService_DeactivateDevice_Success(t *testing.T) {
 		Return(existingDevice, nil)
 
 	fx.deviceRepo.EXPECT().
-		SetDeviceActive(ctx, deviceID, false).
+		SetDeviceActive(ctx, userID, deviceID, false).
 		Return(nil)
 
 	err := fx.service.DeactivateDevice(ctx, userID, deviceID)

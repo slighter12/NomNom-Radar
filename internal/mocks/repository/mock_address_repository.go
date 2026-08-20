@@ -169,16 +169,16 @@ func (_c *MockAddressRepository_CreateAddress_Call) RunAndReturn(run func(ctx co
 }
 
 // DeleteAddress provides a mock function for the type MockAddressRepository
-func (_mock *MockAddressRepository) DeleteAddress(ctx context.Context, id uuid.UUID) error {
-	ret := _mock.Called(ctx, id)
+func (_mock *MockAddressRepository) DeleteAddress(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType, id uuid.UUID) error {
+	ret := _mock.Called(ctx, ownerID, ownerType, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteAddress")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) error); ok {
-		r0 = returnFunc(ctx, id)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, entity.OwnerType, uuid.UUID) error); ok {
+		r0 = returnFunc(ctx, ownerID, ownerType, id)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -192,12 +192,14 @@ type MockAddressRepository_DeleteAddress_Call struct {
 
 // DeleteAddress is a helper method to define mock.On call
 //   - ctx context.Context
+//   - ownerID uuid.UUID
+//   - ownerType entity.OwnerType
 //   - id uuid.UUID
-func (_e *MockAddressRepository_Expecter) DeleteAddress(ctx interface{}, id interface{}) *MockAddressRepository_DeleteAddress_Call {
-	return &MockAddressRepository_DeleteAddress_Call{Call: _e.mock.On("DeleteAddress", ctx, id)}
+func (_e *MockAddressRepository_Expecter) DeleteAddress(ctx interface{}, ownerID interface{}, ownerType interface{}, id interface{}) *MockAddressRepository_DeleteAddress_Call {
+	return &MockAddressRepository_DeleteAddress_Call{Call: _e.mock.On("DeleteAddress", ctx, ownerID, ownerType, id)}
 }
 
-func (_c *MockAddressRepository_DeleteAddress_Call) Run(run func(ctx context.Context, id uuid.UUID)) *MockAddressRepository_DeleteAddress_Call {
+func (_c *MockAddressRepository_DeleteAddress_Call) Run(run func(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType, id uuid.UUID)) *MockAddressRepository_DeleteAddress_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -207,9 +209,19 @@ func (_c *MockAddressRepository_DeleteAddress_Call) Run(run func(ctx context.Con
 		if args[1] != nil {
 			arg1 = args[1].(uuid.UUID)
 		}
+		var arg2 entity.OwnerType
+		if args[2] != nil {
+			arg2 = args[2].(entity.OwnerType)
+		}
+		var arg3 uuid.UUID
+		if args[3] != nil {
+			arg3 = args[3].(uuid.UUID)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -220,7 +232,7 @@ func (_c *MockAddressRepository_DeleteAddress_Call) Return(err error) *MockAddre
 	return _c
 }
 
-func (_c *MockAddressRepository_DeleteAddress_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID) error) *MockAddressRepository_DeleteAddress_Call {
+func (_c *MockAddressRepository_DeleteAddress_Call) RunAndReturn(run func(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType, id uuid.UUID) error) *MockAddressRepository_DeleteAddress_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -516,16 +528,16 @@ func (_c *MockAddressRepository_FindPrimaryAddressByOwner_Call) RunAndReturn(run
 }
 
 // UpdateAddress provides a mock function for the type MockAddressRepository
-func (_mock *MockAddressRepository) UpdateAddress(ctx context.Context, address *entity.Address) error {
-	ret := _mock.Called(ctx, address)
+func (_mock *MockAddressRepository) UpdateAddress(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType, addressID uuid.UUID, update *entity.AddressUpdate) error {
+	ret := _mock.Called(ctx, ownerID, ownerType, addressID, update)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateAddress")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *entity.Address) error); ok {
-		r0 = returnFunc(ctx, address)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, entity.OwnerType, uuid.UUID, *entity.AddressUpdate) error); ok {
+		r0 = returnFunc(ctx, ownerID, ownerType, addressID, update)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -539,24 +551,42 @@ type MockAddressRepository_UpdateAddress_Call struct {
 
 // UpdateAddress is a helper method to define mock.On call
 //   - ctx context.Context
-//   - address *entity.Address
-func (_e *MockAddressRepository_Expecter) UpdateAddress(ctx interface{}, address interface{}) *MockAddressRepository_UpdateAddress_Call {
-	return &MockAddressRepository_UpdateAddress_Call{Call: _e.mock.On("UpdateAddress", ctx, address)}
+//   - ownerID uuid.UUID
+//   - ownerType entity.OwnerType
+//   - addressID uuid.UUID
+//   - update *entity.AddressUpdate
+func (_e *MockAddressRepository_Expecter) UpdateAddress(ctx interface{}, ownerID interface{}, ownerType interface{}, addressID interface{}, update interface{}) *MockAddressRepository_UpdateAddress_Call {
+	return &MockAddressRepository_UpdateAddress_Call{Call: _e.mock.On("UpdateAddress", ctx, ownerID, ownerType, addressID, update)}
 }
 
-func (_c *MockAddressRepository_UpdateAddress_Call) Run(run func(ctx context.Context, address *entity.Address)) *MockAddressRepository_UpdateAddress_Call {
+func (_c *MockAddressRepository_UpdateAddress_Call) Run(run func(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType, addressID uuid.UUID, update *entity.AddressUpdate)) *MockAddressRepository_UpdateAddress_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 *entity.Address
+		var arg1 uuid.UUID
 		if args[1] != nil {
-			arg1 = args[1].(*entity.Address)
+			arg1 = args[1].(uuid.UUID)
+		}
+		var arg2 entity.OwnerType
+		if args[2] != nil {
+			arg2 = args[2].(entity.OwnerType)
+		}
+		var arg3 uuid.UUID
+		if args[3] != nil {
+			arg3 = args[3].(uuid.UUID)
+		}
+		var arg4 *entity.AddressUpdate
+		if args[4] != nil {
+			arg4 = args[4].(*entity.AddressUpdate)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
+			arg3,
+			arg4,
 		)
 	})
 	return _c
@@ -567,7 +597,7 @@ func (_c *MockAddressRepository_UpdateAddress_Call) Return(err error) *MockAddre
 	return _c
 }
 
-func (_c *MockAddressRepository_UpdateAddress_Call) RunAndReturn(run func(ctx context.Context, address *entity.Address) error) *MockAddressRepository_UpdateAddress_Call {
+func (_c *MockAddressRepository_UpdateAddress_Call) RunAndReturn(run func(ctx context.Context, ownerID uuid.UUID, ownerType entity.OwnerType, addressID uuid.UUID, update *entity.AddressUpdate) error) *MockAddressRepository_UpdateAddress_Call {
 	_c.Call.Return(run)
 	return _c
 }

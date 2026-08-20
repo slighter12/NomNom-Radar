@@ -6,7 +6,7 @@
     db-postgres-status db-postgres-install-goose db-supabase-create \
 	gci-format build docker-image-build \
 	docker-up docker-down docker-logs docker-clean \
-	k6-full \
+	k6-full k6-idor \
 	routing-cli routing-prepare routing-validate \
 	modernize \
 	generate-mocks
@@ -216,7 +216,7 @@ docker-clean: ## remove all containers, networks, and volumes
 	docker-compose down -v --remove-orphans
 
 k6-full: ## run k6 functional API verification with local k6
-	BASE_URL="$(K6_BASE_URL)" \
+	@BASE_URL="$(K6_BASE_URL)" \
 	RUN_ID="$(K6_RUN_ID)" \
 	K6_TEST_PASSWORD="$(K6_TEST_PASSWORD)" \
 	FULL_VUS="$(FULL_VUS)" \
@@ -224,6 +224,12 @@ k6-full: ## run k6 functional API verification with local k6
 	FULL_MAX_DURATION="$(FULL_MAX_DURATION)" \
 	FULL_SLEEP_SECONDS="$(FULL_SLEEP_SECONDS)" \
 	$(K6) run k6/full.js
+
+k6-idor: ## run k6 cross-owner authorization verification with local k6
+	@BASE_URL="$(K6_BASE_URL)" \
+	RUN_ID="$(K6_RUN_ID)" \
+	K6_TEST_PASSWORD="$(K6_TEST_PASSWORD)" \
+	$(K6) run k6/idor.js
 
 #############
 #  Routing  #

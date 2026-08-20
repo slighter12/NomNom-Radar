@@ -14,13 +14,29 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+func TestLocationService_UpdateMerchantLocation_RejectsEmptyUpdate(t *testing.T) {
+	fx := createTestLocationService(t, nil)
+
+	address, err := fx.service.UpdateMerchantLocation(
+		context.Background(),
+		uuid.New(),
+		uuid.New(),
+		&usecase.UpdateLocationInput{},
+	)
+
+	assert.Error(t, err)
+	assert.Nil(t, address)
+	assert.ErrorIs(t, err, domainerrors.ErrValidationFailed)
+}
+
 func TestLocationService_UpdateMerchantLocation_NotFound(t *testing.T) {
 	fx := createTestLocationService(t, nil)
 
 	ctx := context.Background()
 	merchantID := uuid.New()
 	locationID := uuid.New()
-	input := &usecase.UpdateLocationInput{}
+	label := "Updated Store"
+	input := &usecase.UpdateLocationInput{Label: &label}
 
 	fx.addressRepo.EXPECT().
 		FindAddressByID(ctx, locationID).
@@ -39,7 +55,8 @@ func TestLocationService_UpdateMerchantLocation_Unauthorized(t *testing.T) {
 	merchantID := uuid.New()
 	differentMerchantID := uuid.New()
 	locationID := uuid.New()
-	input := &usecase.UpdateLocationInput{}
+	label := "Updated Store"
+	input := &usecase.UpdateLocationInput{Label: &label}
 
 	existingAddress := &entity.Address{
 		ID:        locationID,
@@ -63,7 +80,8 @@ func TestLocationService_UpdateMerchantLocation_WrongOwnerType(t *testing.T) {
 	ctx := context.Background()
 	merchantID := uuid.New()
 	locationID := uuid.New()
-	input := &usecase.UpdateLocationInput{}
+	label := "Updated Store"
+	input := &usecase.UpdateLocationInput{Label: &label}
 
 	existingAddress := &entity.Address{
 		ID:        locationID,
@@ -105,7 +123,7 @@ func TestLocationService_UpdateMerchantLocation_UpdateError(t *testing.T) {
 
 	expectedErr := errors.New("database error")
 	fx.addressRepo.EXPECT().
-		UpdateAddress(ctx, mock.AnythingOfType("*entity.Address")).
+		UpdateAddress(ctx, merchantID, entity.OwnerTypeMerchantProfile, locationID, mock.AnythingOfType("*entity.AddressUpdate")).
 		Return(expectedErr)
 
 	address, err := fx.service.UpdateMerchantLocation(ctx, merchantID, locationID, input)
@@ -120,7 +138,8 @@ func TestLocationService_UpdateMerchantLocation_FindError(t *testing.T) {
 	ctx := context.Background()
 	merchantID := uuid.New()
 	locationID := uuid.New()
-	input := &usecase.UpdateLocationInput{}
+	label := "Updated Store"
+	input := &usecase.UpdateLocationInput{Label: &label}
 
 	expectedErr := errors.New("database connection failed")
 	fx.addressRepo.EXPECT().
@@ -213,7 +232,7 @@ func TestLocationService_DeleteMerchantLocation_DeleteError(t *testing.T) {
 
 	expectedErr := errors.New("database error")
 	fx.addressRepo.EXPECT().
-		DeleteAddress(ctx, locationID).
+		DeleteAddress(ctx, merchantID, entity.OwnerTypeMerchantProfile, locationID).
 		Return(expectedErr)
 
 	err := fx.service.DeleteMerchantLocation(ctx, merchantID, locationID)
@@ -373,7 +392,7 @@ func TestLocationService_UpdateUserLocation_UpdateError(t *testing.T) {
 
 	expectedErr := errors.New("database error")
 	fx.addressRepo.EXPECT().
-		UpdateAddress(ctx, mock.AnythingOfType("*entity.Address")).
+		UpdateAddress(ctx, userID, entity.OwnerTypeUserProfile, locationID, mock.AnythingOfType("*entity.AddressUpdate")).
 		Return(expectedErr)
 
 	address, err := fx.service.UpdateUserLocation(ctx, userID, locationID, input)
@@ -388,7 +407,8 @@ func TestLocationService_UpdateUserLocation_FindError(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 	locationID := uuid.New()
-	input := &usecase.UpdateLocationInput{}
+	label := "Updated Home"
+	input := &usecase.UpdateLocationInput{Label: &label}
 
 	expectedErr := errors.New("database connection failed")
 	fx.addressRepo.EXPECT().
@@ -407,7 +427,8 @@ func TestLocationService_UpdateUserLocation_WrongOwnerType(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 	locationID := uuid.New()
-	input := &usecase.UpdateLocationInput{}
+	label := "Updated Home"
+	input := &usecase.UpdateLocationInput{Label: &label}
 
 	existingAddress := &entity.Address{
 		ID:        locationID,
@@ -460,7 +481,7 @@ func TestLocationService_DeleteUserLocation_DeleteError(t *testing.T) {
 
 	expectedErr := errors.New("database error")
 	fx.addressRepo.EXPECT().
-		DeleteAddress(ctx, locationID).
+		DeleteAddress(ctx, userID, entity.OwnerTypeUserProfile, locationID).
 		Return(expectedErr)
 
 	err := fx.service.DeleteUserLocation(ctx, userID, locationID)
@@ -513,7 +534,8 @@ func TestLocationService_UpdateUserLocation_NotFound(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 	locationID := uuid.New()
-	input := &usecase.UpdateLocationInput{}
+	label := "Updated Home"
+	input := &usecase.UpdateLocationInput{Label: &label}
 
 	fx.addressRepo.EXPECT().
 		FindAddressByID(ctx, locationID).
@@ -532,7 +554,8 @@ func TestLocationService_UpdateUserLocation_Unauthorized(t *testing.T) {
 	userID := uuid.New()
 	differentUserID := uuid.New()
 	locationID := uuid.New()
-	input := &usecase.UpdateLocationInput{}
+	label := "Updated Home"
+	input := &usecase.UpdateLocationInput{Label: &label}
 
 	existingAddress := &entity.Address{
 		ID:        locationID,

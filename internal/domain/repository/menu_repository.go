@@ -21,8 +21,8 @@ type MenuRepository interface {
 	FindMenuItemByID(ctx context.Context, id uuid.UUID) (*entity.MenuItem, error)
 	ListActiveMenuItemIDsByMerchant(ctx context.Context, merchantID uuid.UUID) ([]uuid.UUID, error)
 	ListMenuItemsByMerchant(ctx context.Context, merchantID uuid.UUID, filter MenuItemListFilter) ([]*entity.MenuItem, int64, error)
-	UpdateMenuItem(ctx context.Context, item *entity.MenuItem) error
-	UpdateMenuItemAvailability(ctx context.Context, id uuid.UUID, isAvailable bool) error
+	UpdateMenuItem(ctx context.Context, merchantID, id uuid.UUID, update *entity.MenuItemUpdate) error
+	UpdateMenuItemAvailability(ctx context.Context, merchantID, id uuid.UUID, isAvailable bool) error
 	DeleteMenuItem(ctx context.Context, merchantID, id uuid.UUID) error
 	ReorderMenuItems(ctx context.Context, merchantID uuid.UUID, itemIDs []uuid.UUID) error
 }

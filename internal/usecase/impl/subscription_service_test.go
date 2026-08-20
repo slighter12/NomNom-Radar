@@ -305,11 +305,11 @@ func TestSubscriptionService_SubscribeToMerchant_ExistingDeviceUpdate(t *testing
 		Return(existingDevice, nil)
 
 	fx.deviceRepo.EXPECT().
-		UpdateFCMToken(ctx, deviceID, "new-token").
+		UpdateFCMToken(ctx, userID, deviceID, "new-token").
 		Return(nil)
 
 	fx.deviceRepo.EXPECT().
-		SetDeviceActive(ctx, deviceID, true).
+		SetDeviceActive(ctx, userID, deviceID, true).
 		Return(nil)
 
 	fx.deviceRepo.EXPECT().

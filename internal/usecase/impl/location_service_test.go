@@ -102,10 +102,14 @@ func TestLocationService_UpdateUserLocation_Success(t *testing.T) {
 	}
 
 	existingAddress := &entity.Address{
-		ID:        locationID,
-		OwnerID:   userID,
-		OwnerType: entity.OwnerTypeUserProfile,
-		Label:     "Home",
+		ID:          locationID,
+		OwnerID:     userID,
+		OwnerType:   entity.OwnerTypeUserProfile,
+		Label:       "Home",
+		FullAddress: "Old Address",
+		Latitude:    25.0,
+		Longitude:   121.0,
+		IsActive:    true,
 	}
 
 	fx.addressRepo.EXPECT().
@@ -113,13 +117,22 @@ func TestLocationService_UpdateUserLocation_Success(t *testing.T) {
 		Return(existingAddress, nil)
 
 	fx.addressRepo.EXPECT().
-		UpdateAddress(ctx, mock.AnythingOfType("*entity.Address")).
+		UpdateAddress(ctx, userID, entity.OwnerTypeUserProfile, locationID, mock.MatchedBy(func(update *entity.AddressUpdate) bool {
+			return update.Label != nil && *update.Label == newLabel &&
+				update.FullAddress == nil && update.Latitude == nil &&
+				update.Longitude == nil && update.IsPrimary == nil &&
+				update.IsActive == nil
+		})).
 		Return(nil)
 
 	address, err := fx.service.UpdateUserLocation(ctx, userID, locationID, input)
 	require.NoError(t, err)
 	assert.NotNil(t, address)
 	assert.Equal(t, newLabel, address.Label)
+	assert.Equal(t, "Old Address", address.FullAddress)
+	assert.Equal(t, 25.0, address.Latitude)
+	assert.Equal(t, 121.0, address.Longitude)
+	assert.True(t, address.IsActive)
 }
 
 func TestLocationService_DeleteUserLocation_Success(t *testing.T) {
@@ -140,7 +153,7 @@ func TestLocationService_DeleteUserLocation_Success(t *testing.T) {
 		Return(existingAddress, nil)
 
 	fx.addressRepo.EXPECT().
-		DeleteAddress(ctx, locationID).
+		DeleteAddress(ctx, userID, entity.OwnerTypeUserProfile, locationID).
 		Return(nil)
 
 	err := fx.service.DeleteUserLocation(ctx, userID, locationID)
@@ -220,7 +233,12 @@ func TestLocationService_UpdateMerchantLocation_Success(t *testing.T) {
 		Return(existingAddress, nil)
 
 	fx.addressRepo.EXPECT().
-		UpdateAddress(ctx, mock.AnythingOfType("*entity.Address")).
+		UpdateAddress(ctx, merchantID, entity.OwnerTypeMerchantProfile, locationID, mock.MatchedBy(func(update *entity.AddressUpdate) bool {
+			return update.Label != nil && *update.Label == newLabel &&
+				update.FullAddress != nil && *update.FullAddress == newAddress &&
+				update.Latitude == nil && update.Longitude == nil &&
+				update.IsPrimary == nil && update.IsActive == nil
+		})).
 		Return(nil)
 
 	address, err := fx.service.UpdateMerchantLocation(ctx, merchantID, locationID, input)
@@ -248,7 +266,7 @@ func TestLocationService_DeleteMerchantLocation_Success(t *testing.T) {
 		Return(existingAddress, nil)
 
 	fx.addressRepo.EXPECT().
-		DeleteAddress(ctx, locationID).
+		DeleteAddress(ctx, merchantID, entity.OwnerTypeMerchantProfile, locationID).
 		Return(nil)
 
 	err := fx.service.DeleteMerchantLocation(ctx, merchantID, locationID)
@@ -295,7 +313,14 @@ func TestLocationService_UpdateMerchantLocation_AllFields(t *testing.T) {
 		Return(existingAddress, nil)
 
 	fx.addressRepo.EXPECT().
-		UpdateAddress(ctx, mock.AnythingOfType("*entity.Address")).
+		UpdateAddress(ctx, merchantID, entity.OwnerTypeMerchantProfile, locationID, mock.MatchedBy(func(update *entity.AddressUpdate) bool {
+			return update.Label != nil && *update.Label == newLabel &&
+				update.FullAddress != nil && *update.FullAddress == newAddress &&
+				update.Latitude != nil && *update.Latitude == newLat &&
+				update.Longitude != nil && *update.Longitude == newLng &&
+				update.IsPrimary != nil && *update.IsPrimary == newIsPrimary &&
+				update.IsActive != nil && *update.IsActive == newIsActive
+		})).
 		Return(nil)
 
 	address, err := fx.service.UpdateMerchantLocation(ctx, merchantID, locationID, input)

@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/slighter12/go-lib/errors/stack"
+	"gorm.io/gen/field"
 	"gorm.io/gorm"
 )
 
@@ -131,34 +132,99 @@ func (repo *addressRepository) FindPrimaryAddressByOwner(ctx context.Context, ow
 	return toAddressDomain(addressM), nil
 }
 
-// UpdateAddress updates an existing address record.
-func (repo *addressRepository) UpdateAddress(ctx context.Context, address *entity.Address) error {
-	addressM := fromAddressDomain(address)
-
-	if err := repo.q.AddressModel.WithContext(ctx).Save(addressM); err != nil {
-		if isUniqueConstraintViolation(err) {
-			return replaceWithSourceStack(err, domainerrors.ErrPrimaryAddressConflict)
-		}
-		if isForeignKeyConstraintViolation(err) {
-			return replaceWithSourceStack(err, domainerrors.ErrAddressUpdateFailed)
-		}
-		if isNotNullConstraintViolation(err) {
-			return replaceWithSourceStack(err, domainerrors.ErrAddressUpdateFailed)
-		}
-
-		return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
+// UpdateAddress updates an existing address record owned by the specified owner.
+func (repo *addressRepository) UpdateAddress(
+	ctx context.Context,
+	ownerID uuid.UUID,
+	ownerType entity.OwnerType,
+	addressID uuid.UUID,
+	update *entity.AddressUpdate,
+) error {
+	if update == nil || !update.HasChanges() {
+		return domainerrors.ErrValidationFailed.WithDetails("address update must include at least one field")
 	}
 
-	// Update the entity with updated timestamp
-	address.UpdatedAt = addressM.UpdatedAt
+	addressModel := repo.q.AddressModel
+	var ownerPredicate field.Expr
+	switch ownerType {
+	case entity.OwnerTypeUserProfile:
+		ownerPredicate = addressModel.UserProfileID.Eq(ownerID)
+	case entity.OwnerTypeMerchantProfile:
+		ownerPredicate = addressModel.MerchantProfileID.Eq(ownerID)
+	default:
+		return stack.With(fmt.Errorf("unsupported owner type: %s", ownerType))
+	}
+
+	assignments := repo.addressUpdateAssignments(update)
+	result, err := addressModel.WithContext(ctx).
+		Where(addressModel.ID.Eq(addressID), ownerPredicate).
+		UpdateSimple(assignments...)
+	if err != nil {
+		return repo.toAddressUpdateError(err)
+	}
+	if result.RowsAffected == 0 {
+		return domainerrors.ErrAddressNotFound
+	}
 
 	return nil
 }
 
-// DeleteAddress removes an address by its ID (soft delete).
-func (repo *addressRepository) DeleteAddress(ctx context.Context, id uuid.UUID) error {
-	result, err := repo.q.AddressModel.WithContext(ctx).
-		Where(repo.q.AddressModel.ID.Eq(id)).
+func (repo *addressRepository) toAddressUpdateError(err error) error {
+	if isUniqueConstraintViolation(err) {
+		return replaceWithSourceStack(err, domainerrors.ErrPrimaryAddressConflict)
+	}
+	if isForeignKeyConstraintViolation(err) || isNotNullConstraintViolation(err) {
+		return replaceWithSourceStack(err, domainerrors.ErrAddressUpdateFailed)
+	}
+
+	return replaceWithSourceStack(err, domainerrors.ErrPersistenceFailed)
+}
+
+func (repo *addressRepository) addressUpdateAssignments(update *entity.AddressUpdate) []field.AssignExpr {
+	addressModel := repo.q.AddressModel
+	assignments := make([]field.AssignExpr, 0, 6)
+	if update.Label != nil {
+		assignments = append(assignments, addressModel.Label.Value(*update.Label))
+	}
+	if update.FullAddress != nil {
+		assignments = append(assignments, addressModel.FullAddress.Value(*update.FullAddress))
+	}
+	if update.Latitude != nil {
+		assignments = append(assignments, addressModel.Latitude.Value(*update.Latitude))
+	}
+	if update.Longitude != nil {
+		assignments = append(assignments, addressModel.Longitude.Value(*update.Longitude))
+	}
+	if update.IsPrimary != nil {
+		assignments = append(assignments, addressModel.IsPrimary.Value(*update.IsPrimary))
+	}
+	if update.IsActive != nil {
+		assignments = append(assignments, addressModel.IsActive.Value(*update.IsActive))
+	}
+
+	return assignments
+}
+
+// DeleteAddress removes an address owned by the specified owner (soft delete).
+func (repo *addressRepository) DeleteAddress(
+	ctx context.Context,
+	ownerID uuid.UUID,
+	ownerType entity.OwnerType,
+	addressID uuid.UUID,
+) error {
+	addressModel := repo.q.AddressModel
+	var ownerPredicate field.Expr
+	switch ownerType {
+	case entity.OwnerTypeUserProfile:
+		ownerPredicate = addressModel.UserProfileID.Eq(ownerID)
+	case entity.OwnerTypeMerchantProfile:
+		ownerPredicate = addressModel.MerchantProfileID.Eq(ownerID)
+	default:
+		return stack.With(fmt.Errorf("unsupported owner type: %s", ownerType))
+	}
+
+	result, err := addressModel.WithContext(ctx).
+		Where(addressModel.ID.Eq(addressID), ownerPredicate).
 		Delete()
 
 	if err != nil {

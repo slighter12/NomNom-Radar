@@ -21,8 +21,8 @@ type menuRepositoryStub struct {
 	findMenuItemByIDFunc           func(ctx context.Context, id uuid.UUID) (*entity.MenuItem, error)
 	listActiveMenuItemIDsFunc      func(ctx context.Context, merchantID uuid.UUID) ([]uuid.UUID, error)
 	listMenuItemsByMerchantFunc    func(ctx context.Context, merchantID uuid.UUID, filter repository.MenuItemListFilter) ([]*entity.MenuItem, int64, error)
-	updateMenuItemFunc             func(ctx context.Context, item *entity.MenuItem) error
-	updateMenuItemAvailabilityFunc func(ctx context.Context, id uuid.UUID, isAvailable bool) error
+	updateMenuItemFunc             func(ctx context.Context, merchantID, itemID uuid.UUID, update *entity.MenuItemUpdate) error
+	updateMenuItemAvailabilityFunc func(ctx context.Context, merchantID, id uuid.UUID, isAvailable bool) error
 	deleteMenuItemFunc             func(ctx context.Context, merchantID, id uuid.UUID) error
 	reorderMenuItemsFunc           func(ctx context.Context, merchantID uuid.UUID, itemIDs []uuid.UUID) error
 }
@@ -43,12 +43,12 @@ func (s *menuRepositoryStub) ListMenuItemsByMerchant(ctx context.Context, mercha
 	return s.listMenuItemsByMerchantFunc(ctx, merchantID, filter)
 }
 
-func (s *menuRepositoryStub) UpdateMenuItem(ctx context.Context, item *entity.MenuItem) error {
-	return s.updateMenuItemFunc(ctx, item)
+func (s *menuRepositoryStub) UpdateMenuItem(ctx context.Context, merchantID, itemID uuid.UUID, update *entity.MenuItemUpdate) error {
+	return s.updateMenuItemFunc(ctx, merchantID, itemID, update)
 }
 
-func (s *menuRepositoryStub) UpdateMenuItemAvailability(ctx context.Context, id uuid.UUID, isAvailable bool) error {
-	return s.updateMenuItemAvailabilityFunc(ctx, id, isAvailable)
+func (s *menuRepositoryStub) UpdateMenuItemAvailability(ctx context.Context, merchantID, id uuid.UUID, isAvailable bool) error {
+	return s.updateMenuItemAvailabilityFunc(ctx, merchantID, id, isAvailable)
 }
 
 func (s *menuRepositoryStub) DeleteMenuItem(ctx context.Context, merchantID, id uuid.UUID) error {
@@ -217,9 +217,11 @@ func TestMenuService_UpdateMenuItem_PreservesDisplayOrder(t *testing.T) {
 
 			return existingItem, nil
 		},
-		updateMenuItemFunc: func(_ context.Context, item *entity.MenuItem) error {
-			assert.Equal(t, 4, item.DisplayOrder)
-			assert.Equal(t, "New Name", item.Name)
+		updateMenuItemFunc: func(_ context.Context, gotMerchantID, gotItemID uuid.UUID, update *entity.MenuItemUpdate) error {
+			assert.Equal(t, merchantID, gotMerchantID)
+			assert.Equal(t, itemID, gotItemID)
+			assert.Equal(t, "New Name", update.Name)
+			assert.Equal(t, categoryID, update.CategoryID)
 
 			return nil
 		},
@@ -263,7 +265,7 @@ func TestMenuService_UpdateMenuItem_InactiveCategory(t *testing.T) {
 
 				return &entity.MenuItem{ID: itemID, MerchantID: merchantID}, nil
 			},
-			updateMenuItemFunc: func(_ context.Context, _ *entity.MenuItem) error {
+			updateMenuItemFunc: func(_ context.Context, _, _ uuid.UUID, _ *entity.MenuItemUpdate) error {
 				t.Fatal("repository should not be called for invalid category")
 
 				return nil
@@ -606,7 +608,8 @@ func TestMenuService_UpdateMenuItemStatus_Success(t *testing.T) {
 
 			return &entity.MenuItem{ID: itemID, MerchantID: merchantID, IsAvailable: false}, nil
 		},
-		updateMenuItemAvailabilityFunc: func(_ context.Context, id uuid.UUID, isAvailable bool) error {
+		updateMenuItemAvailabilityFunc: func(_ context.Context, ownerID, id uuid.UUID, isAvailable bool) error {
+			assert.Equal(t, merchantID, ownerID)
 			assert.Equal(t, itemID, id)
 			assert.False(t, isAvailable)
 
@@ -634,7 +637,8 @@ func TestMenuService_UpdateMenuItemStatus_NotFound(t *testing.T) {
 
 			return &entity.MenuItem{ID: itemID, MerchantID: merchantID, IsAvailable: true}, nil
 		},
-		updateMenuItemAvailabilityFunc: func(_ context.Context, id uuid.UUID, isAvailable bool) error {
+		updateMenuItemAvailabilityFunc: func(_ context.Context, ownerID, id uuid.UUID, isAvailable bool) error {
+			assert.Equal(t, merchantID, ownerID)
 			assert.Equal(t, itemID, id)
 			assert.False(t, isAvailable)
 
@@ -672,4 +676,66 @@ func TestMenuService_DeleteMenuItem_Success(t *testing.T) {
 	service := NewMenuService(MenuServiceParams{MenuRepo: repo})
 
 	require.NoError(t, service.DeleteMenuItem(ctx, merchantID, itemID))
+}
+
+func TestMenuService_UpdateMenuItem_RejectsOtherMerchant(t *testing.T) {
+	ctx := context.Background()
+	merchantID := uuid.New()
+	otherMerchantID := uuid.New()
+	itemID := uuid.New()
+
+	repo := &menuRepositoryStub{
+		findMenuItemByIDFunc: func(_ context.Context, id uuid.UUID) (*entity.MenuItem, error) {
+			assert.Equal(t, itemID, id)
+
+			return &entity.MenuItem{ID: itemID, MerchantID: otherMerchantID}, nil
+		},
+	}
+	service := NewMenuService(MenuServiceParams{MenuRepo: repo})
+
+	item, err := service.UpdateMenuItem(ctx, merchantID, itemID, &usecase.UpdateMenuItemInput{})
+
+	assert.Nil(t, item)
+	assert.ErrorIs(t, err, domainerrors.ErrForbiddenResourceOwner)
+}
+
+func TestMenuService_UpdateMenuItemStatus_RejectsOtherMerchant(t *testing.T) {
+	ctx := context.Background()
+	merchantID := uuid.New()
+	otherMerchantID := uuid.New()
+	itemID := uuid.New()
+
+	repo := &menuRepositoryStub{
+		findMenuItemByIDFunc: func(_ context.Context, id uuid.UUID) (*entity.MenuItem, error) {
+			assert.Equal(t, itemID, id)
+
+			return &entity.MenuItem{ID: itemID, MerchantID: otherMerchantID}, nil
+		},
+	}
+	service := NewMenuService(MenuServiceParams{MenuRepo: repo})
+
+	item, err := service.UpdateMenuItemStatus(ctx, merchantID, itemID, false)
+
+	assert.Nil(t, item)
+	assert.ErrorIs(t, err, domainerrors.ErrForbiddenResourceOwner)
+}
+
+func TestMenuService_DeleteMenuItem_RejectsOtherMerchant(t *testing.T) {
+	ctx := context.Background()
+	merchantID := uuid.New()
+	otherMerchantID := uuid.New()
+	itemID := uuid.New()
+
+	repo := &menuRepositoryStub{
+		findMenuItemByIDFunc: func(_ context.Context, id uuid.UUID) (*entity.MenuItem, error) {
+			assert.Equal(t, itemID, id)
+
+			return &entity.MenuItem{ID: itemID, MerchantID: otherMerchantID}, nil
+		},
+	}
+	service := NewMenuService(MenuServiceParams{MenuRepo: repo})
+
+	err := service.DeleteMenuItem(ctx, merchantID, itemID)
+
+	assert.ErrorIs(t, err, domainerrors.ErrForbiddenResourceOwner)
 }

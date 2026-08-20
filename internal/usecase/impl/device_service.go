@@ -43,7 +43,7 @@ func (s *deviceService) UpdateFCMToken(ctx context.Context, userID uuid.UUID, de
 		return err
 	}
 
-	if err := s.deviceRepo.UpdateFCMToken(ctx, deviceID, fcmToken); err != nil {
+	if err := s.deviceRepo.UpdateFCMToken(ctx, userID, deviceID, fcmToken); err != nil {
 		return err
 	}
 
@@ -86,7 +86,7 @@ func (s *deviceService) DeactivateDevice(ctx context.Context, userID, deviceID u
 		return err
 	}
 
-	if err := s.deviceRepo.SetDeviceActive(ctx, deviceID, false); err != nil {
+	if err := s.deviceRepo.SetDeviceActive(ctx, userID, deviceID, false); err != nil {
 		return err
 	}
 

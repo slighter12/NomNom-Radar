@@ -173,20 +173,21 @@ func (s *menuService) UpdateMenuItem(ctx context.Context, merchantID, itemID uui
 		return nil, err
 	}
 
-	categoryID := input.CategoryID
-	item.Name = name
-	item.Description = description
-	item.CategoryID = &categoryID
-	item.Price = input.Price
-	item.Currency = currency
-	item.PrepMinutes = input.PrepMinutes
-	item.IsAvailable = input.IsAvailable
-	item.IsPopular = input.IsPopular
-	item.ImageURL = imageURL
-	item.ExternalURL = externalURL
-	item.UpdatedAt = time.Now()
+	update := entity.MenuItemUpdate{
+		Name:        name,
+		Description: description,
+		CategoryID:  input.CategoryID,
+		Price:       input.Price,
+		Currency:    currency,
+		PrepMinutes: input.PrepMinutes,
+		IsAvailable: input.IsAvailable,
+		IsPopular:   input.IsPopular,
+		ImageURL:    imageURL,
+		ExternalURL: externalURL,
+	}
+	item.ApplyUpdate(&update)
 
-	if err := s.menuRepo.UpdateMenuItem(ctx, item); err != nil {
+	if err := s.menuRepo.UpdateMenuItem(ctx, merchantID, itemID, &update); err != nil {
 		return nil, err
 	}
 
@@ -198,7 +199,7 @@ func (s *menuService) UpdateMenuItemStatus(ctx context.Context, merchantID, item
 		return nil, err
 	}
 
-	if err := s.menuRepo.UpdateMenuItemAvailability(ctx, itemID, isAvailable); err != nil {
+	if err := s.menuRepo.UpdateMenuItemAvailability(ctx, merchantID, itemID, isAvailable); err != nil {
 		return nil, err
 	}
 

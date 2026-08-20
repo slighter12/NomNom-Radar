@@ -396,7 +396,7 @@ func (r *sessionLimitTestDeviceRepo) FindDeviceHealthByUser(_ context.Context, _
 	panic("not implemented")
 }
 
-func (r *sessionLimitTestDeviceRepo) UpdateFCMToken(_ context.Context, _ uuid.UUID, _ string) error {
+func (r *sessionLimitTestDeviceRepo) UpdateFCMToken(_ context.Context, _, _ uuid.UUID, _ string) error {
 	panic("not implemented")
 }
 
@@ -408,7 +408,7 @@ func (r *sessionLimitTestDeviceRepo) FindDeviceByUserAndDeviceIDIncludingDeleted
 	panic("not implemented")
 }
 
-func (r *sessionLimitTestDeviceRepo) SetDeviceActive(_ context.Context, _ uuid.UUID, _ bool) error {
+func (r *sessionLimitTestDeviceRepo) SetDeviceActive(_ context.Context, _, _ uuid.UUID, _ bool) error {
 	panic("not implemented")
 }
 

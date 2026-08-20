@@ -1,9 +1,10 @@
 # K6 Test Scenarios
 
-This folder provides two k6 test scenarios:
+This folder provides three k6 test scenarios:
 
 - `smoke.js`: high-frequency login smoke for member + merchant
 - `full.js`: end-to-end write/read flow with authenticated API paths
+- `idor.js`: cross-owner authorization checks for protected resources
 
 ## Prerequisites
 
@@ -84,9 +85,33 @@ Optional tuning:
 - `FULL_MERCHANT_EMAIL` (optional fixed merchant account)
 - `FULL_MERCHANT_NAME`, `FULL_STORE_NAME` (optional setup identity fields)
 
+## 3) IDOR Authorization Test
+
+Runs an API-level cross-owner authorization scenario with two user accounts and
+two merchant accounts. It also registers the first merchant account as a user
+profile, confirming that the same account can use both roles. The scenario
+creates user locations, a device, a merchant location, and a menu item under
+one identity, then verifies all of the following:
+
+- the owner and another authenticated user receive identical public merchant
+  search results;
+- the owner and another authenticated user receive identical public menu data;
+- a different identity receives `403` for update and delete attempts; and
+- the original owner still sees each protected resource present and unchanged.
+
+```bash
+make k6-idor
+```
+
+The scenario uses `K6_BASE_URL`, `K6_RUN_ID`, and `K6_TEST_PASSWORD` from the
+full functional test. It writes test data using the run ID; use a staging/perf
+environment and clean up records using the run-ID convention after execution.
+It is intentionally separate from `full.js` so it does not depend on the full
+flow's setup order.
+
 ## Recommended Environment/Data Workflow
 
-Because `full.js` writes test data, run it on staging/perf environments.
+Because `full.js` and `idor.js` write test data, run them on staging/perf environments.
 
 Recommended order:
 

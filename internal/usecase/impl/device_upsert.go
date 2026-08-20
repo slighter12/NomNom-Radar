@@ -71,11 +71,11 @@ func upsertExistingDevice(
 		return nil, err
 	}
 
-	if err := deviceRepo.UpdateFCMToken(ctx, device.ID, deviceInfo.FCMToken); err != nil {
+	if err := deviceRepo.UpdateFCMToken(ctx, userID, device.ID, deviceInfo.FCMToken); err != nil {
 		return nil, err
 	}
 	if !device.IsActive {
-		if err := deviceRepo.SetDeviceActive(ctx, device.ID, true); err != nil {
+		if err := deviceRepo.SetDeviceActive(ctx, userID, device.ID, true); err != nil {
 			return nil, err
 		}
 	}

@@ -14,6 +14,7 @@ import (
 	"radar/internal/infra/persistence/postgres/query"
 
 	"github.com/google/uuid"
+	"gorm.io/gen"
 	"gorm.io/gorm"
 )
 
@@ -177,10 +178,10 @@ func (repo *deviceRepository) FindDeviceByUserAndDeviceIDIncludingDeleted(ctx co
 }
 
 // UpdateFCMToken updates the FCM token for a specific device.
-func (repo *deviceRepository) UpdateFCMToken(ctx context.Context, deviceID uuid.UUID, fcmToken string) error {
+func (repo *deviceRepository) UpdateFCMToken(ctx context.Context, userID, deviceID uuid.UUID, fcmToken string) error {
 	now := time.Now()
 	result, err := repo.q.UserDeviceModel.WithContext(ctx).
-		Where(repo.q.UserDeviceModel.ID.Eq(deviceID)).
+		Where(deviceOwnerConditions(repo.q, userID, deviceID)...).
 		UpdateSimple(
 			repo.q.UserDeviceModel.FCMToken.Value(fcmToken),
 			repo.q.UserDeviceModel.TokenRefreshedAt.Value(now),
@@ -202,9 +203,9 @@ func (repo *deviceRepository) UpdateFCMToken(ctx context.Context, deviceID uuid.
 }
 
 // SetDeviceActive updates the active state for a specific device without deleting it.
-func (repo *deviceRepository) SetDeviceActive(ctx context.Context, id uuid.UUID, isActive bool) error {
+func (repo *deviceRepository) SetDeviceActive(ctx context.Context, userID, id uuid.UUID, isActive bool) error {
 	result, err := repo.q.UserDeviceModel.WithContext(ctx).
-		Where(repo.q.UserDeviceModel.ID.Eq(id)).
+		Where(deviceOwnerConditions(repo.q, userID, id)...).
 		Update(repo.q.UserDeviceModel.IsActive, isActive)
 
 	if err != nil {
@@ -216,6 +217,13 @@ func (repo *deviceRepository) SetDeviceActive(ctx context.Context, id uuid.UUID,
 	}
 
 	return nil
+}
+
+func deviceOwnerConditions(q *query.Query, userID, deviceID uuid.UUID) []gen.Condition {
+	return []gen.Condition{
+		q.UserDeviceModel.ID.Eq(deviceID),
+		q.UserDeviceModel.UserID.Eq(userID),
+	}
 }
 
 // RestoreAndUpdateDevice restores a soft-deleted device owned by the user and refreshes its token state.

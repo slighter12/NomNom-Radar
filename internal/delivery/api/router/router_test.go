@@ -251,6 +251,45 @@ func TestRouter_MerchantProfileUpdateRouteRequiresAuthorization(t *testing.T) {
 	}
 }
 
+func TestRouter_AuthenticationRoutesAreRateLimitedPerClientIP(t *testing.T) {
+	e := newRouterTestEcho()
+
+	for i := range 30 {
+		req := newRouterTestRequest(http.MethodPost, "/auth/login", "")
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		assert.NotEqual(t, http.StatusTooManyRequests, rec.Code, "request %d should be within the burst", i+1)
+	}
+
+	req := newRouterTestRequest(http.MethodPost, "/auth/login", "")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusTooManyRequests, rec.Code)
+
+	healthRequest := newRouterTestRequest(http.MethodGet, "/health", "")
+	healthResponse := httptest.NewRecorder()
+	e.ServeHTTP(healthResponse, healthRequest)
+	assert.Equal(t, http.StatusOK, healthResponse.Code)
+}
+
+func TestRouter_TestRoutesDisabledByDefault(t *testing.T) {
+	e := echo.New()
+	r := NewRouter(RouterParams{
+		Config: &config.Config{
+			TestRoutes: &config.TestRoutesConfig{Enabled: false},
+		},
+	})
+	r.RegisterTestRoutes(e)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/test/public", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
 func newRouterTestEcho() *echo.Echo {
 	userID := uuid.New()
 	tokenSvc := &routerTestTokenService{
@@ -269,6 +308,7 @@ func newRouterTestEcho() *echo.Echo {
 	}
 
 	e := echo.New()
+	e.IPExtractor = apimiddleware.NewClientIPExtractor(&config.Config{})
 	e.Validator = apivalidator.New()
 	authMiddleware := apimiddleware.NewAuthMiddleware(tokenSvc, &config.Config{})
 	r := NewRouter(RouterParams{
@@ -283,7 +323,9 @@ func newRouterTestEcho() *echo.Echo {
 		AuthMiddleware: authMiddleware,
 		Config:         &config.Config{},
 	})
-	r.RegisterRoutes(e)
+	if err := r.RegisterRoutes(e); err != nil {
+		panic(err)
+	}
 
 	return e
 }

@@ -113,6 +113,12 @@ func TestErrorMiddleware_HandleHTTPError_MapsEchoHTTPErrorToCanonicalAppError(t 
 			wantMessage: domainerrors.ErrRequestFailed.Message(),
 		},
 		{
+			name:        "rate_limit",
+			statusCode:  http.StatusTooManyRequests,
+			wantCode:    domainerrors.ErrRequestFailed.ErrorCode(),
+			wantMessage: domainerrors.ErrRequestFailed.Message(),
+		},
+		{
 			name:        "server_error",
 			statusCode:  http.StatusInternalServerError,
 			wantCode:    domainerrors.ErrInternalError.ErrorCode(),
