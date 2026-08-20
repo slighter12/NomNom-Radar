@@ -101,6 +101,20 @@ function assertDenied(res, label, expectedCode) {
   }
 }
 
+function assertNotFound(res, label, expectedCode) {
+  assertStatus(res, 404, label);
+
+  const body = parseJSON(res);
+  const code = body && body.error ? body.error.code : "";
+  const ok = check(body, {
+    [`${label} returns ${expectedCode}`]: () => code === expectedCode,
+  });
+
+  if (!ok) {
+    fail(`${label} returned unexpected error code=${code}`);
+  }
+}
+
 function extractData(res, label) {
   const body = parseJSON(res);
   if (!body || body.data === undefined || body.data === null) {
@@ -139,11 +153,28 @@ function findMerchantByID(items, merchantID, label) {
   fail(`${label} did not contain merchant ${merchantID}`);
 }
 
+function canonicalJSON(value) {
+  if (Array.isArray(value)) {
+    return value.map(canonicalJSON);
+  }
+  if (value && typeof value === "object") {
+    const normalized = {};
+    Object.keys(value)
+      .sort()
+      .forEach((key) => {
+        normalized[key] = canonicalJSON(value[key]);
+      });
+    return normalized;
+  }
+
+  return value;
+}
+
 function assertPublicDataEqual(firstRes, secondRes, label) {
   const firstData = extractData(firstRes, `${label} owner response`);
   const secondData = extractData(secondRes, `${label} other response`);
-  const firstJSON = JSON.stringify(firstData);
-  const secondJSON = JSON.stringify(secondData);
+  const firstJSON = JSON.stringify(canonicalJSON(firstData));
+  const secondJSON = JSON.stringify(canonicalJSON(secondData));
   const ok = check(
     { firstData: firstData, secondData: secondData },
     {
@@ -627,6 +658,22 @@ export default function (setupData) {
     if (!publicMenuCheck) {
       fail("idor public merchant menu did not contain the expected item");
     }
+
+    createMenuItem(merchantB.token, discoveryValues.subcategoryID);
+
+    const privateMenuPath = `${API_PREFIX}/merchants/${merchantB.userID}/menu?page=1&page_size=20`;
+    const otherPrivateMenuRes = request(
+      "GET",
+      privateMenuPath,
+      userA.token,
+      undefined,
+      "idor_other_get_private_merchant_menu",
+    );
+    assertNotFound(
+      otherPrivateMenuRes,
+      "idor other get private merchant menu",
+      "MERCHANT_NOT_FOUND",
+    );
 
     assertDenied(
       request(

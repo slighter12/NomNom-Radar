@@ -391,7 +391,7 @@ func TestMenuService_GetPublicMerchantMenu_Success(t *testing.T) {
 
 			return &entity.User{
 				ID:              merchantID,
-				MerchantProfile: &entity.MerchantProfile{UserID: merchantID},
+				MerchantProfile: &entity.MerchantProfile{UserID: merchantID, IsPublic: true},
 			}, nil
 		},
 	}
@@ -440,6 +440,15 @@ func TestMenuService_GetPublicMerchantMenu_MerchantNotFound(t *testing.T) {
 			name: "user without merchant profile",
 			buildUser: func(merchantID uuid.UUID) *entity.User {
 				return &entity.User{ID: merchantID}
+			},
+		},
+		{
+			name: "merchant profile is not public",
+			buildUser: func(merchantID uuid.UUID) *entity.User {
+				return &entity.User{
+					ID:              merchantID,
+					MerchantProfile: &entity.MerchantProfile{UserID: merchantID, IsPublic: false},
+				}
 			},
 		},
 	}
