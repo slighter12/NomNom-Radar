@@ -68,7 +68,10 @@ func (repo *notificationRepository) FindNotificationByID(ctx context.Context, id
 func (repo *notificationRepository) FindNotificationsByMerchant(ctx context.Context, merchantID uuid.UUID, limit, offset int) ([]*entity.MerchantLocationNotification, error) {
 	query := repo.q.MerchantLocationNotificationModel.WithContext(ctx).
 		Where(repo.q.MerchantLocationNotificationModel.MerchantID.Eq(merchantID)).
-		Order(repo.q.MerchantLocationNotificationModel.PublishedAt.Desc())
+		Order(
+			repo.q.MerchantLocationNotificationModel.PublishedAt.Desc(),
+			repo.q.MerchantLocationNotificationModel.ID.Asc(),
+		)
 
 	if limit > 0 {
 		query = query.Limit(limit)
