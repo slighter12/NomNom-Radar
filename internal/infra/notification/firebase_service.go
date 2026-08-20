@@ -89,7 +89,7 @@ type FirebaseDependencies struct {
 // SendSingleNotification sends a push notification to a single device token
 func (s *firebaseService) SendSingleNotification(ctx context.Context, token, title, body string, data map[string]string) error {
 	message := &messaging.Message{
-		Token: token,
+		Token: token, //nolint:staticcheck // FCMToken is a legacy registration token; Fid is a different identifier.
 		Notification: &messaging.Notification{
 			Title: title,
 			Body:  body,
@@ -117,7 +117,7 @@ func (s *firebaseService) SendBatchNotification(ctx context.Context, tokens []st
 	}
 
 	message := &messaging.MulticastMessage{
-		Tokens: tokens,
+		Tokens: tokens, //nolint:staticcheck // FCMToken values are registration tokens; Fids are a different identifier.
 		Notification: &messaging.Notification{
 			Title: title,
 			Body:  body,
