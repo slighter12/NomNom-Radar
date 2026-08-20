@@ -26,6 +26,11 @@ func TestParseCORSAllowedOrigins(t *testing.T) {
 			raw:  " https://app.example.com,https://APP.EXAMPLE.COM, http://localhost:3000 ",
 			want: []string{"https://app.example.com", "http://localhost:3000"},
 		},
+		{
+			name: "normalizes scheme case",
+			raw:  "HTTPS://EXAMPLE.COM",
+			want: []string{"https://example.com"},
+		},
 		{name: "rejects wildcard", raw: "*", wantErr: true},
 		{name: "rejects path", raw: "https://app.example.com/path", wantErr: true},
 		{name: "rejects unsupported scheme", raw: "ftp://app.example.com", wantErr: true},

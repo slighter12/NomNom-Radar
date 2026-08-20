@@ -35,6 +35,7 @@ coverage/
 *.out
 
 # IDE/project config folders
+.claude/settings.local.json
 .kiro/
 .vscode/
 

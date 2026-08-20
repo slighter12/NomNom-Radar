@@ -126,21 +126,24 @@ type LoginThrottleConfig struct {
 
 // RateLimitConfig defines the in-process rate limiter for authentication routes.
 type RateLimitConfig struct {
-	Enabled   *bool         `json:"enabled" yaml:"enabled"`
-	Rate      float64       `json:"rate" yaml:"rate"`
-	Burst     int           `json:"burst" yaml:"burst"`
-	ExpiresIn time.Duration `json:"expiresIn" yaml:"expiresIn"`
+	Enabled   *bool          `json:"enabled" yaml:"enabled"`
+	Rate      *float64       `json:"rate" yaml:"rate"`
+	Burst     *int           `json:"burst" yaml:"burst"`
+	ExpiresIn *time.Duration `json:"expiresIn" yaml:"expiresIn"`
 }
 
 // DefaultRateLimitConfig returns the default authentication rate limiter configuration.
 func DefaultRateLimitConfig() RateLimitConfig {
 	enabled := true
+	rate := defaultRateLimitRate
+	burst := defaultRateLimitBurst
+	expiresIn := defaultRateLimitExpiresIn
 
 	return RateLimitConfig{
 		Enabled:   &enabled,
-		Rate:      defaultRateLimitRate,
-		Burst:     defaultRateLimitBurst,
-		ExpiresIn: defaultRateLimitExpiresIn,
+		Rate:      &rate,
+		Burst:     &burst,
+		ExpiresIn: &expiresIn,
 	}
 }
 
@@ -154,16 +157,25 @@ func (cfg RateLimitConfig) Validate() error {
 	if !cfg.IsEnabled() {
 		return nil
 	}
-	if math.IsNaN(cfg.Rate) || math.IsInf(cfg.Rate, 0) {
+	if cfg.Rate == nil {
+		return fmt.Errorf("http.rateLimit.rate must be set")
+	}
+	if math.IsNaN(*cfg.Rate) || math.IsInf(*cfg.Rate, 0) {
 		return fmt.Errorf("http.rateLimit.rate must be finite")
 	}
-	if cfg.Rate <= 0 {
+	if *cfg.Rate <= 0 {
 		return fmt.Errorf("http.rateLimit.rate must be greater than zero")
 	}
-	if cfg.Burst <= 0 {
+	if cfg.Burst == nil {
+		return fmt.Errorf("http.rateLimit.burst must be set")
+	}
+	if *cfg.Burst <= 0 {
 		return fmt.Errorf("http.rateLimit.burst must be greater than zero")
 	}
-	if cfg.ExpiresIn <= 0 {
+	if cfg.ExpiresIn == nil {
+		return fmt.Errorf("http.rateLimit.expiresIn must be set")
+	}
+	if *cfg.ExpiresIn <= 0 {
 		return fmt.Errorf("http.rateLimit.expiresIn must be greater than zero")
 	}
 
@@ -391,13 +403,13 @@ func applyHTTPDefaults(cfg *Config) {
 	if cfg.HTTP.RateLimit.Enabled == nil {
 		cfg.HTTP.RateLimit.Enabled = defaults.Enabled
 	}
-	if cfg.HTTP.RateLimit.Rate == 0 {
+	if cfg.HTTP.RateLimit.Rate == nil {
 		cfg.HTTP.RateLimit.Rate = defaults.Rate
 	}
-	if cfg.HTTP.RateLimit.Burst == 0 {
+	if cfg.HTTP.RateLimit.Burst == nil {
 		cfg.HTTP.RateLimit.Burst = defaults.Burst
 	}
-	if cfg.HTTP.RateLimit.ExpiresIn == 0 {
+	if cfg.HTTP.RateLimit.ExpiresIn == nil {
 		cfg.HTTP.RateLimit.ExpiresIn = defaults.ExpiresIn
 	}
 }

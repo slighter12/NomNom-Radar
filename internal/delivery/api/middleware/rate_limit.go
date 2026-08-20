@@ -25,9 +25,9 @@ func NewAuthRateLimiter(cfg *config.Config) (echo.MiddlewareFunc, error) {
 	}
 
 	store := echomiddleware.NewRateLimiterMemoryStoreWithConfig(echomiddleware.RateLimiterMemoryStoreConfig{
-		Rate:      rate.Limit(settings.Rate),
-		Burst:     settings.Burst,
-		ExpiresIn: settings.ExpiresIn,
+		Rate:      rate.Limit(*settings.Rate),
+		Burst:     *settings.Burst,
+		ExpiresIn: *settings.ExpiresIn,
 	})
 
 	return echomiddleware.RateLimiterWithConfig(echomiddleware.RateLimiterConfig{

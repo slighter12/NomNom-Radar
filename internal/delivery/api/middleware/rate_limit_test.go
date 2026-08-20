@@ -18,7 +18,7 @@ func TestAuthRateLimiter_SharesPerIPBucketAcrossAuthGroups(t *testing.T) {
 	e := echo.New()
 	e.IPExtractor = NewClientIPExtractor(&config.Config{})
 	cfg := &config.Config{}
-	cfg.HTTP.RateLimit = &config.RateLimitConfig{Rate: 1, Burst: 2, ExpiresIn: time.Minute}
+	cfg.HTTP.RateLimit = newRateLimitConfig(1, 2, time.Minute)
 	limiter, err := NewAuthRateLimiter(cfg)
 	require.NoError(t, err)
 	require.NotNil(t, limiter)
@@ -60,7 +60,7 @@ func TestAuthRateLimiter_Disabled(t *testing.T) {
 
 func TestAuthRateLimiter_RejectsInvalidConfiguration(t *testing.T) {
 	cfg := &config.Config{}
-	cfg.HTTP.RateLimit = &config.RateLimitConfig{Rate: -1, Burst: 1, ExpiresIn: time.Minute}
+	cfg.HTTP.RateLimit = newRateLimitConfig(-1, 1, time.Minute)
 
 	limiter, err := NewAuthRateLimiter(cfg)
 	assert.Nil(t, limiter)
@@ -72,4 +72,12 @@ func newRateLimitRequest(target, remoteAddr string) *http.Request {
 	req.RemoteAddr = remoteAddr
 
 	return req
+}
+
+func newRateLimitConfig(rate float64, burst int, expiresIn time.Duration) *config.RateLimitConfig {
+	return &config.RateLimitConfig{
+		Rate:      &rate,
+		Burst:     &burst,
+		ExpiresIn: &expiresIn,
+	}
 }

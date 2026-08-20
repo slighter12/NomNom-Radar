@@ -3,6 +3,7 @@ package middleware
 import (
 	"crypto/subtle"
 	"net"
+	"net/http"
 	"strings"
 
 	"radar/config"
@@ -42,8 +43,7 @@ func (m *DomainGuardMiddleware) ValidateHost(next echo.HandlerFunc) echo.Handler
 		}
 
 		if m.cloudflareSecret != "" {
-			clientSecret := strings.TrimSpace(c.Request().Header.Get(cloudflareSecretHeader))
-			if !secretsEqual(clientSecret, m.cloudflareSecret) {
+			if !isAuthenticatedCloudflareRequest(c.Request(), m.cloudflareSecret) {
 				return response.AppError(c, domainerrors.ErrForbiddenOrigin)
 			}
 		}
@@ -54,6 +54,16 @@ func (m *DomainGuardMiddleware) ValidateHost(next echo.HandlerFunc) echo.Handler
 
 // #nosec G101 -- This is a public HTTP header name, not a credential.
 const cloudflareSecretHeader = "X-Cloudflare-Secret"
+
+func isAuthenticatedCloudflareRequest(req *http.Request, expectedSecret string) bool {
+	if req == nil || strings.TrimSpace(expectedSecret) == "" {
+		return false
+	}
+
+	clientSecret := strings.TrimSpace(req.Header.Get(cloudflareSecretHeader))
+
+	return secretsEqual(clientSecret, expectedSecret)
+}
 
 func secretsEqual(a string, b string) bool {
 	if len(a) != len(b) {

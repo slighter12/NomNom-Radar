@@ -17,11 +17,19 @@ const cloudflareClientIPHeader = "CF-Connecting-IP"
 // forwarded headers and uses the network peer address.
 func NewClientIPExtractor(cfg *config.Config) echo.IPExtractor {
 	directExtractor := echo.ExtractIPDirect()
-	if cfg == nil || strings.TrimSpace(cfg.HTTP.CloudflareSecret) == "" {
+	if cfg == nil {
+		return directExtractor
+	}
+	cloudflareSecret := strings.TrimSpace(cfg.HTTP.CloudflareSecret)
+	if cloudflareSecret == "" {
 		return directExtractor
 	}
 
 	return func(req *http.Request) string {
+		if !isAuthenticatedCloudflareRequest(req, cloudflareSecret) {
+			return directExtractor(req)
+		}
+
 		if clientIP := net.ParseIP(strings.TrimSpace(req.Header.Get(cloudflareClientIPHeader))); clientIP != nil {
 			return clientIP.String()
 		}
