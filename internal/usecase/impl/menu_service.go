@@ -268,7 +268,7 @@ func (s *menuService) validatePublicMerchant(ctx context.Context, merchantID uui
 		return err
 	}
 
-	if merchant.MerchantProfile == nil {
+	if merchant.MerchantProfile == nil || !merchant.MerchantProfile.IsPublic {
 		return domainerrors.ErrMerchantNotFound
 	}
 
