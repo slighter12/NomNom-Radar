@@ -121,12 +121,13 @@ and other non-impacting commits do not rebuild images.
 
 The checked-in target catalog at `.github/scripts/release/targets.json` is the
 single source for the three release targets and their deployment order. The
-impact manifest at `.github/scripts/release/impact-paths.txt` lists paths that
-require a new candidate image. It may be extended with additional paths, but
-the entries enforced by `impact_path_args()` are mandatory: removing any of
-them fails the release closed. The manifest and those mandatory entries
-together decide whether an older candidate remains compatible with current
-release automation.
+impact path list in `impact_path_args()` in `.github/scripts/release/release.sh`
+is the single source for paths that require a new candidate image. The
+`release.sh impact-paths` command is the consumption interface used by CI
+change detection. The resolver calls `impact_path_args()` directly from
+`release.sh`. Adding a path only requires changing that function; its output
+determines whether an older candidate remains compatible with current release
+automation.
 
 The resolver checks at most the newest 50 first-parent commits. If no complete
 compatible candidate is found in that window, publish a new release-impacting

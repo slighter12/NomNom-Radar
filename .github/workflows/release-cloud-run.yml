@@ -51,7 +51,6 @@ jobs:
       DEV_REGISTRY: ${{ vars.GCP_DEV_REGISTRY }}
       OWNER: ${{ github.repository_owner }}
       TARGETS_FILE: .github/scripts/release/targets.json
-      IMPACT_PATHS_FILE: .github/scripts/release/impact-paths.txt
 
     steps:
       - name: Validate trusted dispatch

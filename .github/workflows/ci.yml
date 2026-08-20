@@ -13,7 +13,6 @@ permissions:
 env:
   GOLANGCI_LINT_VERSION: latest
   TARGETS_FILE: .github/scripts/release/targets.json
-  IMPACT_PATHS_FILE: .github/scripts/release/impact-paths.txt
 
 jobs:
   checks:
@@ -75,7 +74,7 @@ jobs:
           path_args=()
           while IFS= read -r path; do
             path_args+=("${path}")
-          done < <(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "${IMPACT_PATHS_FILE}")
+          done < <(bash .github/scripts/release/release.sh impact-paths)
           test "${#path_args[@]}" -gt 0
           before="${BEFORE_SHA}"
           candidate=true
