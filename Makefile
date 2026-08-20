@@ -26,13 +26,10 @@ K6 ?= $(shell if command -v k6 >/dev/null 2>&1; then command -v k6; elif command
 K6_BASE_URL ?= http://localhost:4433
 K6_RUN_ID ?= $(shell date '+%Y%m%d%H%M%S')
 K6_TEST_PASSWORD ?= K6pass!1234
-K6_TEST_PASSWORD_ENV := $(K6_TEST_PASSWORD)
 FULL_VUS ?= 1
 FULL_ITERATIONS ?= 1
 FULL_MAX_DURATION ?= 5m
 FULL_SLEEP_SECONDS ?= 0
-
-k6-full k6-idor: export K6_TEST_PASSWORD = $(K6_TEST_PASSWORD_ENV)
 
 ########
 # test #
@@ -221,6 +218,7 @@ docker-clean: ## remove all containers, networks, and volumes
 k6-full: ## run k6 functional API verification with local k6
 	@BASE_URL="$(K6_BASE_URL)" \
 	RUN_ID="$(K6_RUN_ID)" \
+	K6_TEST_PASSWORD="$(K6_TEST_PASSWORD)" \
 	FULL_VUS="$(FULL_VUS)" \
 	FULL_ITERATIONS="$(FULL_ITERATIONS)" \
 	FULL_MAX_DURATION="$(FULL_MAX_DURATION)" \
@@ -230,6 +228,7 @@ k6-full: ## run k6 functional API verification with local k6
 k6-idor: ## run k6 cross-owner authorization verification with local k6
 	@BASE_URL="$(K6_BASE_URL)" \
 	RUN_ID="$(K6_RUN_ID)" \
+	K6_TEST_PASSWORD="$(K6_TEST_PASSWORD)" \
 	$(K6) run k6/idor.js
 
 #############
