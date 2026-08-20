@@ -11,6 +11,14 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 # shellcheck source=.github/scripts/release/not_found.sh
 source "${repo_root}/.github/scripts/release/not_found.sh"
 
+# release.sh impact-paths prints the manifest without requiring release env
+impact_paths_output=$(bash "${script_dir}/release.sh" impact-paths) \
+  || fail impact-paths-command
+test -n "${impact_paths_output}" \
+  && printf '%s\n' "${impact_paths_output}" | grep -Fx 'Dockerfile' >/dev/null \
+  && printf '%s\n' "${impact_paths_output}" | grep -Fx 'internal/**' >/dev/null \
+  || fail impact-paths-output
+
 status_fixture="${temp_dir}/not-found-status.txt"
 printf 'ERROR: (gcloud.artifacts.docker.images.describe) NOT_FOUND: image was not found.\n' > "${status_fixture}"
 not_found_status "${status_fixture}" || fail not-found-status
@@ -500,7 +508,6 @@ run_resolver() {
       RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
       MOCK_MISSING_IMAGE_TARGET="${missing_image_target}" \
       TARGETS_FILE="${repo_root}/.github/scripts/release/targets.json" \
-      IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
       bash "${script_dir}/release.sh" resolve-candidate
   )
 }
@@ -514,7 +521,6 @@ resolver_bundle="${temp_dir}/resolver-bundle.json"
     GITHUB_REPOSITORY=repo/test GITHUB_OUTPUT="${resolver_output}" \
     RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
     TARGETS_FILE="${repo_root}/.github/scripts/release/targets.json" \
-    IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
     bash "${script_dir}/release.sh" resolve-candidate
 )
 grep -F "release_sha=${resolver_candidate}" "${resolver_output}" >/dev/null || fail resolver-selected-ancestor
@@ -566,7 +572,6 @@ for git_failure in diff rev-list; do
       GITHUB_REPOSITORY=repo/test GITHUB_OUTPUT="${resolver_git_env}" \
       RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
       TARGETS_FILE="${repo_root}/.github/scripts/release/targets.json" \
-      IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
       bash "${script_dir}/release.sh" resolve-candidate >"${resolver_git_output}" 2>&1
   ); then
     fail "resolver-${git_failure}-failure-open"
@@ -592,7 +597,6 @@ if (
     RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
     ATTESTATION_RETRIES=1 \
     TARGETS_FILE="${repo_root}/.github/scripts/release/targets.json" \
-    IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
     bash "${script_dir}/release.sh" resolve-candidate >/dev/null 2>&1
 ); then
   fail resolver-attestation-fail-closed
@@ -607,7 +611,6 @@ if (
     RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
     MOCK_INVALID_DIGEST=true \
     TARGETS_FILE="${repo_root}/.github/scripts/release/targets.json" \
-    IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
     bash "${script_dir}/release.sh" resolve-candidate >/dev/null 2>&1
 ); then
   fail resolver-integrity-fallback
@@ -625,7 +628,6 @@ if (
     RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
     MOCK_GCLOUD_ERROR=true \
     TARGETS_FILE="${repo_root}/.github/scripts/release/targets.json" \
-    IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
     bash "${script_dir}/release.sh" resolve-candidate >/dev/null 2>&1
 ); then
   fail resolver-inspection-fallback
@@ -654,26 +656,9 @@ if (
     GITHUB_REPOSITORY=repo/test GITHUB_OUTPUT="${temp_dir}/resolver-impact-output" \
     RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
     TARGETS_FILE="${repo_root}/.github/scripts/release/targets.json" \
-    IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
     bash "${script_dir}/release.sh" resolve-candidate >/dev/null 2>&1
 ); then
   fail resolver-impact-path-guard
-fi
-
-missing_impact_paths="${temp_dir}/impact-paths-missing.txt"
-grep -v '^Dockerfile$' "${repo_root}/.github/scripts/release/impact-paths.txt" > "${missing_impact_paths}"
-if (
-  cd "${resolver_dir}"
-  PATH="${resolver_bin}:${PATH}" \
-    CONTROL_SHA="${resolver_control}" \
-    DEV_PROJECT_ID=test DEV_REGISTRY=registry.example OWNER=repo \
-    GITHUB_REPOSITORY=repo/test GITHUB_OUTPUT="${temp_dir}/resolver-missing-impact-output" \
-    RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
-    TARGETS_FILE="${repo_root}/.github/scripts/release/targets.json" \
-    IMPACT_PATHS_FILE="${missing_impact_paths}" \
-    bash "${script_dir}/release.sh" resolve-candidate >/dev/null 2>&1
-); then
-  fail impact-path-manifest-guard
 fi
 
 invalid_catalog="${temp_dir}/targets-invalid.json"
@@ -686,7 +671,6 @@ if (
     GITHUB_REPOSITORY=repo/test GITHUB_OUTPUT="${temp_dir}/resolver-invalid-catalog-output" \
     RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
     TARGETS_FILE="${invalid_catalog}" \
-    IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
     bash "${script_dir}/release.sh" resolve-candidate >/dev/null 2>&1
 ); then
   fail catalog-path-validation
@@ -701,7 +685,6 @@ if (
     GITHUB_REPOSITORY=repo/test GITHUB_OUTPUT="${temp_dir}/resolver-empty-catalog-output" \
     RUNNER_TEMP="${resolver_runner}" MOCK_CANDIDATE_SHA="${resolver_candidate}" \
     TARGETS_FILE="${empty_catalog}" \
-    IMPACT_PATHS_FILE="${repo_root}/.github/scripts/release/impact-paths.txt" \
     bash "${script_dir}/release.sh" resolve-candidate >/dev/null 2>&1
 ); then
   fail empty-catalog-guard

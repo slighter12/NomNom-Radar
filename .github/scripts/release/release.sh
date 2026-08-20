@@ -7,7 +7,6 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
 default_targets_file="${repo_root}/.github/scripts/release/targets.json"
-default_impact_paths_file="${repo_root}/.github/scripts/release/impact-paths.txt"
 # shellcheck source=.github/scripts/release/not_found.sh
 source "${repo_root}/.github/scripts/release/not_found.sh"
 
@@ -29,7 +28,6 @@ repo_path() {
   fi
 }
 targets_file() { repo_path "${TARGETS_FILE:-}" "${default_targets_file}"; }
-impact_paths_file() { repo_path "${IMPACT_PATHS_FILE:-}" "${default_impact_paths_file}"; }
 validate_catalog() {
   test -f "$(targets_file)" || die 'missing target catalog'
   jq -e '
@@ -70,9 +68,10 @@ target_kind() { jq -er --arg target "$1" '.[$target].kind' "$(targets_file)"; }
 target_overlay() { jq -er --arg target "$1" '.[$target].overlay' "$(targets_file)"; }
 target_manifest() { jq -er --arg target "$1" '.[$target].manifest' "$(targets_file)"; }
 
+# A change in any of these paths requires a new candidate image. This list is
+# the single source consumed by both the resolver and CI change detection.
 impact_path_args() {
-  test -f "$(impact_paths_file)" || die "missing impact path manifest"
-  for required_path in \
+  printf '%s\n' \
     'Dockerfile' \
     '.dockerignore' \
     'Makefile' \
@@ -81,15 +80,11 @@ impact_path_args() {
     'cmd/**' \
     'config/**' \
     'internal/**' \
+    'database/migration/**' \
+    'deploy/cloud-run/**' \
     '.github/scripts/release/**' \
     '.github/workflows/ci.yml' \
-    '.github/workflows/release-cloud-run.yml' \
-    'deploy/cloud-run/**' \
-    'database/migration/**'; do
-    grep -Fx "${required_path}" "$(impact_paths_file)" >/dev/null \
-      || die "impact path manifest is missing ${required_path}"
-  done
-  sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$(impact_paths_file)"
+    '.github/workflows/release-cloud-run.yml'
 }
 
 verify_attestation() {
@@ -138,7 +133,6 @@ resolve_candidate() {
   required CONTROL_SHA DEV_PROJECT_ID DEV_REGISTRY OWNER GITHUB_REPOSITORY
   is_sha "${CONTROL_SHA}" || die 'invalid CONTROL_SHA'
   validate_catalog
-  test -f "$(impact_paths_file)" || die 'missing impact path manifest'
   git cat-file -e "${CONTROL_SHA}^{commit}" || die 'CONTROL_SHA is not available locally'
   owner=$(printf '%s' "${OWNER}" | tr '[:upper:]' '[:lower:]')
   path_args=()
@@ -520,9 +514,10 @@ verify() {
 }
 
 case "${1:-}" in
+  impact-paths) impact_path_args ;;
   resolve-candidate) resolve_candidate ;;
   preflight) preflight ;;
   deploy) deploy ;;
   verify) verify ;;
-  *) die 'usage: release.sh resolve-candidate|preflight|deploy|verify' ;;
+  *) die 'usage: release.sh impact-paths|resolve-candidate|preflight|deploy|verify' ;;
 esac
