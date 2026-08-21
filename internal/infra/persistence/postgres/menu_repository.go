@@ -119,7 +119,11 @@ func (repo *menuRepository) ListMenuItemsByMerchant(ctx context.Context, merchan
 
 	dataQuery := menuItem.WithContext(ctx).
 		Where(conditions...).
-		Order(menuItem.DisplayOrder.Asc(), menuItem.CreatedAt.Asc())
+		Order(
+			menuItem.DisplayOrder.Asc(),
+			menuItem.CreatedAt.Asc(),
+			menuItem.ID.Asc(),
+		)
 	if filter.Limit > 0 {
 		dataQuery = dataQuery.Limit(filter.Limit)
 	}

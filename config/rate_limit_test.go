@@ -3,6 +3,7 @@ package config
 import (
 	"math"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -29,6 +30,28 @@ func TestApplyDefaults_RateLimit(t *testing.T) {
 	}
 }
 
+func TestApplyDefaults_APIRateLimit(t *testing.T) {
+	cfg := &Config{}
+
+	ApplyDefaults(cfg)
+
+	if cfg.HTTP.APIRateLimit == nil {
+		t.Fatal("expected API rate limit defaults")
+	}
+	if !cfg.HTTP.APIRateLimit.IsEnabled() {
+		t.Fatal("expected API rate limit to be enabled by default")
+	}
+	if cfg.HTTP.APIRateLimit.Rate == nil || *cfg.HTTP.APIRateLimit.Rate != 20 {
+		t.Fatalf("Rate = %v, want 20", cfg.HTTP.APIRateLimit.Rate)
+	}
+	if cfg.HTTP.APIRateLimit.Burst == nil || *cfg.HTTP.APIRateLimit.Burst != 60 {
+		t.Fatalf("Burst = %v, want 60", cfg.HTTP.APIRateLimit.Burst)
+	}
+	if cfg.HTTP.APIRateLimit.ExpiresIn == nil || *cfg.HTTP.APIRateLimit.ExpiresIn != 3*time.Minute {
+		t.Fatalf("ExpiresIn = %v, want 3m", cfg.HTTP.APIRateLimit.ExpiresIn)
+	}
+}
+
 func TestApplyDefaults_RateLimitPreservesDisabledValue(t *testing.T) {
 	enabled := false
 	cfg := &Config{}
@@ -41,6 +64,51 @@ func TestApplyDefaults_RateLimitPreservesDisabledValue(t *testing.T) {
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestApplyDefaults_APIRateLimitPreservesDisabledValue(t *testing.T) {
+	enabled := false
+	cfg := &Config{}
+	cfg.HTTP.APIRateLimit = &RateLimitConfig{Enabled: &enabled}
+
+	ApplyDefaults(cfg)
+
+	if cfg.HTTP.APIRateLimit.IsEnabled() {
+		t.Fatal("expected explicit API rate limit disabled value to be preserved")
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestConfigValidateRejectsInvalidAPIRateLimit(t *testing.T) {
+	settings := newRateLimitConfig(0, 1, time.Minute)
+	cfg := &Config{}
+	cfg.HTTP.APIRateLimit = &settings
+
+	ApplyDefaults(cfg)
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() expected an error for invalid API rate-limit values")
+	}
+	if !strings.Contains(err.Error(), "http.apiRateLimit.rate") {
+		t.Fatalf("Validate() error = %v, want API rate-limit path", err)
+	}
+}
+
+func TestRateLimitConfigValidateUsesDefaultAndExplicitPaths(t *testing.T) {
+	settings := newRateLimitConfig(0, 1, time.Minute)
+
+	err := settings.Validate()
+	if err == nil || !strings.Contains(err.Error(), "http.rateLimit.rate") {
+		t.Fatalf("Validate() error = %v, want authentication rate-limit path", err)
+	}
+
+	err = settings.ValidateAt("http.apiRateLimit")
+	if err == nil || !strings.Contains(err.Error(), "http.apiRateLimit.rate") {
+		t.Fatalf("ValidateAt() error = %v, want API rate-limit path", err)
 	}
 }
 

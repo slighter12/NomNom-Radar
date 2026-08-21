@@ -259,6 +259,14 @@ header; direct environments ignore forwarded IP headers and use the network
 peer address. This application-layer limiter does not replace a Cloudflare-wide
 rate-limiting rule.
 
+Authenticated `/api/v1/*` endpoints use a separate in-process Echo rate limiter
+keyed by the authenticated user ID. Its defaults are 20 requests/second, a
+burst of 60, and three-minute visitor cleanup. If the authentication context is
+missing, the middleware defensively falls back to the client IP. The limiter is
+local to each Cloud Run instance and does not replace a Cloudflare-wide
+rate-limiting rule. Its defaults are used when no API-specific configuration is
+provided; this phase does not add separate environment-variable overrides.
+
 `GCP_SA_EMAIL` is the Cloud Run runtime identity.
 `GCP_SCHEDULER_SA_EMAIL` must be a different identity, and its permission to
 invoke Cloud Run must be limited to `device-cleanup` alone. Nothing in this

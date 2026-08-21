@@ -20,18 +20,21 @@ import (
 )
 
 const (
-	defaultPath                 = "."
-	defaultMaxRequestBodySize   = "100KB"
-	postgresMasterDSNEnvKey     = "POSTGRES_MASTER_DSN"
-	defaultAccessTokenTTL       = 15 * time.Minute
-	defaultRefreshTokenTTL      = 7 * 24 * time.Hour
-	defaultOnboardingTokenTTL   = 10 * time.Minute
-	defaultLinkingTokenTTL      = 10 * time.Minute
-	defaultNotificationTimeout  = 10 * time.Second
-	defaultDeviceCleanupTimeout = 5 * time.Minute
-	defaultRateLimitRate        = 10.0
-	defaultRateLimitBurst       = 30
-	defaultRateLimitExpiresIn   = 3 * time.Minute
+	defaultPath                  = "."
+	defaultMaxRequestBodySize    = "100KB"
+	postgresMasterDSNEnvKey      = "POSTGRES_MASTER_DSN"
+	defaultAccessTokenTTL        = 15 * time.Minute
+	defaultRefreshTokenTTL       = 7 * 24 * time.Hour
+	defaultOnboardingTokenTTL    = 10 * time.Minute
+	defaultLinkingTokenTTL       = 10 * time.Minute
+	defaultNotificationTimeout   = 10 * time.Second
+	defaultDeviceCleanupTimeout  = 5 * time.Minute
+	defaultRateLimitRate         = 10.0
+	defaultRateLimitBurst        = 30
+	defaultRateLimitExpiresIn    = 3 * time.Minute
+	defaultAPIRateLimitRate      = 20.0
+	defaultAPIRateLimitBurst     = 60
+	defaultAPIRateLimitExpiresIn = 3 * time.Minute
 )
 
 type Config struct {
@@ -49,6 +52,7 @@ type Config struct {
 		CloudflareSecret   string           `json:"cloudflareSecret" yaml:"cloudflareSecret"`
 		CORSAllowedOrigins string           `json:"corsAllowedOrigins" yaml:"corsAllowedOrigins"`
 		RateLimit          *RateLimitConfig `json:"rateLimit" yaml:"rateLimit"`
+		APIRateLimit       *RateLimitConfig `json:"apiRateLimit" yaml:"apiRateLimit"`
 		Timeouts           struct {
 			ReadTimeout       time.Duration `json:"readTimeout" yaml:"readTimeout"`
 			ReadHeaderTimeout time.Duration `json:"readHeaderTimeout" yaml:"readHeaderTimeout"`
@@ -124,7 +128,7 @@ type LoginThrottleConfig struct {
 	LockoutDecayDays int `json:"lockoutDecayDays" yaml:"lockoutDecayDays"`
 }
 
-// RateLimitConfig defines the in-process rate limiter for authentication routes.
+// RateLimitConfig defines in-process rate limiter settings.
 type RateLimitConfig struct {
 	Enabled   *bool          `json:"enabled" yaml:"enabled"`
 	Rate      *float64       `json:"rate" yaml:"rate"`
@@ -147,36 +151,56 @@ func DefaultRateLimitConfig() RateLimitConfig {
 	}
 }
 
+// DefaultAPIRateLimitConfig returns the default authenticated API rate limit settings.
+func DefaultAPIRateLimitConfig() RateLimitConfig {
+	enabled := true
+	rate := defaultAPIRateLimitRate
+	burst := defaultAPIRateLimitBurst
+	expiresIn := defaultAPIRateLimitExpiresIn
+
+	return RateLimitConfig{
+		Enabled:   &enabled,
+		Rate:      &rate,
+		Burst:     &burst,
+		ExpiresIn: &expiresIn,
+	}
+}
+
 // IsEnabled reports whether the rate limiter is enabled. A missing value defaults to enabled.
 func (cfg RateLimitConfig) IsEnabled() bool {
 	return cfg.Enabled == nil || *cfg.Enabled
 }
 
-// Validate checks the rate limiter values used by the authentication middleware.
+// Validate checks the rate limiter values.
 func (cfg RateLimitConfig) Validate() error {
+	return cfg.ValidateAt("http.rateLimit")
+}
+
+// ValidateAt checks the rate limiter values and reports errors under path.
+func (cfg RateLimitConfig) ValidateAt(path string) error {
 	if !cfg.IsEnabled() {
 		return nil
 	}
 	if cfg.Rate == nil {
-		return fmt.Errorf("http.rateLimit.rate must be set")
+		return fmt.Errorf("%s.rate must be set", path)
 	}
 	if math.IsNaN(*cfg.Rate) || math.IsInf(*cfg.Rate, 0) {
-		return fmt.Errorf("http.rateLimit.rate must be finite")
+		return fmt.Errorf("%s.rate must be finite", path)
 	}
 	if *cfg.Rate <= 0 {
-		return fmt.Errorf("http.rateLimit.rate must be greater than zero")
+		return fmt.Errorf("%s.rate must be greater than zero", path)
 	}
 	if cfg.Burst == nil {
-		return fmt.Errorf("http.rateLimit.burst must be set")
+		return fmt.Errorf("%s.burst must be set", path)
 	}
 	if *cfg.Burst <= 0 {
-		return fmt.Errorf("http.rateLimit.burst must be greater than zero")
+		return fmt.Errorf("%s.burst must be greater than zero", path)
 	}
 	if cfg.ExpiresIn == nil {
-		return fmt.Errorf("http.rateLimit.expiresIn must be set")
+		return fmt.Errorf("%s.expiresIn must be set", path)
 	}
 	if *cfg.ExpiresIn <= 0 {
-		return fmt.Errorf("http.rateLimit.expiresIn must be greater than zero")
+		return fmt.Errorf("%s.expiresIn must be greater than zero", path)
 	}
 
 	return nil
@@ -380,11 +404,20 @@ func ApplyDefaults(cfg *Config) {
 
 // Validate checks configuration values that must be safe before starting a service.
 func (cfg *Config) Validate() error {
-	if cfg == nil || cfg.HTTP.RateLimit == nil {
+	if cfg == nil {
 		return nil
 	}
 
-	return cfg.HTTP.RateLimit.Validate()
+	if cfg.HTTP.RateLimit != nil {
+		if err := cfg.HTTP.RateLimit.Validate(); err != nil {
+			return err
+		}
+	}
+	if cfg.HTTP.APIRateLimit != nil {
+		return cfg.HTTP.APIRateLimit.ValidateAt("http.apiRateLimit")
+	}
+
+	return nil
 }
 
 func applyHTTPDefaults(cfg *Config) {
@@ -392,25 +425,28 @@ func applyHTTPDefaults(cfg *Config) {
 		cfg.HTTP.MaxRequestBodySize = defaultMaxRequestBodySize
 	}
 
-	if cfg.HTTP.RateLimit == nil {
-		defaults := DefaultRateLimitConfig()
-		cfg.HTTP.RateLimit = &defaults
+	applyRateLimitDefaults(&cfg.HTTP.RateLimit, DefaultRateLimitConfig())
+	applyRateLimitDefaults(&cfg.HTTP.APIRateLimit, DefaultAPIRateLimitConfig())
+}
+
+func applyRateLimitDefaults(cfg **RateLimitConfig, defaults RateLimitConfig) {
+	if *cfg == nil {
+		*cfg = &defaults
 
 		return
 	}
 
-	defaults := DefaultRateLimitConfig()
-	if cfg.HTTP.RateLimit.Enabled == nil {
-		cfg.HTTP.RateLimit.Enabled = defaults.Enabled
+	if (*cfg).Enabled == nil {
+		(*cfg).Enabled = defaults.Enabled
 	}
-	if cfg.HTTP.RateLimit.Rate == nil {
-		cfg.HTTP.RateLimit.Rate = defaults.Rate
+	if (*cfg).Rate == nil {
+		(*cfg).Rate = defaults.Rate
 	}
-	if cfg.HTTP.RateLimit.Burst == nil {
-		cfg.HTTP.RateLimit.Burst = defaults.Burst
+	if (*cfg).Burst == nil {
+		(*cfg).Burst = defaults.Burst
 	}
-	if cfg.HTTP.RateLimit.ExpiresIn == nil {
-		cfg.HTTP.RateLimit.ExpiresIn = defaults.ExpiresIn
+	if (*cfg).ExpiresIn == nil {
+		(*cfg).ExpiresIn = defaults.ExpiresIn
 	}
 }
 
