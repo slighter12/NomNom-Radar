@@ -45,7 +45,7 @@ func NewAPIRateLimiter(cfg *config.Config) (echo.MiddlewareFunc, error) {
 	if cfg != nil && cfg.HTTP.APIRateLimit != nil {
 		settings = *cfg.HTTP.APIRateLimit
 	}
-	if err := settings.Validate(); err != nil {
+	if err := settings.ValidateAt("http.apiRateLimit"); err != nil {
 		return nil, fmt.Errorf("invalid API rate limit configuration: %w", err)
 	}
 	if !settings.IsEnabled() {

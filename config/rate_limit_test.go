@@ -3,6 +3,7 @@ package config
 import (
 	"math"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -88,8 +89,26 @@ func TestConfigValidateRejectsInvalidAPIRateLimit(t *testing.T) {
 
 	ApplyDefaults(cfg)
 
-	if err := cfg.Validate(); err == nil {
+	err := cfg.Validate()
+	if err == nil {
 		t.Fatal("Validate() expected an error for invalid API rate-limit values")
+	}
+	if !strings.Contains(err.Error(), "http.apiRateLimit.rate") {
+		t.Fatalf("Validate() error = %v, want API rate-limit path", err)
+	}
+}
+
+func TestRateLimitConfigValidateUsesDefaultAndExplicitPaths(t *testing.T) {
+	settings := newRateLimitConfig(0, 1, time.Minute)
+
+	err := settings.Validate()
+	if err == nil || !strings.Contains(err.Error(), "http.rateLimit.rate") {
+		t.Fatalf("Validate() error = %v, want authentication rate-limit path", err)
+	}
+
+	err = settings.ValidateAt("http.apiRateLimit")
+	if err == nil || !strings.Contains(err.Error(), "http.apiRateLimit.rate") {
+		t.Fatalf("ValidateAt() error = %v, want API rate-limit path", err)
 	}
 }
 

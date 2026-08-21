@@ -167,6 +167,7 @@ func TestAPIRateLimiter_RejectsInvalidConfiguration(t *testing.T) {
 	limiter, err := NewAPIRateLimiter(cfg)
 	assert.Nil(t, limiter)
 	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "http.apiRateLimit.rate")
 }
 
 func newRateLimitRequest(target, remoteAddr string) *http.Request {

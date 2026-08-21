@@ -173,29 +173,34 @@ func (cfg RateLimitConfig) IsEnabled() bool {
 
 // Validate checks the rate limiter values.
 func (cfg RateLimitConfig) Validate() error {
+	return cfg.ValidateAt("http.rateLimit")
+}
+
+// ValidateAt checks the rate limiter values and reports errors under path.
+func (cfg RateLimitConfig) ValidateAt(path string) error {
 	if !cfg.IsEnabled() {
 		return nil
 	}
 	if cfg.Rate == nil {
-		return fmt.Errorf("http.rateLimit.rate must be set")
+		return fmt.Errorf("%s.rate must be set", path)
 	}
 	if math.IsNaN(*cfg.Rate) || math.IsInf(*cfg.Rate, 0) {
-		return fmt.Errorf("http.rateLimit.rate must be finite")
+		return fmt.Errorf("%s.rate must be finite", path)
 	}
 	if *cfg.Rate <= 0 {
-		return fmt.Errorf("http.rateLimit.rate must be greater than zero")
+		return fmt.Errorf("%s.rate must be greater than zero", path)
 	}
 	if cfg.Burst == nil {
-		return fmt.Errorf("http.rateLimit.burst must be set")
+		return fmt.Errorf("%s.burst must be set", path)
 	}
 	if *cfg.Burst <= 0 {
-		return fmt.Errorf("http.rateLimit.burst must be greater than zero")
+		return fmt.Errorf("%s.burst must be greater than zero", path)
 	}
 	if cfg.ExpiresIn == nil {
-		return fmt.Errorf("http.rateLimit.expiresIn must be set")
+		return fmt.Errorf("%s.expiresIn must be set", path)
 	}
 	if *cfg.ExpiresIn <= 0 {
-		return fmt.Errorf("http.rateLimit.expiresIn must be greater than zero")
+		return fmt.Errorf("%s.expiresIn must be greater than zero", path)
 	}
 
 	return nil
@@ -409,7 +414,7 @@ func (cfg *Config) Validate() error {
 		}
 	}
 	if cfg.HTTP.APIRateLimit != nil {
-		return cfg.HTTP.APIRateLimit.Validate()
+		return cfg.HTTP.APIRateLimit.ValidateAt("http.apiRateLimit")
 	}
 
 	return nil
