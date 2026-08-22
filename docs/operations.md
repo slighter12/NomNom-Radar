@@ -249,15 +249,25 @@ value disables CORS instead of allowing every origin. Cloud Run releases may
 leave this variable empty when no browser cross-origin client is required;
 browser clients must otherwise be configured explicitly in each environment.
 
-Authentication endpoints use one configurable in-process Echo rate limiter for
-`/auth/*` and `/oauth/*`. The defaults are 10 requests/second, a burst of 30,
-and three-minute visitor cleanup. The limiter is keyed by the client IP, is
-local to each Cloud Run instance, and is not a global distributed limiter.
-`HTTP_RATELIMIT_ENABLED=false` disables it explicitly. In Cloudflare-backed
-environments the client IP comes from the authenticated `CF-Connecting-IP`
-header; direct environments ignore forwarded IP headers and use the network
-peer address. This application-layer limiter does not replace a Cloudflare-wide
-rate-limiting rule.
+Credential authentication endpoints and `/oauth/*` use one configurable
+in-process Echo rate limiter. It covers registration, login, onboarding, and
+provider-linking routes under `/auth`, plus OAuth callbacks. The defaults are
+10 requests/second, a burst of 30, and three-minute visitor cleanup. The
+limiter is keyed by the client IP, is local to each Cloud Run instance, and is
+not a global distributed limiter. `HTTP_RATELIMIT_ENABLED=false` disables it
+explicitly. In Cloudflare-backed environments the client IP comes from the
+authenticated `CF-Connecting-IP` header; direct environments ignore forwarded
+IP headers and use the network peer address. This application-layer limiter
+does not replace a Cloudflare-wide rate-limiting rule.
+
+`/auth/refresh` and `/auth/logout` use a separate configurable in-process Echo
+session rate limiter. When the refresh token is valid, it is keyed by the user
+ID in that token; invalid or missing tokens fall back to the client IP. Its
+defaults are 2 requests/second, a burst of 20, and three-minute visitor
+cleanup. It is local to each Cloud Run instance and is intended to contain
+runaway clients rather than replace credential lockout or a Cloudflare-wide
+rate-limiting rule. This phase does not add separate environment-variable
+overrides.
 
 Authenticated `/api/v1/*` endpoints use a separate in-process Echo rate limiter
 keyed by the authenticated user ID. Its defaults are 20 requests/second, a

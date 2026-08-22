@@ -27,6 +27,7 @@ import (
 const (
 	testUserToken     = "user-token"
 	testMerchantToken = "merchant-token"
+	testRefreshToken  = "refresh-token"
 )
 
 type routerTestTokenService struct {
@@ -136,6 +137,64 @@ func (uc *routerTestProfileUsecase) SwitchToMerchant(context.Context, uuid.UUID,
 
 func (uc *routerTestProfileUsecase) GetUserRole(context.Context, uuid.UUID) ([]string, error) {
 	return nil, nil
+}
+
+type routerTestUserUsecase struct {
+	refreshToken string
+}
+
+func (uc *routerTestUserUsecase) RegisterUser(context.Context, *usecase.RegisterUserInput) (*usecase.AuthResult, error) {
+	return &usecase.AuthResult{}, nil
+}
+
+func (uc *routerTestUserUsecase) RegisterMerchant(context.Context, *usecase.RegisterMerchantInput) (*usecase.AuthResult, error) {
+	return &usecase.AuthResult{}, nil
+}
+
+func (uc *routerTestUserUsecase) Login(context.Context, *usecase.LoginInput) (*usecase.AuthResult, error) {
+	return &usecase.AuthResult{}, nil
+}
+
+func (uc *routerTestUserUsecase) RefreshToken(_ context.Context, input *usecase.RefreshTokenInput) (*usecase.RefreshTokenOutput, error) {
+	uc.refreshToken = input.RefreshToken
+
+	return &usecase.RefreshTokenOutput{AccessToken: "access-token", RefreshToken: "refresh-token"}, nil
+}
+
+func (uc *routerTestUserUsecase) Logout(context.Context, *usecase.LogoutInput) error {
+	return nil
+}
+
+func (uc *routerTestUserUsecase) GoogleCallback(context.Context, *usecase.GoogleCallbackInput) (*usecase.AuthResult, error) {
+	return &usecase.AuthResult{}, nil
+}
+
+func (uc *routerTestUserUsecase) CompleteMerchantOnboarding(context.Context, *usecase.CompleteMerchantOnboardingInput) (*usecase.AuthResult, error) {
+	return &usecase.AuthResult{}, nil
+}
+
+func (uc *routerTestUserUsecase) LinkProvider(context.Context, usecase.LinkProviderInput) (*usecase.LinkProviderOutput, error) {
+	return &usecase.LinkProviderOutput{}, nil
+}
+
+func (uc *routerTestUserUsecase) LogoutAllDevices(context.Context, uuid.UUID) error {
+	return nil
+}
+
+func (uc *routerTestUserUsecase) GetActiveSessions(context.Context, uuid.UUID) ([]*entity.RefreshToken, error) {
+	return nil, nil
+}
+
+func (uc *routerTestUserUsecase) RevokeSession(context.Context, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+func (uc *routerTestUserUsecase) LinkGoogleAccount(context.Context, uuid.UUID, string) error {
+	return nil
+}
+
+func (uc *routerTestUserUsecase) UnlinkGoogleAccount(context.Context, uuid.UUID) error {
+	return nil
 }
 
 func TestRouter_DiscoveryValuesAllowMerchantRole(t *testing.T) {
@@ -298,6 +357,74 @@ func TestRouter_AuthenticationRoutesAreRateLimitedPerClientIP(t *testing.T) {
 	assert.Equal(t, http.StatusOK, healthResponse.Code)
 }
 
+func TestRouter_RefreshRoutePreservesRequestBody(t *testing.T) {
+	rate := 0.001
+	burst := 1
+	expiresIn := time.Minute
+	cfg := &config.Config{}
+	cfg.HTTP.SessionRateLimit = &config.RateLimitConfig{
+		Rate:      &rate,
+		Burst:     &burst,
+		ExpiresIn: &expiresIn,
+	}
+	userUC := &routerTestUserUsecase{}
+	e := newRouterTestEchoWithConfigAndUserUsecase(cfg, userUC)
+
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/auth/refresh",
+		strings.NewReader(`{"refresh_token":"`+testRefreshToken+`"}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req.RemoteAddr = "192.0.2.1:1000"
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, testRefreshToken, userUC.refreshToken)
+}
+
+func TestRouter_SessionRoutesHaveIndependentCredentialRateLimiter(t *testing.T) {
+	rate := 0.001
+	burst := 1
+	expiresIn := time.Minute
+	cfg := &config.Config{}
+	cfg.HTTP.RateLimit = &config.RateLimitConfig{
+		Rate:      &rate,
+		Burst:     &burst,
+		ExpiresIn: &expiresIn,
+	}
+	cfg.HTTP.SessionRateLimit = &config.RateLimitConfig{
+		Rate:      &rate,
+		Burst:     &burst,
+		ExpiresIn: &expiresIn,
+	}
+	userUC := &routerTestUserUsecase{}
+	e := newRouterTestEchoWithConfigAndUserUsecase(cfg, userUC)
+
+	loginRequest := newRouterTestRequest(http.MethodPost, "/auth/login", "")
+	loginRequest.RemoteAddr = "192.0.2.1:1000"
+	loginResponse := httptest.NewRecorder()
+	e.ServeHTTP(loginResponse, loginRequest)
+	assert.NotEqual(t, http.StatusTooManyRequests, loginResponse.Code)
+
+	refreshRequest := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/auth/refresh",
+		strings.NewReader(`{"refresh_token":"`+testRefreshToken+`"}`),
+	)
+	refreshRequest.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	refreshRequest.RemoteAddr = "192.0.2.1:1000"
+	refreshResponse := httptest.NewRecorder()
+	e.ServeHTTP(refreshResponse, refreshRequest)
+
+	assert.NotEqual(t, http.StatusTooManyRequests, refreshResponse.Code)
+	assert.Equal(t, http.StatusOK, refreshResponse.Code)
+}
+
 func TestRouter_TestRoutesDisabledByDefault(t *testing.T) {
 	e := echo.New()
 	r := NewRouter(RouterParams{
@@ -319,6 +446,10 @@ func newRouterTestEcho() *echo.Echo {
 }
 
 func newRouterTestEchoWithConfig(cfg *config.Config) *echo.Echo {
+	return newRouterTestEchoWithConfigAndUserUsecase(cfg, &routerTestUserUsecase{})
+}
+
+func newRouterTestEchoWithConfigAndUserUsecase(cfg *config.Config, userUC usecase.UserUsecase) *echo.Echo {
 	userID := uuid.New()
 	tokenSvc := &routerTestTokenService{
 		claims: map[string]*service.Claims{
@@ -332,15 +463,21 @@ func newRouterTestEchoWithConfig(cfg *config.Config) *echo.Echo {
 				Roles:  []string{string(entity.RoleMerchant)},
 				Type:   service.TokenTypeAccess,
 			},
+			testRefreshToken: {
+				UserID: userID,
+				Type:   service.TokenTypeRefresh,
+			},
 		},
 	}
 
 	e := echo.New()
 	e.IPExtractor = apimiddleware.NewClientIPExtractor(cfg)
 	e.Validator = apivalidator.New()
+	e.Use(apimiddleware.CaptureRequestBodyForErrorLog)
 	authMiddleware := apimiddleware.NewAuthMiddleware(tokenSvc, cfg)
 	r := NewRouter(RouterParams{
 		UserHandler: handler.NewUserHandler(handler.UserHandlerParams{
+			UserUC:    userUC,
 			ProfileUC: &routerTestProfileUsecase{},
 			Logger:    slog.Default(),
 		}),

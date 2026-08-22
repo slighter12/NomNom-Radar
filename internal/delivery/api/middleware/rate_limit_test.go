@@ -4,10 +4,12 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"radar/config"
+	"radar/internal/domain/service"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -170,6 +172,84 @@ func TestAPIRateLimiter_RejectsInvalidConfiguration(t *testing.T) {
 	assert.Contains(t, err.Error(), "http.apiRateLimit.rate")
 }
 
+func TestSessionRateLimiter_UsesSeparateBucketPerRefreshTokenSubject(t *testing.T) {
+	settings := newRateLimitConfig(0.001, 1, time.Minute)
+	cfg := &config.Config{}
+	cfg.HTTP.SessionRateLimit = settings
+	userA := uuid.New()
+	userB := uuid.New()
+	tokenSvc := &rateLimitTestTokenService{claims: map[string]*service.Claims{
+		"refresh-a": {UserID: userA, Type: service.TokenTypeRefresh},
+		"refresh-b": {UserID: userB, Type: service.TokenTypeRefresh},
+	}}
+	e := newSessionRateLimitEcho(t, cfg, tokenSvc)
+	remoteAddr := "192.0.2.1:1000"
+
+	firstUserAResponse := serveSessionRateLimitRequest(e, newSessionRateLimitRequest("refresh-a", remoteAddr))
+	assert.Equal(t, http.StatusNoContent, firstUserAResponse.Code)
+
+	firstUserBResponse := serveSessionRateLimitRequest(e, newSessionRateLimitRequest("refresh-b", remoteAddr))
+	assert.Equal(t, http.StatusNoContent, firstUserBResponse.Code)
+
+	secondUserAResponse := serveSessionRateLimitRequest(e, newSessionRateLimitRequest("refresh-a", remoteAddr))
+	assert.Equal(t, http.StatusTooManyRequests, secondUserAResponse.Code)
+}
+
+func TestSessionRateLimiter_FallsBackToIPForInvalidOrMissingToken(t *testing.T) {
+	for _, testCase := range []struct {
+		name  string
+		token string
+	}{
+		{name: "invalid token", token: "invalid-token"},
+		{name: "missing token", token: ""},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			settings := newRateLimitConfig(0.001, 1, time.Minute)
+			cfg := &config.Config{}
+			cfg.HTTP.SessionRateLimit = settings
+			e := newSessionRateLimitEcho(t, cfg, &rateLimitTestTokenService{claims: map[string]*service.Claims{}})
+
+			firstResponse := serveSessionRateLimitRequest(e, newSessionRateLimitRequest(testCase.token, "192.0.2.1:1000"))
+			assert.Equal(t, http.StatusNoContent, firstResponse.Code)
+
+			secondResponse := serveSessionRateLimitRequest(e, newSessionRateLimitRequest(testCase.token, "192.0.2.1:1000"))
+			assert.Equal(t, http.StatusTooManyRequests, secondResponse.Code)
+
+			otherIPResponse := serveSessionRateLimitRequest(e, newSessionRateLimitRequest(testCase.token, "192.0.2.2:1000"))
+			assert.Equal(t, http.StatusNoContent, otherIPResponse.Code)
+		})
+	}
+}
+
+func TestSessionRateLimiter_DoesNotAcceptAccessTokenAsSubject(t *testing.T) {
+	settings := newRateLimitConfig(0.001, 1, time.Minute)
+	cfg := &config.Config{}
+	cfg.HTTP.SessionRateLimit = settings
+	tokenSvc := &rateLimitTestTokenService{claims: map[string]*service.Claims{
+		"access-token": {UserID: uuid.New(), Type: service.TokenTypeAccess},
+	}}
+	e := newSessionRateLimitEcho(t, cfg, tokenSvc)
+	remoteAddr := "192.0.2.1:1000"
+
+	accessTokenResponse := serveSessionRateLimitRequest(e, newSessionRateLimitRequest("access-token", remoteAddr))
+	assert.Equal(t, http.StatusNoContent, accessTokenResponse.Code)
+
+	missingTokenResponse := serveSessionRateLimitRequest(e, newSessionRateLimitRequest("", remoteAddr))
+	assert.Equal(t, http.StatusTooManyRequests, missingTokenResponse.Code)
+}
+
+func TestSessionRateLimiter_RejectsInvalidConfiguration(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.HTTP.SessionRateLimit = newRateLimitConfig(-1, 1, time.Minute)
+
+	limiter, err := NewSessionRateLimiter(cfg, func(echo.Context) (uuid.UUID, bool) {
+		return uuid.Nil, false
+	})
+	assert.Nil(t, limiter)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "http.sessionRateLimit.rate")
+}
+
 func newRateLimitRequest(target, remoteAddr string) *http.Request {
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, target, nil)
 	req.RemoteAddr = remoteAddr
@@ -211,4 +291,76 @@ func newUserRateLimitRequest(target, remoteAddr string, userID uuid.UUID) *http.
 	req.Header.Set("X-Test-User-ID", userID.String())
 
 	return req
+}
+
+type rateLimitTestTokenService struct {
+	claims map[string]*service.Claims
+}
+
+func (s *rateLimitTestTokenService) GenerateTokens(uuid.UUID, []string) (string, string, error) {
+	return "", "", nil
+}
+
+func (s *rateLimitTestTokenService) ValidateToken(token string) (*service.Claims, error) {
+	claims, ok := s.claims[token]
+	if !ok {
+		return nil, assert.AnError
+	}
+
+	return claims, nil
+}
+
+func (s *rateLimitTestTokenService) GenerateOnboardingToken(uuid.UUID) (string, error) {
+	return "", nil
+}
+
+func (s *rateLimitTestTokenService) GenerateLinkingToken(uuid.UUID, string, string, string, string) (string, error) {
+	return "", nil
+}
+
+func (s *rateLimitTestTokenService) GetRefreshTokenDuration() time.Duration {
+	return time.Hour
+}
+
+func (s *rateLimitTestTokenService) HashToken(token string) string {
+	return token
+}
+
+func (s *rateLimitTestTokenService) RotateTokens(uuid.UUID, []string) (string, string, string, error) {
+	return "", "", "", nil
+}
+
+func newSessionRateLimitEcho(t *testing.T, cfg *config.Config, tokenSvc service.TokenService) *echo.Echo {
+	t.Helper()
+	authMiddleware := NewAuthMiddleware(tokenSvc, cfg)
+	limiter, err := NewSessionRateLimiter(cfg, authMiddleware.RefreshTokenSubject)
+	require.NoError(t, err)
+	require.NotNil(t, limiter)
+
+	e := echo.New()
+	e.IPExtractor = NewClientIPExtractor(&config.Config{})
+	e.Use(CaptureRequestBodyForErrorLog)
+	e.Use(limiter)
+	e.POST("/auth/refresh", func(c echo.Context) error { return c.NoContent(http.StatusNoContent) })
+
+	return e
+}
+
+func newSessionRateLimitRequest(refreshToken, remoteAddr string) *http.Request {
+	body := "{}"
+	if refreshToken != "" {
+		body = `{"refresh_token":"` + refreshToken + `"}`
+	}
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/auth/refresh", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req.RemoteAddr = remoteAddr
+
+	return req
+}
+
+func serveSessionRateLimitRequest(e *echo.Echo, req *http.Request) *httptest.ResponseRecorder {
+	response := httptest.NewRecorder()
+	e.ServeHTTP(response, req)
+
+	return response
 }

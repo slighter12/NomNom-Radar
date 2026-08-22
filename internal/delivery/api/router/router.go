@@ -79,19 +79,30 @@ func (r *router) registerPublicRoutes(e *echo.Echo) error {
 	if err != nil {
 		return fmt.Errorf("configure auth rate limiter: %w", err)
 	}
+	sessionRateLimiter, err := middleware.NewSessionRateLimiter(r.config, r.authMiddleware.RefreshTokenSubject)
+	if err != nil {
+		return fmt.Errorf("configure session rate limiter: %w", err)
+	}
 
-	authGroup := e.Group("/auth")
+	credentialGroup := e.Group("/auth")
 	if authRateLimiter != nil {
-		authGroup.Use(authRateLimiter)
+		credentialGroup.Use(authRateLimiter)
 	}
 	{
-		authGroup.POST("/register/user", r.userHandler.RegisterUser)
-		authGroup.POST("/register/merchant", r.userHandler.RegisterMerchant)
-		authGroup.POST("/login", r.userHandler.Login)
-		authGroup.POST("/onboarding/merchant", r.userHandler.CompleteMerchantOnboarding)
-		authGroup.POST("/link-provider", r.userHandler.LinkProvider)
-		authGroup.POST("/refresh", r.userHandler.RefreshToken)
-		authGroup.POST("/logout", r.userHandler.Logout)
+		credentialGroup.POST("/register/user", r.userHandler.RegisterUser)
+		credentialGroup.POST("/register/merchant", r.userHandler.RegisterMerchant)
+		credentialGroup.POST("/login", r.userHandler.Login)
+		credentialGroup.POST("/onboarding/merchant", r.userHandler.CompleteMerchantOnboarding)
+		credentialGroup.POST("/link-provider", r.userHandler.LinkProvider)
+	}
+
+	sessionGroup := e.Group("/auth")
+	if sessionRateLimiter != nil {
+		sessionGroup.Use(sessionRateLimiter)
+	}
+	{
+		sessionGroup.POST("/refresh", r.userHandler.RefreshToken)
+		sessionGroup.POST("/logout", r.userHandler.Logout)
 	}
 
 	oauthGroup := e.Group("/oauth")
