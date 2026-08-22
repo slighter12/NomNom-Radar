@@ -1,12 +1,14 @@
 package middleware
 
 import (
+	"encoding/json"
 	"strings"
 
 	"radar/config"
 	"radar/internal/delivery/api/response"
 	"radar/internal/domain/entity"
 	"radar/internal/domain/service"
+	"radar/internal/usecase"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -49,6 +51,30 @@ type AuthMiddleware struct {
 // NewAuthMiddleware is the constructor for AuthMiddleware.
 func NewAuthMiddleware(tokenSvc service.TokenService, cfg *config.Config) *AuthMiddleware {
 	return &AuthMiddleware{tokenSvc: tokenSvc, cfg: cfg}
+}
+
+// RefreshTokenSubject returns the user in the request's refresh token, if any.
+func (m *AuthMiddleware) RefreshTokenSubject(c echo.Context) (uuid.UUID, bool) {
+	if c == nil {
+		return uuid.Nil, false
+	}
+
+	rawBody, ok := c.Get(capturedRequestBodyKey).([]byte)
+	if !ok || len(rawBody) == 0 {
+		return uuid.Nil, false
+	}
+
+	var input usecase.RefreshTokenInput
+	if err := json.Unmarshal(rawBody, &input); err != nil || input.RefreshToken == "" {
+		return uuid.Nil, false
+	}
+
+	claims, err := m.tokenSvc.ValidateToken(input.RefreshToken)
+	if err != nil || claims == nil || claims.Type != service.TokenTypeRefresh {
+		return uuid.Nil, false
+	}
+
+	return claims.UserID, true
 }
 
 // Authenticate is the core middleware function that validates the JWT access token.

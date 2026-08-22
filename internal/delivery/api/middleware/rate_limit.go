@@ -5,6 +5,7 @@ import (
 
 	"radar/config"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"golang.org/x/time/rate"
@@ -17,7 +18,7 @@ func NewAuthRateLimiter(cfg *config.Config) (echo.MiddlewareFunc, error) {
 	if cfg != nil && cfg.HTTP.RateLimit != nil {
 		settings = *cfg.HTTP.RateLimit
 	}
-	if err := settings.Validate(); err != nil {
+	if err := settings.ValidateAt("http.rateLimit"); err != nil {
 		return nil, fmt.Errorf("invalid authentication rate limit configuration: %w", err)
 	}
 	if !settings.IsEnabled() {
@@ -33,6 +34,43 @@ func NewAuthRateLimiter(cfg *config.Config) (echo.MiddlewareFunc, error) {
 	return echomiddleware.RateLimiterWithConfig(echomiddleware.RateLimiterConfig{
 		Store: store,
 		IdentifierExtractor: func(c echo.Context) (string, error) {
+			return c.RealIP(), nil
+		},
+	}), nil
+}
+
+// NewSessionRateLimiter creates the in-process limiter shared by refresh and logout routes.
+// It keys requests by the refresh-token user ID and falls back to the client IP.
+func NewSessionRateLimiter(
+	cfg *config.Config,
+	identify func(echo.Context) (uuid.UUID, bool),
+) (echo.MiddlewareFunc, error) {
+	settings := config.DefaultSessionRateLimitConfig()
+	if cfg != nil && cfg.HTTP.SessionRateLimit != nil {
+		settings = *cfg.HTTP.SessionRateLimit
+	}
+	if err := settings.ValidateAt("http.sessionRateLimit"); err != nil {
+		return nil, fmt.Errorf("invalid session rate limit configuration: %w", err)
+	}
+	if !settings.IsEnabled() {
+		return nil, nil
+	}
+
+	store := echomiddleware.NewRateLimiterMemoryStoreWithConfig(echomiddleware.RateLimiterMemoryStoreConfig{
+		Rate:      rate.Limit(*settings.Rate),
+		Burst:     *settings.Burst,
+		ExpiresIn: *settings.ExpiresIn,
+	})
+
+	return echomiddleware.RateLimiterWithConfig(echomiddleware.RateLimiterConfig{
+		Store: store,
+		IdentifierExtractor: func(c echo.Context) (string, error) {
+			if identify != nil {
+				if userID, ok := identify(c); ok {
+					return userID.String(), nil
+				}
+			}
+
 			return c.RealIP(), nil
 		},
 	}), nil
