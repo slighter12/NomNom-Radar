@@ -121,9 +121,22 @@ Never run `DROP EXTENSION postgis CASCADE` on a migrated database.
 
 Release-impacting merges to `main` publish `radar`, `geoworker`, and
 `device-cleanup` to the dev Artifact Registry. Images use the full commit SHA
-as an immutable tag; `latest`, mutable aliases, and rebuilt images are not
-release inputs. Registry immutable-tag enforcement is required. Documentation
-and other non-impacting commits do not rebuild images.
+as their tag; `latest`, mutable aliases, and rebuilt images are not release
+inputs. Documentation and other non-impacting commits do not rebuild images.
+
+### Tag mutability
+
+Neither registry enables Artifact Registry's `--immutable-tags`, and that is
+deliberate rather than an oversight. That setting also blocks deletion of
+tagged images, which would break the cleanup policies both repositories rely
+on and would make release tags permanent once the planned `v*` scheme exists.
+
+A commit-SHA tag is therefore movable in principle. What stops a moved tag from
+reaching a deployment is attestation, not the registry: a re-pointed tag
+resolves to a digest with no valid provenance for that commit, and the resolver
+fails closed. Attestation is the single control here. Do not weaken it on the
+assumption that registry immutability is also holding the line, and do not
+enable immutable tags without first redesigning retention.
 
 The checked-in target catalog at `.github/scripts/release/targets.json` is the
 single source for the three release targets and their deployment order. The
@@ -167,7 +180,7 @@ compatible candidate is found in that window, publish a new release-impacting
 candidate rather than relying on an unbounded registry scan.
 
 CI pushes each image to a run-scoped staging tag, resolves and attests its exact
-digest, verifies the attestation, and only then adds the immutable SHA tag. A
+digest, verifies the attestation, and only then adds the SHA tag. A
 release resolves the selected candidate's three SHA tags once and writes a
 run-local JSON bundle:
 
@@ -198,8 +211,8 @@ the workflow execute only current protected automation (`CONTROL_SHA`) and walk
 first-parent history to select the newest ancestor with all three complete,
 attested candidate images (`RELEASE_SHA`). When `release_sha` is supplied, the
 resolver expands it to the full SHA, selects that commit directly, still
-requires complete immutable images and valid attestations, and skips the
-impact-path freshness check.
+requires a complete set of digest-pinned images and valid attestations, and
+skips the impact-path freshness check.
 
 An abbreviation is expanded with `git rev-parse --verify`, which rejects both
 unknown and ambiguous prefixes, so widening the accepted input does not widen
@@ -258,11 +271,15 @@ release that has already been replaced cannot be promoted.
 
 If a candidate SHA tag exists but its attestation is missing or invalid, CI
 fails closed and never re-attests the existing digest. Do not rerun the failed
-candidate workflow. Because Artifact Registry immutable tags may not be removed,
-the standard recovery is to quarantine the affected SHA and publish a new
-release-impacting commit; CI must create a new SHA tag and verify its attestation
-before release. If an old tag must be removed, use an explicitly approved
-registry-admin break-glass procedure. Do not manually attest an unknown image.
+candidate workflow. The standard recovery is to quarantine the affected SHA and
+publish a new release-impacting commit; CI must create a new SHA tag and verify
+its attestation before release.
+
+Removing the bad tag instead is possible but is not CI's to do: the candidate
+identity holds `roles/artifactregistry.writer`, which grants
+`artifactregistry.tags.create` and `.update` but not `.delete`. Tag removal
+therefore requires a registry admin and is an explicitly approved break-glass
+procedure. Do not manually attest an unknown image.
 
 Release and operational workflows share the non-canceling
 `cloud-run-release` concurrency group across both environments. It covers
@@ -375,10 +392,12 @@ record this rollout before declaring readiness:
   check, because a historical workflow definition may not contain that check.
 - [ ] Candidate, release, operations, runtime, and scheduler identities exist
   with the scopes above.
-- [ ] Both Artifact Registry repositories enforce immutable tags. Commit-SHA
-  tags are retained; staging-tag deletion is best-effort and immutable-tag
-  repositories may retain stale staging tags for approved registry retention
-  or admin cleanup.
+- [ ] Neither Artifact Registry repository enables immutable tags, and the
+  posture in "Tag mutability" above still holds. Staging-tag deletion is
+  best-effort and currently always fails, because the candidate identity has no
+  `artifactregistry.tags.delete`; a stale staging tag disappears with its image
+  version when the repository cleanup policy removes it, so the accumulation is
+  bounded by that policy rather than unbounded.
 - [ ] Required Google APIs are enabled and all three resources implement the
   `release-sha` label contract.
 - [ ] A documentation-only commit after a verified candidate promotes the
