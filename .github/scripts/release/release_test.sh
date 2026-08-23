@@ -324,6 +324,16 @@ if [ -n "${MOCK_DESCRIBE_ERROR_TARGET:-}" ] \
     "${2}" "${4}" >&2
   exit 1
 fi
+if [ -n "${MOCK_NO_IMAGE_TARGET:-}" ]; then
+  case "$*" in
+    "run jobs describe ${MOCK_NO_IMAGE_TARGET} "*)
+      jq -cn --arg sha "${MOCK_SHA}" '{metadata:{labels:{"release-sha":$sha}},spec:{template:{spec:{template:{spec:{containers:[{}]}}}}}}'
+      exit 0 ;;
+    "run revisions describe ${MOCK_NO_IMAGE_TARGET} "*)
+      jq -cn --arg sha "${MOCK_SHA}" '{metadata:{labels:{"release-sha":$sha}},spec:{containers:[{}]}}'
+      exit 0 ;;
+  esac
+fi
 case "$*" in
   'run services describe radar '*'--format=json'*)
     jq -cn --arg sha "${MOCK_SHA}" '{metadata:{labels:{"release-sha":$sha}},status:{latestReadyRevisionName:"radar-ready",conditions:[{type:"Ready",status:"True"}]}}'
@@ -370,6 +380,19 @@ assert_missing_cloud_run_target() {
 assert_missing_cloud_run_target device-cleanup
 assert_missing_cloud_run_target geoworker
 
+# A describe that answers without a container image is a response-shape change,
+# not a resource running an empty image. Snapshotting it must fail rather than
+# emit a null that only surfaces later as a confusing digest mismatch.
+for no_image_target in device-cleanup radar-ready; do
+  if (
+    cd "${git_dir}"
+    env "${common_env[@]}" MOCK_SHA="${sha}" MOCK_RADAR="${digest_a}" MOCK_GEOWORKER="${digest_b}" MOCK_CLEANUP="${digest_c}" \
+      MOCK_NO_IMAGE_TARGET="${no_image_target}" \
+      bash -c 'source "$1"; snapshot' "${script_dir}/release.sh" "${release_functions}"
+  ) >/dev/null 2>&1; then
+    fail "snapshot-accepted-missing-image-${no_image_target}"
+  fi
+done
 describe_error_output="${temp_dir}/describe-error-preflight.txt"
 if env "${common_env[@]}" MOCK_SHA="${sha}" MOCK_RADAR="${digest_a}" MOCK_GEOWORKER="${digest_b}" MOCK_CLEANUP="${digest_c}" \
   MOCK_DESCRIBE_ERROR_TARGET=device-cleanup \
@@ -552,6 +575,28 @@ if run_resolver "${resolver_control}" "${temp_dir}/resolver-pin-non-ancestor-env
 fi
 grep -F 'not an ancestor' "${resolver_pin_non_ancestor_output}" >/dev/null \
   || fail resolver-pin-non-ancestor-message
+# A pin may be abbreviated, because it is typed by hand during a rollback. The
+# resolver must expand it to the full SHA the image tags actually use.
+resolver_short=$(git -C "${resolver_dir}" rev-parse --short=8 "${resolver_candidate}")
+resolver_short_output="${temp_dir}/resolver-short-output"
+run_resolver "${resolver_control}" "${resolver_short_output}" "${resolver_short}"
+grep -Fx "release_sha=${resolver_candidate}" "${resolver_short_output}" >/dev/null \
+  || fail resolver-pin-short-sha-expansion
+# Too short to be meaningful.
+if run_resolver "${resolver_control}" "${temp_dir}/resolver-pin-tiny-env" "$(printf '%s' "${resolver_candidate}" | cut -c1-4)" \
+  >/dev/null 2>&1; then
+  fail resolver-pin-too-short-accepted
+fi
+# A prefix that matches no commit must fail rather than resolve to anything.
+if run_resolver "${resolver_control}" "${temp_dir}/resolver-pin-unknown-env" deadbeef \
+  >/dev/null 2>&1; then
+  fail resolver-pin-unknown-prefix-accepted
+fi
+# Non-hex input must never reach git.
+if run_resolver "${resolver_control}" "${temp_dir}/resolver-pin-ref-env" HEAD \
+  >/dev/null 2>&1; then
+  fail resolver-pin-ref-name-accepted
+fi
 
 resolver_pin_incomplete_output="${temp_dir}/resolver-pin-incomplete-output"
 if run_resolver "${resolver_control}" "${temp_dir}/resolver-pin-incomplete-env" "${resolver_candidate}" device-cleanup \
@@ -705,7 +750,104 @@ if (
   fail empty-catalog-guard
 fi
 
+# --- candidate change detection -------------------------------------------
+# A push that touches nothing in the release contract must not republish, and
+# a push that cannot be diffed at all must republish rather than assume.
+changes_dir="${temp_dir}/changes-git"
+git init -q "${changes_dir}"
+git -C "${changes_dir}" config user.email test@example.invalid
+git -C "${changes_dir}" config user.name 'Release Changes Test'
+git -C "${changes_dir}" commit -q --allow-empty -m base
+changes_base=$(git -C "${changes_dir}" rev-parse HEAD)
+mkdir -p "${changes_dir}/docs"
+printf 'docs\n' > "${changes_dir}/docs/note.md"
+git -C "${changes_dir}" add docs/note.md
+git -C "${changes_dir}" commit -q -m docs-only
+changes_docs=$(git -C "${changes_dir}" rev-parse HEAD)
+mkdir -p "${changes_dir}/internal"
+printf 'code\n' > "${changes_dir}/internal/app.go"
+git -C "${changes_dir}" add internal/app.go
+git -C "${changes_dir}" commit -q -m code
+changes_code=$(git -C "${changes_dir}" rev-parse HEAD)
 
+run_changes() {
+  local before=$1 head=$2 catalog=${3:-${repo_root}/.github/scripts/release/targets.json}
+  (
+    cd "${changes_dir}"
+    BEFORE_SHA="${before}" GITHUB_SHA="${head}" TARGETS_FILE="${catalog}" \
+      GITHUB_OUTPUT=/dev/stdout bash "${script_dir}/release.sh" candidate-changes
+  )
+}
+run_changes "${changes_base}" "${changes_docs}" | grep -Fx 'candidate=false' >/dev/null \
+  || fail changes-docs-only-republished
+run_changes "${changes_docs}" "${changes_code}" | grep -Fx 'candidate=true' >/dev/null \
+  || fail changes-code-not-detected
+run_changes "$(printf '0%.0s' {1..40})" "${changes_code}" | grep -Fx 'candidate=true' >/dev/null \
+  || fail changes-force-push-not-republished
+run_changes "$(printf 'f%.0s' {1..40})" "${changes_code}" | grep -Fx 'candidate=true' >/dev/null \
+  || fail changes-unreachable-before-not-republished
+if run_changes "${changes_base}" "${changes_docs}" "${empty_catalog}" >/dev/null 2>&1; then
+  fail changes-empty-catalog-guard
+fi
+
+# --- migration phase selection --------------------------------------------
+migration_dir="${temp_dir}/migration-git"
+git init -q "${migration_dir}"
+git -C "${migration_dir}" config user.email test@example.invalid
+git -C "${migration_dir}" config user.name 'Release Migration Test'
+mkdir -p "${migration_dir}/database/migration/postgres" \
+  "${migration_dir}/database/migration/supabase/pre" \
+  "${migration_dir}/database/migration/supabase/post"
+printf 'base\n' > "${migration_dir}/database/migration/postgres/0001.sql"
+git -C "${migration_dir}" add -A
+git -C "${migration_dir}" commit -q -m base
+migration_base=$(git -C "${migration_dir}" rev-parse HEAD)
+printf 'pre\n' > "${migration_dir}/database/migration/supabase/pre/0001.sql"
+git -C "${migration_dir}" add -A
+git -C "${migration_dir}" commit -q -m schema
+migration_schema=$(git -C "${migration_dir}" rev-parse HEAD)
+printf 'docs\n' > "${migration_dir}/README.md"
+git -C "${migration_dir}" add -A
+git -C "${migration_dir}" commit -q -m docs
+migration_docs=$(git -C "${migration_dir}" rev-parse HEAD)
+
+run_migrations() {
+  local release=$1 baseline=$2 requested=${3:-} ack=${4:-false}
+  (
+    cd "${migration_dir}"
+    RELEASE_SHA="${release}" BASELINE_SHA="${baseline}" REQUESTED_SHA="${requested}" \
+      ACKNOWLEDGE_SCHEMA_DRIFT="${ack}" GITHUB_OUTPUT=/dev/stdout \
+      bash "${script_dir}/release.sh" migration-phases
+  )
+}
+# No baseline at all: bootstrap must check every phase.
+run_migrations "${migration_schema}" '' | grep -Fx 'any=true' >/dev/null \
+  || fail migrations-bootstrap
+# Nothing moved.
+run_migrations "${migration_schema}" "${migration_schema}" | grep -Fx 'any=false' >/dev/null \
+  || fail migrations-same-sha
+# Only the pre directory changed between baseline and release.
+migration_out=$(run_migrations "${migration_schema}" "${migration_base}")
+printf '%s\n' "${migration_out}" | grep -Fx 'pre=true' >/dev/null || fail migrations-pre
+printf '%s\n' "${migration_out}" | grep -Fx 'shared=false' >/dev/null || fail migrations-shared-false
+# A docs-only advance must not select any phase.
+run_migrations "${migration_docs}" "${migration_schema}" | grep -Fx 'any=false' >/dev/null \
+  || fail migrations-docs-only
+# A pinned release that does not cross a migration change is allowed through.
+run_migrations "${migration_docs}" "${migration_schema}" "${migration_docs}" \
+  | grep -Fx 'any=false' >/dev/null || fail migrations-pinned-clean
+# A pinned release that moves back across a migration change must stop: the
+# schema is forward-only, so this would run old code against a newer schema.
+pinned_drift_output="${temp_dir}/pinned-drift.txt"
+if run_migrations "${migration_base}" "${migration_schema}" "${migration_base}" \
+  >"${pinned_drift_output}" 2>&1; then
+  fail migrations-pinned-drift-allowed
+fi
+grep -F 'crosses a migration change' "${pinned_drift_output}" >/dev/null \
+  || fail migrations-pinned-drift-message
+# ...and must proceed once that is explicitly acknowledged.
+run_migrations "${migration_base}" "${migration_schema}" "${migration_base}" true \
+  | grep -Fx 'any=false' >/dev/null || fail migrations-pinned-drift-acknowledged
 
 goose_version=$(make -C "${repo_root}" -s --no-print-directory print-goose-version)
 printf '%s\n' "${goose_version}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || fail goose-version-format
