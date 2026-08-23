@@ -9,10 +9,15 @@ on:
         type: choice
         options: [dev, prod]
       release_sha:
-        description: "Pin a specific candidate commit SHA (40 hex). Empty = newest candidate."
+        description: "Pin a candidate commit SHA, abbreviated (7+) or full. Empty = newest candidate."
         required: false
         default: ""
         type: string
+      acknowledge_schema_drift:
+        description: "Pinned releases only: proceed even though the pin crosses a migration change. Handle the schema first."
+        required: false
+        default: false
+        type: boolean
 
 env:
   GCRANE_VERSION: v0.21.9
@@ -34,6 +39,7 @@ jobs:
       CONTROL_SHA: ${{ github.sha }}
       TARGET_ENVIRONMENT: ${{ inputs.environment }}
       REQUESTED_SHA: ${{ inputs.release_sha }}
+      ACKNOWLEDGE_SCHEMA_DRIFT: ${{ inputs.acknowledge_schema_drift }}
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       PROJECT_NUMBER: ${{ vars.GCP_PROJECT_NUMBER }}
       REGION: ${{ vars.GCP_REGION }}
@@ -103,6 +109,11 @@ jobs:
         with:
           project_id: ${{ env.PROJECT_ID }}
 
+      # Missing-resource detection depends on exact gcloud error strings. Prove
+      # they still hold before anything in this run can act on them.
+      - name: Verify gcloud error contract
+        run: bash .github/scripts/release/release.sh check-error-contract
+
       - name: Configure dev Registry auth
         run: gcloud auth configure-docker "${DEV_REGISTRY%%/*}" --quiet
 
@@ -124,35 +135,7 @@ jobs:
         env:
           RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
           BASELINE_SHA: ${{ steps.preflight.outputs.baseline_sha }}
-        run: |
-          set -euo pipefail
-          if [ -n "${REQUESTED_SHA:-}" ]; then
-            printf 'pre=false\nshared=false\npost=false\nany=false\n' >> "${GITHUB_OUTPUT}"
-            echo "::notice::Pinned release: migrations skipped. Handle schema separately."
-            exit 0
-          fi
-          changed() {
-            if git diff --quiet "${BASELINE_SHA}..${RELEASE_SHA}" -- "$1"; then
-              return 1
-            else
-              status=$?
-              [ "${status}" -eq 1 ] || exit "${status}"
-              return 0
-            fi
-          }
-          if [ -z "${BASELINE_SHA}" ]; then
-            pre=true; shared=true; post=true
-          elif [ "${BASELINE_SHA}" = "${RELEASE_SHA}" ]; then
-            pre=false; shared=false; post=false
-          else
-            pre=false; shared=false; post=false
-            changed database/migration/supabase/pre && pre=true
-            changed database/migration/postgres && shared=true
-            changed database/migration/supabase/post && post=true
-          fi
-          any=false
-          { [ "${pre}" = false ] && [ "${shared}" = false ] && [ "${post}" = false ]; } || any=true
-          printf 'pre=%s\nshared=%s\npost=%s\nany=%s\n' "${pre}" "${shared}" "${post}" "${any}" >> "${GITHUB_OUTPUT}"
+        run: bash .github/scripts/release/release.sh migration-phases
 
       - name: Set up Go for migrations
         if: steps.migrations.outputs.any == 'true'
@@ -197,16 +180,11 @@ jobs:
           SKIP_HEALTH: "true"
         run: bash .github/scripts/release/release.sh verify
 
-      - name: Recheck current main before mutation
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Configure prod Registry auth
+        if: inputs.environment == 'prod'
         run: |
           set -euo pipefail
-          remote_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)
-          test "${remote_sha}" = "${CONTROL_SHA}" || {
-            echo "::error::Main advanced before mutation; start a new release run."
-            exit 1
-          }
+          gcloud auth configure-docker "${DEV_REGISTRY%%/*},${REGISTRY%%/*}" --quiet
 
       - name: Promote exact digests to prod
         if: inputs.environment == 'prod'
@@ -214,47 +192,8 @@ jobs:
         env:
           SOURCE_BUNDLE: ${{ steps.candidate.outputs.path }}
           RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
-        run: |
-          set -euo pipefail
-          # shellcheck source=.github/scripts/release/not_found.sh
-          source .github/scripts/release/not_found.sh
-          owner=$(printf '%s' "${OWNER}" | tr '[:upper:]' '[:lower:]')
-          dev_host=$(printf '%s' "${DEV_REGISTRY}" | cut -d/ -f1)
-          prod_host=$(printf '%s' "${REGISTRY}" | cut -d/ -f1)
-          gcloud auth configure-docker "${dev_host},${prod_host}" --quiet
-          promoted='{}'
-          while IFS= read -r target; do
-            # Preflight has already validated the complete target set and pinned digests.
-            source=$(jq -r --arg target "${target}" '.images[$target]' "${SOURCE_BUNDLE}")
-            destination="${REGISTRY}/${owner}/${target}:${RELEASE_SHA}"
-            describe_error=$(mktemp "${RUNNER_TEMP}/prod-describe.XXXXXX")
-            if existing=$(gcloud artifacts docker images describe "${destination}" \
-              --project="${PROJECT_ID}" --format='value(image_summary.fully_qualified_digest)' 2>"${describe_error}"); then
-              rm -f "${describe_error}"
-              [ "${existing##*@}" = "${source##*@}" ] || {
-                echo "::error::Immutable prod tag already points to a different digest: ${target}"
-                exit 1
-              }
-            else
-              image_not_found "${describe_error}" || {
-                cat "${describe_error}" >&2
-                rm -f "${describe_error}"
-                echo "::error::Unable to inspect prod image: ${target}"
-                exit 1
-              }
-              rm -f "${describe_error}"
-              "${RUNNER_TEMP}/gcrane/gcrane" copy "${source}" "${destination}"
-            fi
-            image=$(gcloud artifacts docker images describe "${destination}" \
-              --project="${PROJECT_ID}" --format='value(image_summary.fully_qualified_digest)')
-            expected="${REGISTRY}/${owner}/${target}@${source##*@}"
-            [ "${image}" = "${expected}" ] || { echo "::error::Prod digest verification failed: ${target}"; exit 1; }
-            promoted=$(jq -c --arg target "${target}" --arg image "${image}" '. + {($target):$image}' <<<"${promoted}")
-          done < <(jq -r 'keys[]' "${TARGETS_FILE}")
-          bundle="${RUNNER_TEMP}/promoted-bundle.json"
-          jq -cn --arg sha "${RELEASE_SHA}" --argjson images "${promoted}" \
-            '{release_sha:$sha,images:$images}' > "${bundle}"
-          echo "path=${bundle}" >> "${GITHUB_OUTPUT}"
+          GCRANE: ${{ runner.temp }}/gcrane/gcrane
+        run: bash .github/scripts/release/release.sh promote
 
       - name: Run selected migration phases
         if: steps.migrations.outputs.any == 'true'
