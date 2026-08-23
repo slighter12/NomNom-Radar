@@ -326,9 +326,16 @@ finalize_candidate() {
   [ "${final_digest##*@}" = "${STAGED_DIGEST}" ] \
     || integrity_die "final candidate tag for ${TARGET} does not equal the attested digest"
   if [ -n "${STAGING_REF:-}" ]; then
+    # Expected to fail today: roles/artifactregistry.writer grants
+    # artifactregistry.tags.create and .update but not .delete, so the candidate
+    # identity cannot remove its own staging tag. The tag is an alias for a
+    # digest that already carries its SHA tag, so it costs no extra storage and
+    # is not a release input; it disappears with its image version when the
+    # repository cleanup policy removes it. Left as a warning rather than a
+    # failure because the candidate is already published and verified by here.
     gcloud artifacts docker tags delete "${STAGING_REF}" \
       --project="${PROJECT_ID}" --quiet \
-      || printf '::warning::Could not delete staging tag %s; immutable-tag repositories may retain it.\n' "${STAGING_REF}"
+      || printf '::warning::Could not delete staging tag %s; the candidate identity has no artifactregistry.tags.delete. The tag expires with its image version.\n' "${STAGING_REF}"
   fi
   {
     echo '## Candidate image'
