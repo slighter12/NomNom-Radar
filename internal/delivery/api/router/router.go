@@ -66,7 +66,6 @@ func (r *router) RegisterRoutes(e *echo.Echo) error {
 	if err := r.registerPublicRoutes(e); err != nil {
 		return err
 	}
-	r.registerAuthenticatedRootRoutes(e)
 	if err := r.registerAPIV1Routes(e); err != nil {
 		return err
 	}
@@ -114,21 +113,6 @@ func (r *router) registerPublicRoutes(e *echo.Echo) error {
 	}
 
 	return nil
-}
-
-func (r *router) registerAuthenticatedRootRoutes(e *echo.Echo) {
-	userGroup := e.Group("/user")
-	userGroup.Use(r.authMiddleware.Authenticate)
-	{
-		userGroup.GET("/profile", r.userHandler.GetProfile)
-	}
-
-	merchantGroup := e.Group("/merchant")
-	merchantGroup.Use(r.authMiddleware.Authenticate)
-	merchantGroup.Use(r.authMiddleware.RequireRole(entity.RoleMerchant))
-	{
-		// Reserved for non-versioned merchant-only routes.
-	}
 }
 
 func (r *router) registerAPIV1Routes(e *echo.Echo) error {

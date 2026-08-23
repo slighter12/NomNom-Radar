@@ -275,20 +275,27 @@ func TestRouter_PublicMerchantSearchStillRequiresUserRole(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), `"code":"FORBIDDEN"`)
 }
 
-func TestRouter_ProfileSupportsAPIV1AndLegacyRoutes(t *testing.T) {
+func TestRouter_ProfileSupportsAPIV1Route(t *testing.T) {
 	e := newRouterTestEcho()
 
-	for _, path := range []string{"/api/v1/user/profile", "/user/profile"} {
-		t.Run(path, func(t *testing.T) {
-			req := newRouterTestRequest(http.MethodGet, path, testUserToken)
-			rec := httptest.NewRecorder()
+	t.Run("api v1 route", func(t *testing.T) {
+		req := newRouterTestRequest(http.MethodGet, "/api/v1/user/profile", testUserToken)
+		rec := httptest.NewRecorder()
 
-			e.ServeHTTP(rec, req)
+		e.ServeHTTP(rec, req)
 
-			require.Equal(t, http.StatusOK, rec.Code)
-			assert.Contains(t, rec.Body.String(), `"email":"tester@example.com"`)
-		})
-	}
+		require.Equal(t, http.StatusOK, rec.Code)
+		assert.Contains(t, rec.Body.String(), `"email":"tester@example.com"`)
+	})
+
+	t.Run("legacy route is removed", func(t *testing.T) {
+		req := newRouterTestRequest(http.MethodGet, "/user/profile", testUserToken)
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusNotFound, rec.Code)
+	})
 }
 
 func TestRouter_MerchantProfileUpdateRouteRequiresMerchantRole(t *testing.T) {

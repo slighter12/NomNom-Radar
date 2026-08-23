@@ -55,7 +55,7 @@ working.
 1. Setup merchant account (register or reuse + login).
 2. Check `/health` and `/test/public`.
 3. Register/login/refresh user.
-4. `GET /user/profile` and `/test/auth`.
+4. `GET /api/v1/user/profile` and `/test/auth`.
 5. User location create/list/update/delete.
 6. Device register/list/health/update/deactivate.
 7. Subscription subscribe/list/unsubscribe.
