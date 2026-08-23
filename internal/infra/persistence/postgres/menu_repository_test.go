@@ -2,15 +2,12 @@ package postgres
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"radar/internal/domain/repository"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 )
 
 func TestMenuRepository_ListMenuItemsByMerchantQuery_UsesStableOrdering(t *testing.T) {
@@ -32,13 +29,7 @@ type dryRunMenuRepository struct {
 func newDryRunMenuRepository(t *testing.T) *dryRunMenuRepository {
 	t.Helper()
 
-	sqlLogger := &captureSQLLogger{}
-	db, err := gorm.Open(postgres.New(postgres.Config{
-		DSN:                  "host=localhost user=test password=test dbname=test sslmode=disable",
-		PreferSimpleProtocol: true,
-	}), &gorm.Config{DryRun: true, DisableAutomaticPing: true, Logger: sqlLogger})
-	require.NoError(t, err)
-
+	db, sqlLogger := newDryRunDB(t)
 	repo, ok := NewMenuRepository(db).(*menuRepository)
 	require.True(t, ok)
 
@@ -46,12 +37,7 @@ func newDryRunMenuRepository(t *testing.T) *dryRunMenuRepository {
 }
 
 func menuListSQL(dryRun *dryRunMenuRepository, filter repository.MenuItemListFilter) string {
-	dryRun.sqlLogger.queries = nil
-
-	_, _, _ = dryRun.repo.ListMenuItemsByMerchant(context.Background(), uuid.New(), filter)
-
-	sql := strings.Join(dryRun.sqlLogger.queries, " ")
-	sql = strings.ReplaceAll(sql, `"`, "")
-
-	return strings.Join(strings.Fields(sql), " ")
+	return capturedSQL(dryRun.sqlLogger, func() {
+		_, _, _ = dryRun.repo.ListMenuItemsByMerchant(context.Background(), uuid.New(), filter)
+	})
 }

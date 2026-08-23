@@ -2,13 +2,10 @@ package postgres
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 )
 
 func TestNotificationRepository_FindNotificationsByMerchantQuery_UsesStableOrdering(t *testing.T) {
@@ -27,13 +24,7 @@ type dryRunNotificationRepository struct {
 func newDryRunNotificationRepository(t *testing.T) *dryRunNotificationRepository {
 	t.Helper()
 
-	sqlLogger := &captureSQLLogger{}
-	db, err := gorm.Open(postgres.New(postgres.Config{
-		DSN:                  "host=localhost user=test password=test dbname=test sslmode=disable",
-		PreferSimpleProtocol: true,
-	}), &gorm.Config{DryRun: true, DisableAutomaticPing: true, Logger: sqlLogger})
-	require.NoError(t, err)
-
+	db, sqlLogger := newDryRunDB(t)
 	repo, ok := NewNotificationRepository(db).(*notificationRepository)
 	require.True(t, ok)
 
@@ -41,12 +32,7 @@ func newDryRunNotificationRepository(t *testing.T) *dryRunNotificationRepository
 }
 
 func notificationListSQL(dryRun *dryRunNotificationRepository, merchantID uuid.UUID, limit, offset int) string {
-	dryRun.sqlLogger.queries = nil
-
-	_, _ = dryRun.repo.FindNotificationsByMerchant(context.Background(), merchantID, limit, offset)
-
-	sql := strings.Join(dryRun.sqlLogger.queries, " ")
-	sql = strings.ReplaceAll(sql, `"`, "")
-
-	return strings.Join(strings.Fields(sql), " ")
+	return capturedSQL(dryRun.sqlLogger, func() {
+		_, _ = dryRun.repo.FindNotificationsByMerchant(context.Background(), merchantID, limit, offset)
+	})
 }

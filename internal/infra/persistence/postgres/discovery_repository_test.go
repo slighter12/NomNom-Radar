@@ -2,17 +2,12 @@ package postgres
 
 import (
 	"context"
-	"strings"
 	"testing"
-	"time"
 
 	"radar/internal/domain/repository"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 )
 
 func TestDiscoveryRepository_SearchPublicMerchantsQuery_EnforcesPublicEligibility(t *testing.T) {
@@ -80,13 +75,7 @@ type dryRunDiscoveryRepository struct {
 func newDryRunDiscoveryRepository(t *testing.T) *dryRunDiscoveryRepository {
 	t.Helper()
 
-	sqlLogger := &captureSQLLogger{}
-	db, err := gorm.Open(postgres.New(postgres.Config{
-		DSN:                  "host=localhost user=test password=test dbname=test sslmode=disable",
-		PreferSimpleProtocol: true,
-	}), &gorm.Config{DryRun: true, DisableAutomaticPing: true, Logger: sqlLogger})
-	require.NoError(t, err)
-
+	db, sqlLogger := newDryRunDB(t)
 	repo, ok := NewDiscoveryRepository(db).(*discoveryRepository)
 	require.True(t, ok)
 
@@ -94,34 +83,7 @@ func newDryRunDiscoveryRepository(t *testing.T) *dryRunDiscoveryRepository {
 }
 
 func discoverySearchSQL(dryRun *dryRunDiscoveryRepository, filter repository.PublicMerchantSearchFilter) string {
-	dryRun.sqlLogger.queries = nil
-
-	_, _, _ = dryRun.repo.SearchPublicMerchants(context.Background(), &filter)
-
-	sql := strings.Join(dryRun.sqlLogger.queries, " ")
-	sql = strings.ReplaceAll(sql, `"`, "")
-
-	return strings.Join(strings.Fields(sql), " ")
-}
-
-type captureSQLLogger struct {
-	queries []string
-}
-
-func (capture *captureSQLLogger) LogMode(gormlogger.LogLevel) gormlogger.Interface {
-	return capture
-}
-
-func (*captureSQLLogger) Info(context.Context, string, ...any) {
-}
-
-func (*captureSQLLogger) Warn(context.Context, string, ...any) {
-}
-
-func (*captureSQLLogger) Error(context.Context, string, ...any) {
-}
-
-func (capture *captureSQLLogger) Trace(_ context.Context, _ time.Time, fc func() (string, int64), _ error) {
-	sql, _ := fc()
-	capture.queries = append(capture.queries, sql)
+	return capturedSQL(dryRun.sqlLogger, func() {
+		_, _, _ = dryRun.repo.SearchPublicMerchants(context.Background(), &filter)
+	})
 }
