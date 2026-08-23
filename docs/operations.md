@@ -180,9 +180,10 @@ compatible candidate is found in that window, publish a new release-impacting
 candidate rather than relying on an unbounded registry scan.
 
 CI pushes each image to a run-scoped staging tag, resolves and attests its exact
-digest, verifies the attestation, and only then adds the SHA tag. A
-release resolves the selected candidate's three SHA tags once and writes a
-run-local JSON bundle:
+digest, verifies the attestation, and only then adds the SHA tag. The staging
+tag is left in place afterwards; it aliases the same digest, is never a release
+input, and expires with its image version. A release resolves the selected
+candidate's three SHA tags once and writes a run-local JSON bundle:
 
 ```json
 {
@@ -393,11 +394,10 @@ record this rollout before declaring readiness:
 - [ ] Candidate, release, operations, runtime, and scheduler identities exist
   with the scopes above.
 - [ ] Neither Artifact Registry repository enables immutable tags, and the
-  posture in "Tag mutability" above still holds. Staging-tag deletion is
-  best-effort and currently always fails, because the candidate identity has no
-  `artifactregistry.tags.delete`; a stale staging tag disappears with its image
-  version when the repository cleanup policy removes it, so the accumulation is
-  bounded by that policy rather than unbounded.
+  posture in "Tag mutability" above still holds. Staging tags are never
+  deleted: they alias a digest that already carries its SHA tag and expire with
+  their image version, so the accumulation is bounded by the cleanup policy. If
+  retention is ever changed to keep versions indefinitely, revisit this.
 - [ ] Required Google APIs are enabled and all three resources implement the
   `release-sha` label contract.
 - [ ] A documentation-only commit after a verified candidate promotes the
