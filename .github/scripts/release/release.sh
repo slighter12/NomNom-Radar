@@ -249,10 +249,11 @@ check_error_contract() {
 # Candidate publication
 # ---------------------------------------------------------------------------
 
-# Build to a run-scoped staging tag first. The immutable SHA tag is added only
-# after the digest has been attested and that attestation verified, because an
-# immutable tag cannot be removed: publishing it before attestation would turn
-# any interruption into a permanently unreleasable commit.
+# Build to a run-scoped staging tag first. The SHA tag is added only after the
+# digest has been attested and that attestation verified, because CI cannot
+# repair a SHA tag it published early: the release path refuses to re-attest an
+# existing digest, and removing the tag needs a permission CI does not hold.
+# See docs/adr/0001-attested-candidate-images.md.
 stage_candidate() {
   required OWNER TARGET RELEASE_SHA REGISTRY PROJECT_ID
   is_sha "${RELEASE_SHA}" || die 'invalid RELEASE_SHA'
@@ -309,8 +310,8 @@ stage_candidate() {
   } >> "${GITHUB_OUTPUT:-/dev/stdout}"
 }
 
-# Add the immutable SHA tag to the already attested digest, prove the tag
-# resolves to exactly that digest, then drop the staging tag.
+# Add the SHA tag to the already attested digest and prove the tag resolves to
+# exactly that digest.
 finalize_candidate() {
   required OWNER TARGET RELEASE_SHA REGISTRY PROJECT_ID STAGED_DIGEST NEEDS_FINALIZE
   local owner expected_base final_ref final_digest
@@ -325,18 +326,12 @@ finalize_candidate() {
   final_digest=$(resolved_digest "${final_ref}" "${PROJECT_ID}" "${expected_base}")
   [ "${final_digest##*@}" = "${STAGED_DIGEST}" ] \
     || integrity_die "final candidate tag for ${TARGET} does not equal the attested digest"
-  if [ -n "${STAGING_REF:-}" ]; then
-    # Expected to fail today: roles/artifactregistry.writer grants
-    # artifactregistry.tags.create and .update but not .delete, so the candidate
-    # identity cannot remove its own staging tag. The tag is an alias for a
-    # digest that already carries its SHA tag, so it costs no extra storage and
-    # is not a release input; it disappears with its image version when the
-    # repository cleanup policy removes it. Left as a warning rather than a
-    # failure because the candidate is already published and verified by here.
-    gcloud artifacts docker tags delete "${STAGING_REF}" \
-      --project="${PROJECT_ID}" --quiet \
-      || printf '::warning::Could not delete staging tag %s; the candidate identity has no artifactregistry.tags.delete. The tag expires with its image version.\n' "${STAGING_REF}"
-  fi
+  # The staging tag is deliberately left in place. It aliases a digest that now
+  # carries its SHA tag, so it occupies no extra storage, is never a release
+  # input, and expires with its image version under the repository cleanup
+  # policy. Deleting it would need artifactregistry.tags.delete, which the
+  # candidate identity does not hold and should not be given: that widens a
+  # public repository's long-lived key from "can publish" to "can unpublish".
   {
     echo '## Candidate image'
     echo

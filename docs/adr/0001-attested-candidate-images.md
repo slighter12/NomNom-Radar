@@ -2,7 +2,9 @@
 
 CI builds each candidate image to a run-scoped staging tag, resolves its exact
 digest, attests that digest, verifies the attestation, and only then adds the
-`:<commit-sha>` tag and deletes the staging tag. The obvious
+`:<commit-sha>` tag. The staging tag is then left to expire with its image
+version rather than deleted, because deleting it needs a permission the
+candidate identity deliberately does not hold. The obvious
 alternative — build and push straight to the SHA tag, then attest — is roughly
 twenty lines shorter, and it is what a reader will be tempted to collapse this
 back into.
