@@ -90,15 +90,21 @@ resources and ancestral to the selected candidate. A pinned release requires
 the selected SHA to be an ancestor of current `main`; it permits a forward or
 rollback move only when the current baseline and selected SHA are comparable
 ancestors of current `main`. An unpinned release to a new environment with no
-resources bootstraps by checking every migration phase. Pinned releases skip
-migrations and require separate schema handling. A partial retry is accepted only
-when labels contain that consistent baseline and the current target, or when
-missing/unlabeled resources are paired only with the target.
+resources bootstraps by checking every migration phase. A partial retry is
+accepted only when labels contain that consistent baseline and the current
+target, or when missing/unlabeled resources are paired only with the target.
+
+Pinned releases do not run migrations. Because the schema is forward-only, a
+pin that sits on the other side of a migration change from the running
+baseline would put old code in front of a schema it has never seen. The
+release refuses that case: `migration-phases` compares
+`database/migration/**` between the pin and the baseline and fails closed
+unless the dispatch also sets `acknowledge_schema_drift`. Handle the schema
+first, then re-dispatch with the acknowledgement. A pin that crosses no
+migration change needs no acknowledgement.
 
 Divergent history, a third SHA, invalid labels, and label/image drift fail
-closed. A pinned rollback skips all migration phases and requires schema
-handling separately; database changes remain forward-only. A same-target retry
-relies on goose to no-op versions already applied.
+closed. A same-target retry relies on goose to no-op versions already applied.
 
 The dedicated GCP Secret Manager secret `postgres-migration-dsn` is required.
 There is no fallback to `postgres-master-dsn`. Supabase migrations must use a
@@ -122,12 +128,39 @@ and other non-impacting commits do not rebuild images.
 The checked-in target catalog at `.github/scripts/release/targets.json` is the
 single source for the three release targets and their deployment order. The
 impact path list in `impact_path_args()` in `.github/scripts/release/release.sh`
-is the single source for paths that require a new candidate image. The
-`release.sh impact-paths` command is the consumption interface used by CI
-change detection. The resolver calls `impact_path_args()` directly from
-`release.sh`. Adding a path only requires changing that function; its output
-determines whether an older candidate remains compatible with current release
-automation.
+is the single source for paths that require a new candidate image. Adding a
+path only requires changing that function; its output determines whether an
+older candidate remains compatible with current release automation.
+
+### Where release logic lives
+
+Every step the workflows perform lives in `.github/scripts/release/release.sh`
+as a subcommand, so that `release_test.sh` can reach it. A workflow step is a
+call to one of these plus the GitHub Actions that cannot be expressed in bash
+(authentication, buildx, `actions/attest`). Do not inline release logic in
+YAML: anything written there is untested by construction.
+
+| Subcommand | Used by |
+|---|---|
+| `impact-paths` | documentation and manual inspection |
+| `check-error-contract` | release, before anything reads resource state |
+| `candidate-changes` | CI, to decide whether to publish |
+| `stage-candidate` / `verify-attestation` / `finalize-candidate` | CI candidate publication |
+| `resolve-candidate` | release, to select and verify the candidate |
+| `preflight` | release, to validate fleet state and pick the baseline |
+| `migration-phases` | release, to select goose phases |
+| `promote` | prod release, to copy digests into the prod registry |
+| `deploy` / `verify` | release |
+
+Functions above the `# === dispatch ===` marker are sourced directly by
+`release_test.sh`. Keep that marker line exactly as written.
+
+Missing-resource detection is concentrated in `not_found.sh`. Every matcher
+there accepts only a real `NOT_FOUND` status token or one complete, exactly
+observed error line; whole-line matching is what makes a status denylist
+unnecessary. Those literals are re-probed against the live API by
+`check-error-contract` on every release, because a fixture can only prove that
+the parsing still reads the old string, never that gcloud still emits it.
 
 The resolver checks at most the newest 50 first-parent commits. If no complete
 compatible candidate is found in that window, publish a new release-impacting
@@ -159,13 +192,19 @@ older candidate in that case.
 ### Release Cloud Run
 
 `Release Cloud Run` has a required `environment` input, either `dev` or `prod`,
-and an optional `release_sha` input containing a full 40-character commit SHA.
-An empty `release_sha` makes the workflow execute only current protected
-automation (`CONTROL_SHA`) and walk first-parent history to select the newest
-ancestor with all three complete, attested candidate images (`RELEASE_SHA`).
-When `release_sha` is supplied, the resolver selects that SHA directly, still
+and an optional `release_sha` input containing a commit SHA, abbreviated to at
+least 7 hexadecimal characters or given in full. An empty `release_sha` makes
+the workflow execute only current protected automation (`CONTROL_SHA`) and walk
+first-parent history to select the newest ancestor with all three complete,
+attested candidate images (`RELEASE_SHA`). When `release_sha` is supplied, the
+resolver expands it to the full SHA, selects that commit directly, still
 requires complete immutable images and valid attestations, and skips the
 impact-path freshness check.
+
+An abbreviation is expanded with `git rev-parse --verify`, which rejects both
+unknown and ambiguous prefixes, so widening the accepted input does not widen
+what can be deployed. Image tags are always the full 40 characters; everything
+downstream of the resolver, including the bundle, carries the expanded form.
 
 This separation allows a docs-only commit after a verified dev release to
 promote that same candidate without rebuilding it. The resolver rejects any
@@ -173,21 +212,42 @@ candidate whose range to `CONTROL_SHA` changes a release-impacting path. If no
 compatible complete candidate exists, the release fails closed and a new
 release-impacting commit must produce one.
 
-The checked-in workflow verifies the control SHA against remote `main` and
-rejects all reruns. Dispatch a new release run for every retry. Those checks do
-not protect against someone dispatching a historical workflow definition that
-predates them.
-Therefore the prod GitHub Environment requires an external reviewer gate for
-both release and operations jobs. Configure it to prevent self-review: the
-actor who triggered the run must not approve it. Before approval, the reviewer
-must confirm the run's `github.sha` is the current remote `main` HEAD. Dev may
-remain main-only without a required reviewer.
+The checked-in workflow verifies the control SHA against remote `main` once,
+before any read or mutation, and rejects all reruns. Dispatch a new release run
+for every retry. Those checks do not protect against someone dispatching a
+historical workflow definition that predates them.
+
+### What the review gates actually enforce
+
+Two different controls are both called "review". Keep them apart.
+
+**Merge review** decides what reaches `main`. The `main` ruleset requires a
+pull request with one approving review, and bypass is granted to the repository
+admin role only. In practice that means a non-admin collaborator's pull request
+needs an approval, and the admin's own merges do not. Dependabot pull requests
+are authored by the bot, so an admin merging them is also merging without a
+second pair of eyes: the protection against a poisoned action bump is reading
+the diff, not the ruleset.
+
+**Deployment review** decides whether a dispatched prod run may proceed. It is
+the `prod` GitHub Environment's `required_reviewers` rule, and it is unrelated
+to pull requests. This repository has one maintainer, `prevent_self_review` is
+`false`, and the maintainer is the only listed reviewer. The gate is therefore
+a deliberate pause before prod is touched, not separation of duties, and it
+does not defend against the dispatcher. Use the pause to confirm that the run's
+`github.sha` is the current remote `main` HEAD. Dev has no required reviewer.
+
+Turning this into real separation of duties requires setting
+`prevent_self_review` to `true` and adding a second reviewer with access to the
+`prod` environment. Until that happens, do not write automation whose safety
+argument depends on a second person existing.
 
 A release processes the complete bundle in this order:
 
+0. Re-probe the gcloud not-found error contract against the live API.
 1. For prod, verify dev and copy exact digests into the prod registry.
-2. Run required migration phases; pinned releases skip migrations and require
-   separate schema handling.
+2. Run required migration phases; pinned releases skip migrations and must
+   clear the schema-drift check described above.
 3. Deploy `geoworker`, `device-cleanup`, then `radar`.
 4. Verify `release-sha`, exact digest, readiness, and Radar `/health`.
 

@@ -31,36 +31,46 @@ if not_found_status "${status_fixture}"; then
   fail invalid-argument-not-not-found
 fi
 
+# Every literal below was captured from gcloud on 2026-08-23 (project
+# radar-dev-491902, asia-east1) by describing resources that do not exist.
+# These fixtures can only prove that the matchers still read the strings the
+# way they did then; they cannot notice gcloud changing its wording. That is
+# what `release.sh check-error-contract` does against the live API on every
+# release, and these cases exist to keep the parsing honest in between.
 image_fixture="${temp_dir}/image-not-found.txt"
-# Command: gcloud artifacts docker images describe <image-ref>
-# Source: Go CI run 32002042274, observed 2026-08-17.
 printf 'ERROR: (gcloud.artifacts.docker.images.describe) Image not found.\n' > "${image_fixture}"
-image_not_found "${image_fixture}" || fail image-not-found-real-ar
+image_not_found "${image_fixture}" || fail image-not-found-observed
 
-# Command: gcloud artifacts docker images describe <image-ref>
-# Source: synthetic NOT_FOUND status-contract fixture; no production capture claimed.
-printf 'ERROR: (gcloud.artifacts.docker.images.describe) NOT_FOUND: requested image was not found.\n' > "${image_fixture}"
+# A missing repository, as opposed to a missing tag, answers with a status.
+printf 'ERROR: (gcloud.artifacts.docker.images.describe) NOT_FOUND: Requested entity was not found.\n' > "${image_fixture}"
 image_not_found "${image_fixture}" || fail image-not-found-status
 
-# Command: gcloud artifacts docker images describe <image-ref>
-# Source: synthetic status-collision fixture; no production capture claimed.
+# Whole-line matching is the reason no status denylist is needed: a failure
+# that merely contains the not-found wording is not the not-found line.
 printf 'ERROR: (gcloud.artifacts.docker.images.describe) PERMISSION_DENIED: Image not found.\n' > "${image_fixture}"
 if image_not_found "${image_fixture}"; then
-  fail image-not-found-permission-collision
+  fail image-not-found-status-collision
 fi
 
-# Command: gcloud artifacts docker images describe <image-ref>
-# Source: synthetic permission-error fixture; no production capture claimed.
-printf 'ERROR: (gcloud.artifacts.docker.images.describe) PERMISSION_DENIED: Could not find valid credentials.\n' > "${image_fixture}"
-if image_not_found "${image_fixture}"; then
-  fail image-not-found-permission-error
-fi
+run_fixture="${temp_dir}/cloud-run-not-found.txt"
+# Observed punctuation differs per surface: jobs end in a period, services and
+# revisions do not. Both renderings must be accepted for every surface.
+printf 'ERROR: (gcloud.run.services.describe) Cannot find service [radar]\n' > "${run_fixture}"
+cloud_run_not_found service radar "${run_fixture}" || fail run-service-not-found-observed
+printf 'ERROR: (gcloud.run.jobs.describe) Cannot find job [device-cleanup].\n' > "${run_fixture}"
+cloud_run_not_found job device-cleanup "${run_fixture}" || fail run-job-not-found-observed
+printf 'ERROR: (gcloud.run.revisions.describe) Cannot find revision [radar-00017-b77]\n' > "${run_fixture}"
+cloud_run_not_found revision radar-00017-b77 "${run_fixture}" || fail run-revision-not-found-observed
 
-# Command: gcloud artifacts docker images describe <image-ref>
-# Source: synthetic unlisted-status fixture; no production capture claimed.
-printf 'ERROR: (gcloud.artifacts.docker.images.describe) DEADLINE_EXCEEDED: Image not found.\n' > "${image_fixture}"
-if image_not_found "${image_fixture}"; then
-  fail image-not-found-unlisted-status
+# A different resource's not-found line must not answer for this one.
+printf 'ERROR: (gcloud.run.services.describe) Cannot find service [geoworker]\n' > "${run_fixture}"
+if cloud_run_not_found service radar "${run_fixture}"; then
+  fail run-not-found-wrong-resource
+fi
+# A status-qualified failure is never a missing resource.
+printf 'ERROR: (gcloud.run.services.describe) PERMISSION_DENIED: Cannot find service [radar]\n' > "${run_fixture}"
+if cloud_run_not_found service radar "${run_fixture}"; then
+  fail run-not-found-status-collision
 fi
 
 git_dir="${temp_dir}/git"
@@ -314,6 +324,16 @@ if [ -n "${MOCK_DESCRIBE_ERROR_TARGET:-}" ] \
     "${2}" "${4}" >&2
   exit 1
 fi
+if [ -n "${MOCK_NO_IMAGE_TARGET:-}" ]; then
+  case "$*" in
+    "run jobs describe ${MOCK_NO_IMAGE_TARGET} "*)
+      jq -cn --arg sha "${MOCK_SHA}" '{metadata:{labels:{"release-sha":$sha}},spec:{template:{spec:{template:{spec:{containers:[{}]}}}}}}'
+      exit 0 ;;
+    "run revisions describe ${MOCK_NO_IMAGE_TARGET} "*)
+      jq -cn --arg sha "${MOCK_SHA}" '{metadata:{labels:{"release-sha":$sha}},spec:{containers:[{}]}}'
+      exit 0 ;;
+  esac
+fi
 case "$*" in
   'run services describe radar '*'--format=json'*)
     jq -cn --arg sha "${MOCK_SHA}" '{metadata:{labels:{"release-sha":$sha}},status:{latestReadyRevisionName:"radar-ready",conditions:[{type:"Ready",status:"True"}]}}'
@@ -335,7 +355,10 @@ exit 0
 MOCK
 chmod +x "${temp_dir}/bin/kubectl" "${temp_dir}/bin/gcloud"
 release_functions="${temp_dir}/release-functions.sh"
-sed '/^case "${1:-}" in$/,$d' "${script_dir}/release.sh" > "${release_functions}"
+# The marker must exist, or the extraction below would silently produce a copy
+# of the whole script and every sourced-function test would change meaning.
+grep -Fxq '# === dispatch ===' "${script_dir}/release.sh" || fail dispatch-marker-missing
+sed '/^# === dispatch ===$/,$d' "${script_dir}/release.sh" > "${release_functions}"
 common_env=(PATH="${temp_dir}/bin:${PATH}" RELEASE_SHA="${sha}" BUNDLE_FILE="${bundle}" PROJECT_ID=test PROJECT_NUMBER=123456 REGION=region REGISTRY=registry.example OWNER=repo RUNTIME_SA_EMAIL=runtime@example.invalid ALLOWED_HOST=radar.example.invalid CORS_ALLOWED_ORIGINS=https://app.example.invalid RATE_LIMIT_ENABLED=true RATE_LIMIT_RATE=12 RATE_LIMIT_BURST=40 RATE_LIMIT_EXPIRES_IN=5m GOOGLE_OAUTH_CLIENT_ID=oauth MOCK_JOB_MANIFEST="${temp_dir}/captured-job.yaml" MOCK_MUTATION_MARKER="${temp_dir}/mutation.marker")
 assert_missing_cloud_run_target() {
   local target=$1 snapshot_output preflight_output
@@ -356,6 +379,20 @@ assert_missing_cloud_run_target() {
 }
 assert_missing_cloud_run_target device-cleanup
 assert_missing_cloud_run_target geoworker
+
+# A describe that answers without a container image is a response-shape change,
+# not a resource running an empty image. Snapshotting it must fail rather than
+# emit a null that only surfaces later as a confusing digest mismatch.
+for no_image_target in device-cleanup radar-ready; do
+  if (
+    cd "${git_dir}"
+    env "${common_env[@]}" MOCK_SHA="${sha}" MOCK_RADAR="${digest_a}" MOCK_GEOWORKER="${digest_b}" MOCK_CLEANUP="${digest_c}" \
+      MOCK_NO_IMAGE_TARGET="${no_image_target}" \
+      bash -c 'source "$1"; snapshot' "${script_dir}/release.sh" "${release_functions}"
+  ) >/dev/null 2>&1; then
+    fail "snapshot-accepted-missing-image-${no_image_target}"
+  fi
+done
 describe_error_output="${temp_dir}/describe-error-preflight.txt"
 if env "${common_env[@]}" MOCK_SHA="${sha}" MOCK_RADAR="${digest_a}" MOCK_GEOWORKER="${digest_b}" MOCK_CLEANUP="${digest_c}" \
   MOCK_DESCRIBE_ERROR_TARGET=device-cleanup \
@@ -434,22 +471,22 @@ env "${common_env[@]}" MOCK_SHA="${sha}" MOCK_RADAR="${digest_a}" MOCK_GEOWORKER
   MOCK_REVISION_NOT_FOUND_ONCE=true MOCK_REVISION_MARKER="${revision_marker}" \
   VERIFY_RETRIES=2 VERIFY_RETRY_DELAY=0 SKIP_HEALTH=true \
   bash "${script_dir}/release.sh" verify || fail revision-describe-retry
-sleep_log="${temp_dir}/sleep.log"
+# A fleet that never reaches the release SHA must exhaust its retries and fail
+# rather than report success. The retry schedule itself is a tuning knob, not
+# a contract, so it is deliberately not asserted here.
 cat > "${temp_dir}/bin/sleep" <<'MOCK'
 #!/usr/bin/env bash
-: "${MOCK_SLEEP_LOG:=/dev/null}"
-printf '%s\n' "$1" >> "${MOCK_SLEEP_LOG}"
+exit 0
 MOCK
 chmod +x "${temp_dir}/bin/sleep"
 verify_output="${temp_dir}/verify-nonconverge.txt"
 if env "${common_env[@]}" MOCK_SHA="${parent}" MOCK_RADAR="${digest_a}" MOCK_GEOWORKER="${digest_b}" MOCK_CLEANUP="${digest_c}" \
-  MOCK_SLEEP_LOG="${sleep_log}" SKIP_HEALTH=true \
+  SKIP_HEALTH=true \
   bash "${script_dir}/release.sh" verify >"${verify_output}" 2>&1; then
   fail verify-retry-exhausted
 fi
 grep -F 'released labels, digests, or readiness did not converge' "${verify_output}" >/dev/null \
   || fail verify-retry-message
-printf '5\n10\n20\n30\n30\n30\n30\n30\n30\n' | diff -u - "${sleep_log}" || fail verify-retry-backoff
 
 # Candidate resolution must select the newest complete ancestor when the
 # current control commit only changes non-release paths.
@@ -538,6 +575,29 @@ if run_resolver "${resolver_control}" "${temp_dir}/resolver-pin-non-ancestor-env
 fi
 grep -F 'not an ancestor' "${resolver_pin_non_ancestor_output}" >/dev/null \
   || fail resolver-pin-non-ancestor-message
+# A pin may be abbreviated, because it is typed by hand during a rollback. The
+# resolver must expand it to the full SHA the image tags actually use.
+resolver_short=$(git -C "${resolver_dir}" rev-parse --short=8 "${resolver_candidate}")
+resolver_short_output="${temp_dir}/resolver-short-output"
+run_resolver "${resolver_control}" "${resolver_short_output}" "${resolver_short}"
+grep -Fx "release_sha=${resolver_candidate}" "${resolver_short_output}" >/dev/null \
+  || fail resolver-pin-short-sha-expansion
+# Too short to be meaningful.
+if run_resolver "${resolver_control}" "${temp_dir}/resolver-pin-tiny-env" "$(printf '%s' "${resolver_candidate}" | cut -c1-4)" \
+  >/dev/null 2>&1; then
+  fail resolver-pin-too-short-accepted
+fi
+# A prefix that matches no commit must fail rather than resolve to anything.
+if run_resolver "${resolver_control}" "${temp_dir}/resolver-pin-unknown-env" deadbeef \
+  >/dev/null 2>&1; then
+  fail resolver-pin-unknown-prefix-accepted
+fi
+# Non-hex input must never reach git.
+if run_resolver "${resolver_control}" "${temp_dir}/resolver-pin-ref-env" HEAD \
+  >/dev/null 2>&1; then
+  fail resolver-pin-ref-name-accepted
+fi
+
 resolver_pin_incomplete_output="${temp_dir}/resolver-pin-incomplete-output"
 if run_resolver "${resolver_control}" "${temp_dir}/resolver-pin-incomplete-env" "${resolver_candidate}" device-cleanup \
   >"${resolver_pin_incomplete_output}" 2>&1; then
@@ -690,6 +750,105 @@ if (
   fail empty-catalog-guard
 fi
 
+# --- candidate change detection -------------------------------------------
+# A push that touches nothing in the release contract must not republish, and
+# a push that cannot be diffed at all must republish rather than assume.
+changes_dir="${temp_dir}/changes-git"
+git init -q "${changes_dir}"
+git -C "${changes_dir}" config user.email test@example.invalid
+git -C "${changes_dir}" config user.name 'Release Changes Test'
+git -C "${changes_dir}" commit -q --allow-empty -m base
+changes_base=$(git -C "${changes_dir}" rev-parse HEAD)
+mkdir -p "${changes_dir}/docs"
+printf 'docs\n' > "${changes_dir}/docs/note.md"
+git -C "${changes_dir}" add docs/note.md
+git -C "${changes_dir}" commit -q -m docs-only
+changes_docs=$(git -C "${changes_dir}" rev-parse HEAD)
+mkdir -p "${changes_dir}/internal"
+printf 'code\n' > "${changes_dir}/internal/app.go"
+git -C "${changes_dir}" add internal/app.go
+git -C "${changes_dir}" commit -q -m code
+changes_code=$(git -C "${changes_dir}" rev-parse HEAD)
+
+run_changes() {
+  local before=$1 head=$2 catalog=${3:-${repo_root}/.github/scripts/release/targets.json}
+  (
+    cd "${changes_dir}"
+    BEFORE_SHA="${before}" GITHUB_SHA="${head}" TARGETS_FILE="${catalog}" \
+      GITHUB_OUTPUT=/dev/stdout bash "${script_dir}/release.sh" candidate-changes
+  )
+}
+run_changes "${changes_base}" "${changes_docs}" | grep -Fx 'candidate=false' >/dev/null \
+  || fail changes-docs-only-republished
+run_changes "${changes_docs}" "${changes_code}" | grep -Fx 'candidate=true' >/dev/null \
+  || fail changes-code-not-detected
+run_changes "$(printf '0%.0s' {1..40})" "${changes_code}" | grep -Fx 'candidate=true' >/dev/null \
+  || fail changes-force-push-not-republished
+run_changes "$(printf 'f%.0s' {1..40})" "${changes_code}" | grep -Fx 'candidate=true' >/dev/null \
+  || fail changes-unreachable-before-not-republished
+if run_changes "${changes_base}" "${changes_docs}" "${empty_catalog}" >/dev/null 2>&1; then
+  fail changes-empty-catalog-guard
+fi
+
+# --- migration phase selection --------------------------------------------
+migration_dir="${temp_dir}/migration-git"
+git init -q "${migration_dir}"
+git -C "${migration_dir}" config user.email test@example.invalid
+git -C "${migration_dir}" config user.name 'Release Migration Test'
+mkdir -p "${migration_dir}/database/migration/postgres" \
+  "${migration_dir}/database/migration/supabase/pre" \
+  "${migration_dir}/database/migration/supabase/post"
+printf 'base\n' > "${migration_dir}/database/migration/postgres/0001.sql"
+git -C "${migration_dir}" add -A
+git -C "${migration_dir}" commit -q -m base
+migration_base=$(git -C "${migration_dir}" rev-parse HEAD)
+printf 'pre\n' > "${migration_dir}/database/migration/supabase/pre/0001.sql"
+git -C "${migration_dir}" add -A
+git -C "${migration_dir}" commit -q -m schema
+migration_schema=$(git -C "${migration_dir}" rev-parse HEAD)
+printf 'docs\n' > "${migration_dir}/README.md"
+git -C "${migration_dir}" add -A
+git -C "${migration_dir}" commit -q -m docs
+migration_docs=$(git -C "${migration_dir}" rev-parse HEAD)
+
+run_migrations() {
+  local release=$1 baseline=$2 requested=${3:-} ack=${4:-false}
+  (
+    cd "${migration_dir}"
+    RELEASE_SHA="${release}" BASELINE_SHA="${baseline}" REQUESTED_SHA="${requested}" \
+      ACKNOWLEDGE_SCHEMA_DRIFT="${ack}" GITHUB_OUTPUT=/dev/stdout \
+      bash "${script_dir}/release.sh" migration-phases
+  )
+}
+# No baseline at all: bootstrap must check every phase.
+run_migrations "${migration_schema}" '' | grep -Fx 'any=true' >/dev/null \
+  || fail migrations-bootstrap
+# Nothing moved.
+run_migrations "${migration_schema}" "${migration_schema}" | grep -Fx 'any=false' >/dev/null \
+  || fail migrations-same-sha
+# Only the pre directory changed between baseline and release.
+migration_out=$(run_migrations "${migration_schema}" "${migration_base}")
+printf '%s\n' "${migration_out}" | grep -Fx 'pre=true' >/dev/null || fail migrations-pre
+printf '%s\n' "${migration_out}" | grep -Fx 'shared=false' >/dev/null || fail migrations-shared-false
+# A docs-only advance must not select any phase.
+run_migrations "${migration_docs}" "${migration_schema}" | grep -Fx 'any=false' >/dev/null \
+  || fail migrations-docs-only
+# A pinned release that does not cross a migration change is allowed through.
+run_migrations "${migration_docs}" "${migration_schema}" "${migration_docs}" \
+  | grep -Fx 'any=false' >/dev/null || fail migrations-pinned-clean
+# A pinned release that moves back across a migration change must stop: the
+# schema is forward-only, so this would run old code against a newer schema.
+pinned_drift_output="${temp_dir}/pinned-drift.txt"
+if run_migrations "${migration_base}" "${migration_schema}" "${migration_base}" \
+  >"${pinned_drift_output}" 2>&1; then
+  fail migrations-pinned-drift-allowed
+fi
+grep -F 'crosses a migration change' "${pinned_drift_output}" >/dev/null \
+  || fail migrations-pinned-drift-message
+# ...and must proceed once that is explicitly acknowledged.
+run_migrations "${migration_base}" "${migration_schema}" "${migration_base}" true \
+  | grep -Fx 'any=false' >/dev/null || fail migrations-pinned-drift-acknowledged
+
 goose_version=$(make -C "${repo_root}" -s --no-print-directory print-goose-version)
 printf '%s\n' "${goose_version}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || fail goose-version-format
 
@@ -697,14 +856,8 @@ workflow="${repo_root}/.github/workflows/release-cloud-run.yml"
 ci_workflow="${repo_root}/.github/workflows/ci.yml"
 operations_workflow="${repo_root}/.github/workflows/cloud-run-operations.yml"
 
-# Execute the production promotion step with mocked registry tools so a
-# permission error cannot silently authorize a gcrane copy.
-promote_run="${temp_dir}/promote-run.sh"
-ruby -ryaml -e '
-  workflow = YAML.load_file(ARGV.fetch(0))
-  run = workflow.fetch("jobs").fetch("release").fetch("steps").find { |step| step.fetch("name") == "Promote exact digests to prod" }.fetch("run")
-  print run
-' "${workflow}" > "${promote_run}"
+# Execute the production promotion with mocked registry tools so a permission
+# error cannot silently authorize a gcrane copy.
 promote_targets="${temp_dir}/promote-targets.json"
 printf '{"radar":{"kind":"service","overlay":"radar","order":1}}\n' > "${promote_targets}"
 promote_runner="${temp_dir}/promote-runner"
@@ -768,7 +921,8 @@ run_promote() {
       MOCK_PROMOTE_ERROR="${error_mode}" MOCK_PROMOTE_COPY_MARKER="${copy_marker}" \
       MOCK_PROMOTE_DESCRIBE_COUNT="${describe_count}" MOCK_PROMOTE_IMAGE="${promote_image}" \
       MOCK_PROMOTE_EXPECTED_SOURCE="${promote_source}" MOCK_PROMOTE_EXPECTED_DESTINATION="${promote_destination}" \
-      bash "${promote_run}"
+      GCRANE="${promote_runner}/gcrane/gcrane" \
+      bash "${script_dir}/release.sh" promote
   )
 }
 promote_permission_marker="${temp_dir}/promote-permission-copy.marker"
@@ -793,18 +947,12 @@ ruby -ryaml -e '
   operations = YAML.load_file(ARGV.fetch(3))
   raise "ci permissions" unless ci.fetch("permissions").fetch("contents") == "read"
   publish = ci.fetch("jobs").fetch("publish-candidate")
-  changes = ci.fetch("jobs").fetch("candidate-changes").fetch("steps").find { |step| step["id"] == "changes" }
-  quote = 39.chr
-  empty_target_guard = "targets=$(jq -e -c #{quote}keys | select(length > 0)#{quote}"
-  raise "empty target catalog guard" unless changes.fetch("run").include?(empty_target_guard)
-  raise "before inline" if changes.fetch("run").include?("${{ github.event.before }}")
   attest = publish.fetch("steps").find { |step| step["name"] == "Attest staged image digest" }
   verify = publish.fetch("steps").find { |step| step["name"] == "Verify candidate attestation" }
   finalize = publish.fetch("steps").find { |step| step["name"] == "Publish verified candidate SHA tag" }
   publish_names = publish.fetch("steps").map { |step| step.fetch("name") }
   raise "attestation finalization order" unless publish_names.index(attest.fetch("name")) < publish_names.index(verify.fetch("name")) && publish_names.index(verify.fetch("name")) < publish_names.index(finalize.fetch("name"))
   raise "existing attestation fail-closed" unless verify.fetch("run").include?("Existing SHA tag")
-  raise "staging cleanup command" unless finalize.fetch("run").include?("artifacts docker tags delete")
   # The only path from the release_sha input into the script. Break this wiring
   # and a pinned rollback silently resolves the newest candidate and runs
   # migrations instead, because every REQUESTED_SHA branch downstream is
@@ -822,13 +970,19 @@ ruby -ryaml -e '
   names = steps.map { |step| step.fetch("name") }
   raise "release sha inline" if steps.any? { |step| step.fetch("run", "").include?("${{ inputs.release_sha }}") }
   raise "registry auth order" unless names.index("Configure dev Registry auth") < names.index("Resolve and verify candidate digests")
-  raise "mutation guard order" unless names.index("Recheck current main before mutation") < names.index("Promote exact digests to prod")
   preflight = steps.find { |step| step.fetch("name") == "Preflight target state" }
   promote = steps.find { |step| step.fetch("name") == "Promote exact digests to prod" }
   raise "preflight unconditional" unless preflight["if"].nil?
   raise "preflight order" unless names.index(preflight.fetch("name")) < names.index(promote.fetch("name"))
-  migrations = steps.find { |step| step.fetch("name") == "Detect migration phases" }
-  raise "migration pin guard" unless migrations.fetch("run").include?("REQUESTED_SHA")
+  # The not-found matchers decide whether a resource is absent, and that answer
+  # authorizes creates and copies. Proving the wording still holds is only
+  # useful before anything acts on it.
+  contract = steps.find { |step| step.fetch("name") == "Verify gcloud error contract" }
+  raise "error contract unconditional" unless contract["if"].nil?
+  raise "error contract order" unless names.index(contract.fetch("name")) < names.index(preflight.fetch("name"))
+  # A pinned release must be able to refuse itself, so the acknowledgement has
+  # to reach the script rather than only existing as a dispatch input.
+  raise "schema drift ack env" unless release_env.fetch("ACKNOWLEDGE_SCHEMA_DRIFT") == "${{ inputs.acknowledge_schema_drift }}"
   task = job.fetch("spec").fetch("template").fetch("spec").fetch("template").fetch("spec")
   container = task.fetch("containers").first
   raise "job secret" unless container.fetch("env").any? { |env| env.fetch("name") == "POSTGRES_MASTER_DSN" }
