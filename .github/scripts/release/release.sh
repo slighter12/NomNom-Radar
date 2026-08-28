@@ -532,8 +532,20 @@ baseline_digest() {
   fi
   required REGISTRY OWNER PROJECT_ID
   owner=$(owner_slug)
-  gcloud artifacts docker images describe "${REGISTRY}/${owner}/${target}:${label}" \
-    --project="${PROJECT_ID}" --format='value(image_summary.fully_qualified_digest)'
+  local error_file digest
+  error_file=$(new_error_file)
+  if digest=$(gcloud artifacts docker images describe "${REGISTRY}/${owner}/${target}:${label}" \
+    --project="${PROJECT_ID}" --format='value(image_summary.fully_qualified_digest)' \
+    2>"${error_file}"); then
+    rm -f "${error_file}"
+    printf '%s\n' "${digest}"
+    return 0
+  fi
+  if image_not_found "${error_file}"; then
+    rm -f "${error_file}"
+    return 0
+  fi
+  fail_with_error_file "${error_file}" "cannot resolve baseline tag ${target}:${label}"
 }
 
 # A pinned release may move backwards, so its baseline only has to be
@@ -593,7 +605,12 @@ preflight() {
       image_base=${image%@*}
       [ "${image_base##*/}" = "${target}" ] || die "baseline ${target} image repository does not match its resource"
       tagged=$(baseline_digest "${target}" "${label}")
-      [ "${tagged}" = "${image}" ] || die "baseline ${target} label does not resolve to its running digest"
+      if [ -z "${tagged}" ]; then
+        printf '::warning::Baseline tag for target %s with label %s is no longer present in the registry (most likely reclaimed by the repository cleanup policy); skipping the tag-to-running-digest check.\n' \
+          "${target}" "${label}"
+      else
+        [ "${tagged}" = "${image}" ] || die "baseline ${target} label does not resolve to its running digest"
+      fi
     fi
   done < <(target_names)
 
@@ -622,6 +639,8 @@ preflight() {
     die 'Cloud Run resources have divergent release state'
   fi
 
+  # Keep the machine-readable result on the last stdout line; workflow warnings
+  # may precede it.
   result=$(jq -cn --arg baseline_sha "${baseline}" '{baseline_sha:$baseline_sha}')
   printf '%s\n' "${result}"
   if [ -n "${GITHUB_OUTPUT:-}" ]; then
