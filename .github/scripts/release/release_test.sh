@@ -162,6 +162,7 @@ preflight_four() {
 expect_empty_baseline() {
   local name=$1 output
   output=$(preflight) || fail "${name}-preflight-exit"
+  output=$(tail -n 1 <<<"${output}")
   [ -z "$(jq -r .baseline_sha <<<"${output}")" ] || fail "${name}"
 }
 
@@ -177,18 +178,18 @@ if (
 fi
 expect_empty_baseline bootstrap
 state "${parent}" "${parent}" "${parent}" true true true
-[ "$(preflight | jq -r .baseline_sha)" = "${parent}" ] || fail forward
+[ "$(preflight | tail -n 1 | jq -r .baseline_sha)" = "${parent}" ] || fail forward
 state "${sha}" "${sha}" "${sha}" true true true
-[ "$(preflight | jq -r .baseline_sha)" = "${sha}" ] || fail complete
+[ "$(preflight | tail -n 1 | jq -r .baseline_sha)" = "${sha}" ] || fail complete
 state "${sha}" "${sha}" "${sha}" true true true
 jq 'with_entries(.value.image |= sub("^registry.example/"; "prod.example/"))' \
   "${temp_dir}/state.json" > "${temp_dir}/prod-target.json"
 mv "${temp_dir}/prod-target.json" "${temp_dir}/state.json"
-[ "$(TEST_REGISTRY=prod.example preflight | jq -r .baseline_sha)" = "${sha}" ] || fail prod-cross-registry-target
+[ "$(TEST_REGISTRY=prod.example preflight | tail -n 1 | jq -r .baseline_sha)" = "${sha}" ] || fail prod-cross-registry-target
 state "${parent}" "${sha}" "${parent}" true true true
-[ "$(preflight | jq -r .baseline_sha)" = "${parent}" ] || fail partial
+[ "$(preflight | tail -n 1 | jq -r .baseline_sha)" = "${parent}" ] || fail partial
 state_four "${sha}" "${parent}" "${parent}" "${parent}" true true true true
-[ "$(preflight_four | jq -r .baseline_sha)" = "${parent}" ] || fail partial-four-target-catalog
+[ "$(preflight_four | tail -n 1 | jq -r .baseline_sha)" = "${parent}" ] || fail partial-four-target-catalog
 state "${sha}" '' '' true false true
 expect_empty_baseline target-missing-unlabeled
 state "${parent}" '' '' true false true
@@ -208,7 +209,7 @@ if ! (
 ) >"${pinned_rollback_output}" 2>&1; then
   fail pinned-rollback-preflight
 fi
-[ "$(jq -r .baseline_sha "${pinned_rollback_output}")" = "${future}" ] \
+[ "$(tail -n 1 "${pinned_rollback_output}" | jq -r .baseline_sha)" = "${future}" ] \
   || fail pinned-rollback-baseline
 state broken broken broken true true true
 preflight >/dev/null 2>&1 && fail malformed-label
@@ -231,12 +232,6 @@ jq '.geoworker.image = "registry.example/repo/not-geoworker@sha256:ddddddddddddd
   "${temp_dir}/state.json" > "${temp_dir}/wrong-repo.json"
 mv "${temp_dir}/wrong-repo.json" "${temp_dir}/state.json"
 preflight >/dev/null 2>&1 && fail baseline-repository-drift
-state "${parent}" "${parent}" "${parent}" true true true
-jq '.geoworker.image = "registry.example/repo/geoworker@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"' \
-  "${temp_dir}/state.json" > "${temp_dir}/wrong-baseline-digest.json"
-mv "${temp_dir}/wrong-baseline-digest.json" "${temp_dir}/state.json"
-preflight >/dev/null 2>&1 && fail baseline-label-image-drift
-
 # Exercise secure manifest rendering without calling real deployment tools.
 mkdir -p "${temp_dir}/bin"
 cat > "${temp_dir}/bin/kubectl" <<'MOCK'
@@ -334,7 +329,33 @@ if [ -n "${MOCK_NO_IMAGE_TARGET:-}" ]; then
       exit 0 ;;
   esac
 fi
+if [ -n "${MOCK_BASELINE_MISSING_TARGET:-}" ]; then
+  case "$*" in
+    *"artifacts docker images describe registry.example/repo/${MOCK_BASELINE_MISSING_TARGET}:${MOCK_SHA}"*)
+      printf 'ERROR: (gcloud.artifacts.docker.images.describe) Image not found.\n' >&2
+      exit 1 ;;
+  esac
+fi
+if [ -n "${MOCK_BASELINE_EMPTY_TARGET:-}" ]; then
+  case "$*" in
+    *"artifacts docker images describe registry.example/repo/${MOCK_BASELINE_EMPTY_TARGET}:${MOCK_SHA}"*)
+      exit 0 ;;
+  esac
+fi
+if [ -n "${MOCK_BASELINE_ERROR_TARGET:-}" ]; then
+  case "$*" in
+    *"artifacts docker images describe registry.example/repo/${MOCK_BASELINE_ERROR_TARGET}:${MOCK_SHA}"*)
+      printf 'ERROR: (gcloud.artifacts.docker.images.describe) PERMISSION_DENIED: Could not inspect baseline image.\n' >&2
+      exit 1 ;;
+  esac
+fi
 case "$*" in
+  *"artifacts docker images describe registry.example/repo/radar:${MOCK_SHA}"*)
+    printf '%s\n' "${MOCK_RADAR}" ;;
+  *"artifacts docker images describe registry.example/repo/geoworker:${MOCK_SHA}"*)
+    printf '%s\n' "${MOCK_GEOWORKER}" ;;
+  *"artifacts docker images describe registry.example/repo/device-cleanup:${MOCK_SHA}"*)
+    printf '%s\n' "${MOCK_CLEANUP}" ;;
   'run services describe radar '*'--format=json'*)
     jq -cn --arg sha "${MOCK_SHA}" '{metadata:{labels:{"release-sha":$sha}},status:{latestReadyRevisionName:"radar-ready",conditions:[{type:"Ready",status:"True"}]}}'
     ;;
@@ -360,6 +381,80 @@ release_functions="${temp_dir}/release-functions.sh"
 grep -Fxq '# === dispatch ===' "${script_dir}/release.sh" || fail dispatch-marker-missing
 sed '/^# === dispatch ===$/,$d' "${script_dir}/release.sh" > "${release_functions}"
 common_env=(PATH="${temp_dir}/bin:${PATH}" RELEASE_SHA="${sha}" BUNDLE_FILE="${bundle}" PROJECT_ID=test PROJECT_NUMBER=123456 REGION=region REGISTRY=registry.example OWNER=repo RUNTIME_SA_EMAIL=runtime@example.invalid ALLOWED_HOST=radar.example.invalid CORS_ALLOWED_ORIGINS=https://app.example.invalid RATE_LIMIT_ENABLED=true RATE_LIMIT_RATE=12 RATE_LIMIT_BURST=40 RATE_LIMIT_EXPIRES_IN=5m GOOGLE_OAUTH_CLIENT_ID=oauth MOCK_JOB_MANIFEST="${temp_dir}/captured-job.yaml" MOCK_MUTATION_MARKER="${temp_dir}/mutation.marker")
+run_live_baseline_preflight() {
+  local stdout_file=$1 stderr_file=$2
+  shift 2
+  (
+    cd "${git_dir}"
+    env "${common_env[@]}" \
+      MOCK_SHA="${parent}" MOCK_RADAR="registry.example/repo/radar@${baseline_digest}" \
+      MOCK_GEOWORKER="registry.example/repo/geoworker@${baseline_digest}" \
+      MOCK_CLEANUP="registry.example/repo/device-cleanup@${baseline_digest}" \
+      RELEASE_STATE_FILE="${temp_dir}/state.json" ALLOW_RELEASE_FIXTURES=true \
+      "$@" bash "${script_dir}/release.sh" preflight
+  ) >"${stdout_file}" 2>"${stderr_file}"
+}
+
+# A reclaimed baseline tag is diagnostic only: preflight keeps the fleet
+# baseline and skips only the tag-to-running-digest equality check.
+state "${parent}" "${parent}" "${parent}" true true true
+baseline_missing_stdout="${temp_dir}/baseline-missing-stdout.txt"
+baseline_missing_stderr="${temp_dir}/baseline-missing-stderr.txt"
+run_live_baseline_preflight "${baseline_missing_stdout}" "${baseline_missing_stderr}" \
+  MOCK_BASELINE_MISSING_TARGET=radar \
+  || fail baseline-missing-preflight
+jq -e --arg baseline "${parent}" '.baseline_sha == $baseline' <(tail -n 1 "${baseline_missing_stdout}") >/dev/null \
+  || fail baseline-missing-baseline-sha
+grep -F '::warning::Baseline tag for target radar' "${baseline_missing_stdout}" >/dev/null \
+  || fail baseline-missing-warning-target
+grep -F "label ${parent}" "${baseline_missing_stdout}" >/dev/null \
+  || fail baseline-missing-warning-label
+grep -F 'no longer present in the registry (most likely reclaimed by the repository cleanup policy); skipping the tag-to-running-digest check.' \
+  "${baseline_missing_stdout}" >/dev/null \
+  || fail baseline-missing-warning-policy
+
+# A non-not-found baseline lookup error must remain a hard failure.
+baseline_error_stdout="${temp_dir}/baseline-error-stdout.txt"
+baseline_error_stderr="${temp_dir}/baseline-error-stderr.txt"
+if run_live_baseline_preflight "${baseline_error_stdout}" "${baseline_error_stderr}" \
+  MOCK_BASELINE_ERROR_TARGET=radar; then
+  fail baseline-error-preflight-open
+fi
+grep -F 'PERMISSION_DENIED: Could not inspect baseline image.' "${baseline_error_stderr}" >/dev/null \
+  || fail baseline-error-source-message
+grep -F "cannot resolve baseline tag radar:${parent}" "${baseline_error_stderr}" >/dev/null \
+  || fail baseline-error-message
+
+# A present baseline tag that resolves to a different digest must still fail.
+state "${parent}" "${parent}" "${parent}" true true true
+jq '.geoworker.image = "registry.example/repo/geoworker@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"' \
+  "${temp_dir}/state.json" > "${temp_dir}/baseline-mismatch.json"
+mv "${temp_dir}/baseline-mismatch.json" "${temp_dir}/state.json"
+baseline_mismatch_stdout="${temp_dir}/baseline-mismatch-stdout.txt"
+baseline_mismatch_stderr="${temp_dir}/baseline-mismatch-stderr.txt"
+if run_live_baseline_preflight "${baseline_mismatch_stdout}" "${baseline_mismatch_stderr}"; then
+  fail baseline-mismatch-preflight-open
+fi
+grep -F 'baseline geoworker label does not resolve to its running digest' \
+  "${baseline_mismatch_stderr}" >/dev/null || fail baseline-mismatch-message
+
+# A successful baseline lookup without a digest must remain a hard failure.
+state "${parent}" "${parent}" "${parent}" true true true
+baseline_empty_stdout="${temp_dir}/baseline-empty-stdout.txt"
+baseline_empty_stderr="${temp_dir}/baseline-empty-stderr.txt"
+if run_live_baseline_preflight "${baseline_empty_stdout}" "${baseline_empty_stderr}" \
+  MOCK_BASELINE_EMPTY_TARGET=radar; then
+  fail baseline-empty-preflight-open
+fi
+grep -F "gcloud returned an invalid baseline digest for radar:${parent}" "${baseline_empty_stderr}" >/dev/null \
+  || fail baseline-empty-message
+
+state "${parent}" "${parent}" "${parent}" true true true
+jq '.geoworker.image = "registry.example/repo/geoworker@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"' \
+  "${temp_dir}/state.json" > "${temp_dir}/wrong-baseline-digest.json"
+mv "${temp_dir}/wrong-baseline-digest.json" "${temp_dir}/state.json"
+preflight >/dev/null 2>&1 && fail baseline-label-image-drift
+
 assert_missing_cloud_run_target() {
   local target=$1 snapshot_output preflight_output
   snapshot_output=$(
