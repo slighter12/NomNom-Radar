@@ -537,6 +537,10 @@ baseline_digest() {
   if digest=$(gcloud artifacts docker images describe "${REGISTRY}/${owner}/${target}:${label}" \
     --project="${PROJECT_ID}" --format='value(image_summary.fully_qualified_digest)' \
     2>"${error_file}"); then
+    if ! is_digest "${digest}"; then
+      fail_with_error_file "${error_file}" \
+        "gcloud returned an invalid baseline digest for ${target}:${label}"
+    fi
     rm -f "${error_file}"
     printf '%s\n' "${digest}"
     return 0

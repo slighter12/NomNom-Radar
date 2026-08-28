@@ -336,6 +336,12 @@ if [ -n "${MOCK_BASELINE_MISSING_TARGET:-}" ]; then
       exit 1 ;;
   esac
 fi
+if [ -n "${MOCK_BASELINE_EMPTY_TARGET:-}" ]; then
+  case "$*" in
+    *"artifacts docker images describe registry.example/repo/${MOCK_BASELINE_EMPTY_TARGET}:${MOCK_SHA}"*)
+      exit 0 ;;
+  esac
+fi
 if [ -n "${MOCK_BASELINE_ERROR_TARGET:-}" ]; then
   case "$*" in
     *"artifacts docker images describe registry.example/repo/${MOCK_BASELINE_ERROR_TARGET}:${MOCK_SHA}"*)
@@ -431,6 +437,17 @@ if run_live_baseline_preflight "${baseline_mismatch_stdout}" "${baseline_mismatc
 fi
 grep -F 'baseline geoworker label does not resolve to its running digest' \
   "${baseline_mismatch_stderr}" >/dev/null || fail baseline-mismatch-message
+
+# A successful baseline lookup without a digest must remain a hard failure.
+state "${parent}" "${parent}" "${parent}" true true true
+baseline_empty_stdout="${temp_dir}/baseline-empty-stdout.txt"
+baseline_empty_stderr="${temp_dir}/baseline-empty-stderr.txt"
+if run_live_baseline_preflight "${baseline_empty_stdout}" "${baseline_empty_stderr}" \
+  MOCK_BASELINE_EMPTY_TARGET=radar; then
+  fail baseline-empty-preflight-open
+fi
+grep -F "gcloud returned an invalid baseline digest for radar:${parent}" "${baseline_empty_stderr}" >/dev/null \
+  || fail baseline-empty-message
 
 state "${parent}" "${parent}" "${parent}" true true true
 jq '.geoworker.image = "registry.example/repo/geoworker@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"' \
