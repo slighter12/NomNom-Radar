@@ -11,6 +11,9 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 # shellcheck source=.github/scripts/release/not_found.sh
 source "${repo_root}/.github/scripts/release/not_found.sh"
 
+! grep -rnE "[\"'][A-Z][A-Z0-9_]*PLACEHOLDER[A-Z0-9_]*[\"']" "${repo_root}/deploy" >/dev/null \
+  || fail placeholder-quoted-in-source
+
 # release.sh impact-paths prints the manifest without requiring release env
 impact_paths_output=$(bash "${script_dir}/release.sh" impact-paths) \
   || fail impact-paths-command
@@ -251,6 +254,8 @@ spec:
           value: GOOGLEOAUTH_CLIENTID_PLACEHOLDER
         - name: PROJECT
           value: PROJECT_ID_PLACEHOLDER
+        - name: HTTP_CORSALLOWEDORIGINS
+          value: HTTP_CORSALLOWEDORIGINS_PLACEHOLDER
         - name: HTTP_CLOUDFLARESECRET
           value: HTTP_CLOUDFLARESECRET_PLACEHOLDER
         - name: HTTP_RATELIMIT_ENABLED
@@ -381,6 +386,54 @@ release_functions="${temp_dir}/release-functions.sh"
 grep -Fxq '# === dispatch ===' "${script_dir}/release.sh" || fail dispatch-marker-missing
 sed '/^# === dispatch ===$/,$d' "${script_dir}/release.sh" > "${release_functions}"
 common_env=(PATH="${temp_dir}/bin:${PATH}" RELEASE_SHA="${sha}" BUNDLE_FILE="${bundle}" PROJECT_ID=test PROJECT_NUMBER=123456 REGION=region REGISTRY=registry.example OWNER=repo RUNTIME_SA_EMAIL=runtime@example.invalid ALLOWED_HOST=radar.example.invalid CORS_ALLOWED_ORIGINS=https://app.example.invalid RATE_LIMIT_ENABLED=true RATE_LIMIT_RATE=12 RATE_LIMIT_BURST=40 RATE_LIMIT_EXPIRES_IN=5m GOOGLE_OAUTH_CLIENT_ID=oauth MOCK_JOB_MANIFEST="${temp_dir}/captured-job.yaml" MOCK_MUTATION_MARKER="${temp_dir}/mutation.marker")
+render_service_fixture() {
+  local target_environment=$1 target=$2 output=$3
+  shift 3
+  env "${common_env[@]}" TARGET_ENVIRONMENT="${target_environment}" "$@" \
+    bash -c 'source "$1"; render_service "$2" "$3" "$4"' \
+      "${script_dir}/release.sh" "${release_functions}" "${target}" "${digest_a}" "${output}"
+}
+assert_service_env_string() {
+  local manifest_file=$1 name=$2 expected=$3 case_name=$4
+  ruby -ryaml -e '
+    service = YAML.load_file(ARGV.fetch(0))
+    env = service.fetch("spec").fetch("containers").first.fetch("env")
+    value = env.find { |entry| entry.fetch("name") == ARGV.fetch(1) }.fetch("value")
+    raise "expected String, got #{value.class}" unless value.is_a?(String)
+    raise "expected #{ARGV.fetch(2).inspect}, got #{value.inspect}" unless value == ARGV.fetch(2)
+  ' "${manifest_file}" "${name}" "${expected}" || fail "${case_name}"
+}
+
+rendered_dev_service="${temp_dir}/rendered-dev-service.yaml"
+render_service_fixture dev geoworker "${rendered_dev_service}"
+assert_service_env_string "${rendered_dev_service}" HTTP_RATELIMIT_ENABLED true \
+  render-service-rate-limit-enabled-string
+render_service_fixture dev geoworker "${rendered_dev_service}" CORS_ALLOWED_ORIGINS=
+assert_service_env_string "${rendered_dev_service}" HTTP_CORSALLOWEDORIGINS '' \
+  render-service-empty-cors-string
+assert_service_env_string "${rendered_dev_service}" HTTP_RATELIMIT_RATE 12 \
+  render-service-rate-limit-rate-string
+assert_service_env_string "${rendered_dev_service}" HTTP_RATELIMIT_BURST 40 \
+  render-service-rate-limit-burst-string
+
+rendered_prod_radar="${temp_dir}/rendered-prod-radar.yaml"
+render_service_fixture prod radar "${rendered_prod_radar}" \
+  CLOUDFLARE_ORIGIN_SECRET='safe/+value="quoted"'
+assert_service_env_string "${rendered_prod_radar}" HTTP_CLOUDFLARESECRET \
+  'safe/+value="quoted"' render-service-cloudflare-secret-exact
+
+rendered_job="${temp_dir}/rendered-device-cleanup.yaml"
+env "${common_env[@]}" \
+  bash -c 'source "$1"; render_job "$2" "$3" "$4"' \
+    "${script_dir}/release.sh" "${release_functions}" device-cleanup "${digest_c}" "${rendered_job}"
+ruby -ryaml -e '
+  job = YAML.load_file(ARGV.fetch(0))
+  annotation = job.fetch("spec").fetch("template").fetch("metadata")
+    .fetch("annotations").fetch("run.googleapis.com/secrets")
+  expected = "postgres-master-dsn:projects/123456/secrets/postgres-master-dsn"
+  raise "unexpected annotation: #{annotation.inspect}" unless annotation == expected
+' "${rendered_job}" || fail render-job-project-number-remains-embedded
+
 run_live_baseline_preflight() {
   local stdout_file=$1 stderr_file=$2
   shift 2

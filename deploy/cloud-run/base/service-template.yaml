@@ -3,25 +3,25 @@ kind: Service
 metadata:
   name: service
   labels:
-    release-sha: "RELEASE_SHA_PLACEHOLDER"
+    release-sha: RELEASE_SHA_PLACEHOLDER
   annotations:
     run.googleapis.com/ingress: all
 spec:
   template:
     metadata:
       labels:
-        release-sha: "RELEASE_SHA_PLACEHOLDER"
+        release-sha: RELEASE_SHA_PLACEHOLDER
       annotations:
         autoscaling.knative.dev/minScale: "0"
         autoscaling.knative.dev/maxScale: "10"
         run.googleapis.com/execution-environment: gen2
     spec:
-      serviceAccountName: "SERVICE_ACCOUNT_PLACEHOLDER"
+      serviceAccountName: SERVICE_ACCOUNT_PLACEHOLDER
       containerConcurrency: 80
       timeoutSeconds: 60
       containers:
         - name: app
-          image: "IMAGE_PLACEHOLDER"
+          image: IMAGE_PLACEHOLDER
           startupProbe:
             httpGet:
               path: /health
@@ -47,17 +47,17 @@ spec:
             - name: HTTP_MAXREQUESTBODYSIZE
               value: "100KB"
             - name: HTTP_ALLOWEDHOST
-              value: "HTTP_ALLOWEDHOST_PLACEHOLDER"
+              value: HTTP_ALLOWEDHOST_PLACEHOLDER
             - name: HTTP_CORSALLOWEDORIGINS
-              value: "HTTP_CORSALLOWEDORIGINS_PLACEHOLDER"
+              value: HTTP_CORSALLOWEDORIGINS_PLACEHOLDER
             - name: HTTP_RATELIMIT_ENABLED
-              value: "HTTP_RATELIMIT_ENABLED_PLACEHOLDER"
+              value: HTTP_RATELIMIT_ENABLED_PLACEHOLDER
             - name: HTTP_RATELIMIT_RATE
-              value: "HTTP_RATELIMIT_RATE_PLACEHOLDER"
+              value: HTTP_RATELIMIT_RATE_PLACEHOLDER
             - name: HTTP_RATELIMIT_BURST
-              value: "HTTP_RATELIMIT_BURST_PLACEHOLDER"
+              value: HTTP_RATELIMIT_BURST_PLACEHOLDER
             - name: HTTP_RATELIMIT_EXPIRESIN
-              value: "HTTP_RATELIMIT_EXPIRESIN_PLACEHOLDER"
+              value: HTTP_RATELIMIT_EXPIRESIN_PLACEHOLDER
             # Cloud Run should emit structured JSON logs for queryability.
             - name: ENV_LOG_PRETTY
               value: "false"
@@ -84,7 +84,7 @@ spec:
             - name: AUTH_MAXACTIVESESSIONS
               value: "10"
             - name: GOOGLEOAUTH_CLIENTID
-              value: "GOOGLEOAUTH_CLIENTID_PLACEHOLDER"
+              value: GOOGLEOAUTH_CLIENTID_PLACEHOLDER
             - name: SECRETKEY_ACCESS
               valueFrom:
                 secretKeyRef:
@@ -98,7 +98,7 @@ spec:
 
             # ========== Firebase Configuration ==========
             - name: FIREBASE_PROJECTID
-              value: "PROJECT_ID_PLACEHOLDER"
+              value: PROJECT_ID_PLACEHOLDER
             - name: FIREBASE_CREDENTIALSPATH
               value: /secrets/firebase/service-account.json
 
@@ -106,7 +106,7 @@ spec:
             - name: PUBSUB_PROVIDER
               value: "google"
             - name: PUBSUB_PROJECTID
-              value: "PROJECT_ID_PLACEHOLDER"
+              value: PROJECT_ID_PLACEHOLDER
             - name: PUBSUB_TOPICID
               valueFrom:
                 secretKeyRef:

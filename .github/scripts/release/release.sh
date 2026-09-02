@@ -744,28 +744,34 @@ replace_placeholder() {
   manifest=${manifest//"${placeholder}"/"${value}"}
 }
 
+# JSON strings are valid quoted YAML scalars. Use this for placeholders that
+# occupy a whole scalar; keep raw replacement for tokens embedded in strings.
+replace_string_placeholder() {
+  local placeholder=$1 value=$2 encoded
+  encoded=$(PLACEHOLDER_VALUE="${value}" jq -Rn '$ENV.PLACEHOLDER_VALUE')
+  replace_placeholder "${placeholder}" "${encoded}"
+}
+
 render_service() {
-  local target=$1 image=$2 output=$3 overlay manifest secret_json
+  local target=$1 image=$2 output=$3 overlay manifest
   overlay=$(target_overlay "${target}")
   manifest=$(kubectl kustomize "${repo_root}/deploy/cloud-run/overlays/${TARGET_ENVIRONMENT}/${overlay}")
-  secret_json=
   if [ "${TARGET_ENVIRONMENT}" = prod ] && [ "${target}" = radar ]; then
     required CLOUDFLARE_ORIGIN_SECRET
     safe_line CLOUDFLARE_ORIGIN_SECRET "${CLOUDFLARE_ORIGIN_SECRET}"
-    secret_json=$(CLOUDFLARE_ORIGIN_SECRET="${CLOUDFLARE_ORIGIN_SECRET}" jq -Rn '$ENV.CLOUDFLARE_ORIGIN_SECRET')
   fi
-  replace_placeholder IMAGE_PLACEHOLDER "${image}"
-  replace_placeholder SERVICE_ACCOUNT_PLACEHOLDER "${RUNTIME_SA_EMAIL}"
-  replace_placeholder PROJECT_ID_PLACEHOLDER "${PROJECT_ID}"
-  replace_placeholder HTTP_ALLOWEDHOST_PLACEHOLDER "${ALLOWED_HOST}"
-  replace_placeholder HTTP_CORSALLOWEDORIGINS_PLACEHOLDER "${CORS_ALLOWED_ORIGINS:-}"
-  replace_placeholder HTTP_RATELIMIT_ENABLED_PLACEHOLDER "${RATE_LIMIT_ENABLED:-true}"
-  replace_placeholder HTTP_RATELIMIT_RATE_PLACEHOLDER "${RATE_LIMIT_RATE:-10}"
-  replace_placeholder HTTP_RATELIMIT_BURST_PLACEHOLDER "${RATE_LIMIT_BURST:-30}"
-  replace_placeholder HTTP_RATELIMIT_EXPIRESIN_PLACEHOLDER "${RATE_LIMIT_EXPIRES_IN:-3m}"
-  replace_placeholder GOOGLEOAUTH_CLIENTID_PLACEHOLDER "${GOOGLE_OAUTH_CLIENT_ID}"
-  replace_placeholder RELEASE_SHA_PLACEHOLDER "${RELEASE_SHA}"
-  replace_placeholder HTTP_CLOUDFLARESECRET_PLACEHOLDER "${secret_json}"
+  replace_string_placeholder IMAGE_PLACEHOLDER "${image}"
+  replace_string_placeholder SERVICE_ACCOUNT_PLACEHOLDER "${RUNTIME_SA_EMAIL}"
+  replace_string_placeholder PROJECT_ID_PLACEHOLDER "${PROJECT_ID}"
+  replace_string_placeholder HTTP_ALLOWEDHOST_PLACEHOLDER "${ALLOWED_HOST}"
+  replace_string_placeholder HTTP_CORSALLOWEDORIGINS_PLACEHOLDER "${CORS_ALLOWED_ORIGINS:-}"
+  replace_string_placeholder HTTP_RATELIMIT_ENABLED_PLACEHOLDER "${RATE_LIMIT_ENABLED:-true}"
+  replace_string_placeholder HTTP_RATELIMIT_RATE_PLACEHOLDER "${RATE_LIMIT_RATE:-10}"
+  replace_string_placeholder HTTP_RATELIMIT_BURST_PLACEHOLDER "${RATE_LIMIT_BURST:-30}"
+  replace_string_placeholder HTTP_RATELIMIT_EXPIRESIN_PLACEHOLDER "${RATE_LIMIT_EXPIRES_IN:-3m}"
+  replace_string_placeholder GOOGLEOAUTH_CLIENTID_PLACEHOLDER "${GOOGLE_OAUTH_CLIENT_ID}"
+  replace_string_placeholder RELEASE_SHA_PLACEHOLDER "${RELEASE_SHA}"
+  replace_string_placeholder HTTP_CLOUDFLARESECRET_PLACEHOLDER "${CLOUDFLARE_ORIGIN_SECRET:-}"
   grep -Eq '(_PLACEHOLDER|PLACEHOLDER_)' <<<"${manifest}" && die "unresolved ${target} manifest placeholder"
   printf '%s\n' "${manifest}" > "${output}"
 }
@@ -777,9 +783,9 @@ render_job() {
   required PROJECT_ID PROJECT_NUMBER RUNTIME_SA_EMAIL
   project_number="${PROJECT_NUMBER}"
   safe_line PROJECT_NUMBER "${project_number}"
-  replace_placeholder IMAGE_PLACEHOLDER "${image}"
-  replace_placeholder SERVICE_ACCOUNT_PLACEHOLDER "${RUNTIME_SA_EMAIL}"
-  replace_placeholder RELEASE_SHA_PLACEHOLDER "${RELEASE_SHA}"
+  replace_string_placeholder IMAGE_PLACEHOLDER "${image}"
+  replace_string_placeholder SERVICE_ACCOUNT_PLACEHOLDER "${RUNTIME_SA_EMAIL}"
+  replace_string_placeholder RELEASE_SHA_PLACEHOLDER "${RELEASE_SHA}"
   replace_placeholder PROJECT_NUMBER_PLACEHOLDER "${project_number}"
   grep -Eq '(_PLACEHOLDER|PLACEHOLDER_)' <<<"${manifest}" && die "unresolved ${target} manifest placeholder"
   printf '%s\n' "${manifest}" > "${output}"
