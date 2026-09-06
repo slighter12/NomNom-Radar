@@ -1,0 +1,129 @@
+name: Version Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Existing Git tag vX.Y.Z with a matching CHANGELOG.md entry"
+        required: true
+        type: string
+
+jobs:
+  release:
+    name: Preserve version images in prod
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: prod
+    concurrency:
+      group: cloud-run-release
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      attestations: read
+    env:
+      CONTROL_SHA: ${{ github.sha }}
+      TARGET_ENVIRONMENT: prod
+      RELEASE_REF: ${{ inputs.version }}
+      REQUIRE_VERSION: "true"
+      RUN_MIGRATIONS: "false"
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGISTRY: ${{ vars.GCP_REGISTRY }}
+      DEV_PROJECT_ID: ${{ vars.GCP_DEV_PROJECT_ID }}
+      DEV_REGISTRY: ${{ vars.GCP_DEV_REGISTRY }}
+      OWNER: ${{ github.repository_owner }}
+
+    steps:
+      - name: Validate trusted dispatch
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF}" = refs/heads/main || {
+            echo "::error::Release dispatches must originate from main."
+            exit 1
+          }
+          test "${GITHUB_RUN_ATTEMPT}" = 1 || {
+            echo "::error::Release runs cannot be rerun; dispatch a new run from current main."
+            exit 1
+          }
+          printf '%s' "${CONTROL_SHA}" | grep -Eq '^[0-9a-f]{40}$' || {
+            echo "::error::The workflow commit must be a full commit SHA."
+            exit 1
+          }
+          [[ "${RELEASE_REF}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo '::error::Expected vX.Y.Z.'; exit 1; }
+          for name in PROJECT_ID REGISTRY DEV_PROJECT_ID DEV_REGISTRY; do
+            test -n "${!name:-}" || { echo "::error::Missing version configuration: ${name}"; exit 1; }
+          done
+
+      # Always execute automation from the same protected commit that supplied
+      # this workflow. Candidate images are payload, never executable scripts.
+      - name: Checkout trusted release automation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require current remote main HEAD
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          remote_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)
+          test "${remote_sha}" = "${CONTROL_SHA}" || {
+            echo "::error::Main advanced after dispatch; start a new release run."
+            exit 1
+          }
+
+      - name: Google Auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          credentials_json: "${{ secrets.GCP_RELEASE_SA_KEY }}"
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Registry auth
+        run: gcloud auth configure-docker "${DEV_REGISTRY%%/*},${REGISTRY%%/*}" --quiet
+
+      - name: Resolve and verify version digests
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/release/resolve.sh
+
+      - name: Save fixed version plan
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: version-plan
+          path: ${{ steps.candidate.outputs.bundle_file }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish planned images
+        id: images
+        uses: ./.github/actions/publish-images
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          plan: ${{ steps.candidate.outputs.bundle_file }}
+          registry: ${{ env.REGISTRY }}
+          project-id: ${{ env.PROJECT_ID }}
+
+      - name: Write version summary
+        if: always()
+        env:
+          RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
+          VERSION: ${{ steps.candidate.outputs.version }}
+          BUNDLE_FILE: ${{ steps.candidate.outputs.bundle_file }}
+        run: |
+          {
+            echo '## Version images'
+            printf '\nVersion: `%s`\nCandidate: `%s`\n' "${VERSION}" "${RELEASE_SHA}"
+            if [ -n "${BUNDLE_FILE}" ] && [ -f "${BUNDLE_FILE}" ]; then
+              echo '| Target | Image |'
+              echo '| --- | --- |'
+              jq -r '.images | to_entries[] | "| \(.key) | `\(.value)` |"' "${BUNDLE_FILE}"
+            fi
+            echo 'No application deployment or migration was requested by this workflow.'
+          } >> "${GITHUB_STEP_SUMMARY}"

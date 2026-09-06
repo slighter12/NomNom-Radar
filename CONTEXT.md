@@ -21,8 +21,8 @@ _Avoid_: service (a target may be a Cloud Run Job), component, unit
 _Avoid_: env, stage, deployment target
 
 **Candidate**:
-A `main` commit for which every target has a complete, attested image in the
-dev registry. Candidacy is a property of a commit, not of a build.
+A `main` commit for which every target has a complete, attested image.
+Candidacy is a property of a commit, not of a build.
 _Avoid_: build, artifact, release candidate
 
 **Needs candidate**:
@@ -40,30 +40,24 @@ The `main` commit that supplied the running workflow definition. Automation
 always executes from this commit; it is not necessarily the release SHA.
 _Avoid_: workflow SHA, current SHA
 
-**Baseline**:
-The release SHA a target environment's fleet is running before this release.
-Migration selection is the diff between the baseline and the release SHA.
-_Avoid_: previous release, last deploy, current version
-
-**Pinned release**:
-A release that names its release SHA directly instead of resolving the newest
-compatible ancestor. Used for rollback. It runs no migrations.
-_Avoid_: rollback (a pin may also move forward), manual release
-
 **Impact path**:
-A repository path whose change requires new candidate images. The list is
-`impact_path_args()` in `release.sh` and nothing else.
+A repository path whose change requires new candidate images.
 _Avoid_: watched path, trigger path
+
+**Version**:
+An operator-assigned stable name for fixed release content and its changelog.
+A version does not imply that production deployment succeeded.
+_Avoid_: deployed version, production release
 
 **Promotion**:
 Copying an exact dev digest into the prod registry without rebuilding.
 Promotion never produces a new image.
 _Avoid_: prod build, republish, deploy to prod
 
-**Bundle**:
-The run-local JSON mapping a release SHA to one exact digest per target. It
-exists only for the duration of a workflow run.
-_Avoid_: manifest (that word is the rendered Cloud Run YAML), lockfile
+**Release plan**:
+The fixed candidate, target environment, and image digests selected for a
+release attempt, retained as the basis for retrying that attempt.
+_Avoid_: manifest (the deployment template), baseline, bundle
 
 ## Review
 

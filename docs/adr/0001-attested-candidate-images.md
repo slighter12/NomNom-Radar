@@ -2,7 +2,7 @@
 
 CI builds each candidate image to a run-scoped staging tag, resolves its exact
 digest, attests that digest, verifies the attestation, and only then adds the
-`:<commit-sha>` tag. The staging tag is then left to expire with its image
+`:<7-character-commit-sha>` tag. The staging tag is then left to expire with its image
 version rather than deleted, because deleting it needs a permission the
 candidate identity deliberately does not hold. The obvious
 alternative — build and push straight to the SHA tag, then attest — is roughly
@@ -18,7 +18,7 @@ input.** `GCP_CANDIDATE_SA_KEY` is a long-lived JSON service account key with
 write access to the dev registry, and this repository is public. Without
 attestation, anyone holding that key could push an image under a legitimate
 commit SHA tag and the resolver would deploy it to prod. Neither registry
-enables immutable tags — see "Tag mutability" in `docs/operations.md` for why
+enables immutable tags — see "Tag mutability and retention" in `docs/operations.md` for why
 that is deliberate — so attestation is the only control that rejects a tag
 pointing at a digest CI never built. It is load-bearing on its own.
 
@@ -43,3 +43,9 @@ repositories depend on, so it is not a free hardening step.
 Moving the candidate publisher to Workload Identity Federation would weaken the
 first reason considerably but leaves the second one untouched. Do not treat WIF
 adoption as grounds for collapsing the staging step.
+
+The Actions-first workflow preserves this sequence and keeps `ci.yml` as the
+signer identity so existing full-SHA-tagged images remain verifiable. Short SHA
+and optional stable version tags are operator-facing references; provenance
+checks retain the full commit and exact digest. Version tags preserve selected
+prod images under the existing cleanup policy without implying deployment.

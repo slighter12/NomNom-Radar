@@ -123,42 +123,54 @@ jobs:
             --region="${REGION}" \
             --wait
 
-      - name: Configure device-cleanup scheduler
+      - name: Check device-cleanup scheduler
+        id: scheduler
         if: inputs.operation == 'configure-device-cleanup-scheduler'
+        run: |
+          set -euo pipefail
+          jobs=$(gcloud scheduler jobs list --project="${PROJECT_ID}" --location="${REGION}" --format=json)
+          count=$(jq -er --arg name "projects/${PROJECT_ID}/locations/${REGION}/jobs/device-cleanup-daily" '
+            if type != "array" then error("Expected Scheduler job list") else
+              [.[] | select(.name == $name)] | length end' <<<"${jobs}")
+          case "${count}" in
+            0) echo 'exists=false' >> "${GITHUB_OUTPUT}" ;;
+            1) echo 'exists=true' >> "${GITHUB_OUTPUT}" ;;
+            *) echo '::error::Ambiguous Scheduler job result.'; exit 1 ;;
+          esac
+
+      - name: Create device-cleanup scheduler
+        if: inputs.operation == 'configure-device-cleanup-scheduler' && steps.scheduler.outputs.exists == 'false'
         env:
-          SCHEDULER_NAME: device-cleanup-daily
           SCHEDULE: ${{ inputs.schedule }}
           SCHEDULE_TIME_ZONE: ${{ inputs.schedule_time_zone }}
         run: |
-          set -euo pipefail
-          # shellcheck source=.github/scripts/release/not_found.sh
-          source .github/scripts/release/not_found.sh
-          uri="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/device-cleanup:run"
-          common=(
-            --project="${PROJECT_ID}"
-            --location="${REGION}"
-            --schedule="${SCHEDULE}"
-            --time-zone="${SCHEDULE_TIME_ZONE}"
-            --uri="${uri}"
-            --http-method=POST
-            --oauth-service-account-email="${SCHEDULER_SA_EMAIL}"
-            --oauth-token-scope=https://www.googleapis.com/auth/cloud-platform
-            --quiet
-          )
-          describe_error=$(mktemp "${RUNNER_TEMP}/scheduler-describe.XXXXXX")
-          trap 'rm -f "${describe_error}"' EXIT HUP INT TERM
-          if gcloud scheduler jobs describe "${SCHEDULER_NAME}" \
+          gcloud scheduler jobs create http device-cleanup-daily \
             --project="${PROJECT_ID}" \
-            --location="${REGION}" >/dev/null 2>"${describe_error}"; then
-            gcloud scheduler jobs update http "${SCHEDULER_NAME}" "${common[@]}"
-          else
-            if ! not_found_status "${describe_error}"; then
-              cat "${describe_error}" >&2
-              echo "::error::Unable to inspect the fixed Cloud Scheduler job."
-              exit 1
-            fi
-            gcloud scheduler jobs create http "${SCHEDULER_NAME}" "${common[@]}"
-          fi
+            --location="${REGION}" \
+            --schedule="${SCHEDULE}" \
+            --time-zone="${SCHEDULE_TIME_ZONE}" \
+            --uri="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/device-cleanup:run" \
+            --http-method=POST \
+            --oauth-service-account-email="${SCHEDULER_SA_EMAIL}" \
+            --oauth-token-scope=https://www.googleapis.com/auth/cloud-platform \
+            --quiet
+
+      - name: Update device-cleanup scheduler
+        if: inputs.operation == 'configure-device-cleanup-scheduler' && steps.scheduler.outputs.exists == 'true'
+        env:
+          SCHEDULE: ${{ inputs.schedule }}
+          SCHEDULE_TIME_ZONE: ${{ inputs.schedule_time_zone }}
+        run: |
+          gcloud scheduler jobs update http device-cleanup-daily \
+            --project="${PROJECT_ID}" \
+            --location="${REGION}" \
+            --schedule="${SCHEDULE}" \
+            --time-zone="${SCHEDULE_TIME_ZONE}" \
+            --uri="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/device-cleanup:run" \
+            --http-method=POST \
+            --oauth-service-account-email="${SCHEDULER_SA_EMAIL}" \
+            --oauth-token-scope=https://www.googleapis.com/auth/cloud-platform \
+            --quiet
 
       - name: Sync Cloudflare origin secret
         if: inputs.operation == 'sync-cloudflare-origin-secret'

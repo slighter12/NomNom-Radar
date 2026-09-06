@@ -1,0 +1,93 @@
+name: Publish planned images
+description: Copy verified release digests and publish their candidate and version tags.
+inputs:
+  plan:
+    description: Path to the validated release plan.
+    required: true
+  registry:
+    description: Destination Artifact Registry repository.
+    required: true
+  project-id:
+    description: Destination Google Cloud project.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Inspect copy requirement
+      id: copy
+      shell: bash
+      env:
+        BUNDLE_FILE: ${{ inputs.plan }}
+        REGISTRY: ${{ inputs.registry }}
+        PROJECT_ID: ${{ inputs.project-id }}
+      run: |
+        set -euo pipefail
+        source .github/scripts/release/candidate.sh
+        validate_plan "${BUNDLE_FILE}"
+        required=$(jq -r '. as $p | any(.images | keys[]; $p.images[.] != $p.sources[.])' "${BUNDLE_FILE}")
+        echo "required=${required}" >> "${GITHUB_OUTPUT}"
+
+    - name: Install pinned gcrane
+      if: steps.copy.outputs.required == 'true'
+      shell: bash
+      env:
+        GCRANE_VERSION: v0.21.9
+        GCRANE_SHA256: 5c16d8ddb971cb1d5e6ed8b1e743da8224414eeba2c2762d8f1a61b2f095699e
+      run: |
+        set -euo pipefail
+        archive="${RUNNER_TEMP}/go-containerregistry.tar.gz"
+        mkdir -p "${RUNNER_TEMP}/gcrane"
+        curl --fail --silent --show-error --location \
+          --connect-timeout 10 --max-time 300 \
+          --retry 3 --retry-all-errors --retry-max-time 120 \
+          "https://github.com/google/go-containerregistry/releases/download/${GCRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" \
+          --output "${archive}"
+        printf '%s  %s\n' "${GCRANE_SHA256}" "${archive}" | sha256sum --check --strict
+        tar -xzf "${archive}" -C "${RUNNER_TEMP}/gcrane" gcrane
+        test -x "${RUNNER_TEMP}/gcrane/gcrane"
+
+    - name: Copy exact digests and publish tags
+      id: images
+      shell: bash
+      env:
+        BUNDLE_FILE: ${{ inputs.plan }}
+        REGISTRY: ${{ inputs.registry }}
+        PROJECT_ID: ${{ inputs.project-id }}
+      run: |
+        set -euo pipefail
+        source .github/scripts/release/candidate.sh
+        release_sha=$(jq -er .release_sha "${BUNDLE_FILE}")
+        version=$(jq -r '.version // empty' "${BUNDLE_FILE}")
+        list_tags "${REGISTRY}" "${PROJECT_ID}" > "${RUNNER_TEMP}/destination-tags.json"
+        while IFS= read -r target; do
+          destination=$(jq -er --arg target "${target}" '.images[$target]' "${BUNDLE_FILE}")
+          existing=$(candidate_image "${RUNNER_TEMP}/destination-tags.json" "${REGISTRY}" "${target}" "${release_sha}" "${version}")
+          test -z "${existing}" || test "${existing}" = "${destination}"
+        done < <(target_names)
+        # Reject every known conflict before the first copy or tag mutation.
+        while IFS= read -r target; do
+          destination=$(jq -er --arg target "${target}" '.images[$target]' "${BUNDLE_FILE}")
+          source_image=$(jq -er --arg target "${target}" '.sources[$target]' "${BUNDLE_FILE}")
+          if [ "${source_image}" != "${destination}" ]; then
+            "${RUNNER_TEMP}/gcrane/gcrane" copy "${source_image}" "${destination}"
+          fi
+          verify_image "${destination}" "${release_sha}"
+          image_name="${destination%@*}"
+          gcloud artifacts docker tags add "${destination}" "${image_name}:${release_sha:0:7}" --project="${PROJECT_ID}" --quiet
+          if [ -n "${version}" ]; then
+            gcloud artifacts docker tags add "${destination}" "${image_name}:${version}" --project="${PROJECT_ID}" --quiet
+          fi
+        done < <(target_names)
+        list_tags "${REGISTRY}" "${PROJECT_ID}" > "${RUNNER_TEMP}/destination-tags.json"
+        while IFS= read -r target; do
+          destination=$(jq -er --arg target "${target}" '.images[$target]' "${BUNDLE_FILE}")
+          final=$(candidate_image "${RUNNER_TEMP}/destination-tags.json" "${REGISTRY}" "${target}" "${release_sha}" "${version}")
+          test "${final}" = "${destination}"
+          short_image=$(tag_digest "${RUNNER_TEMP}/destination-tags.json" "${REGISTRY}" "${target}" "${release_sha:0:7}")
+          test "${short_image}" = "${destination}"
+          if [ -n "${version}" ]; then
+            version_image=$(tag_digest "${RUNNER_TEMP}/destination-tags.json" "${REGISTRY}" "${target}" "${version}")
+            test "${version_image}" = "${destination}"
+          fi
+        done < <(target_names)
+

@@ -77,34 +77,24 @@ migrations have a local apply target.
 
 ### Deployment
 
-The release compares the target environment's consistent baseline to the
-selected immutable `main` candidate. Changed directories run in this order:
+Migration execution is an explicit release input, `run_migrations`, defaulting
+to `false`. When disabled, the workflow skips Go setup, Goose installation,
+migration-secret retrieval, and database connections. There is no automatic
+baseline/schema inference or SQL-diff warning. The operator checks the changelog
+and decides whether the selected release needs migrations.
+
+When enabled, current release tooling applies the selected candidate's SQL in
+this order, letting Goose track already-applied versions:
 
 1. `database/migration/supabase/pre/`
 2. `database/migration/postgres/`
 3. `database/migration/supabase/post/`
 
-`radar`, `geoworker`, and `device-cleanup` use the `release-sha` Cloud Run
-label. A normal release requires one valid baseline SHA shared by all three
-resources and ancestral to the selected candidate. A pinned release requires
-the selected SHA to be an ancestor of current `main`; it permits a forward or
-rollback move only when the current baseline and selected SHA are comparable
-ancestors of current `main`. An unpinned release to a new environment with no
-resources bootstraps by checking every migration phase. A partial retry is
-accepted only when labels contain that consistent baseline and the current
-target, or when missing/unlabeled resources are paired only with the target.
-
-Pinned releases do not run migrations. Because the schema is forward-only, a
-pin that sits on the other side of a migration change from the running
-baseline would put old code in front of a schema it has never seen. The
-release refuses that case: `migration-phases` compares
-`database/migration/**` between the pin and the baseline and fails closed
-unless the dispatch also sets `acknowledge_schema_drift`. Handle the schema
-first, then re-dispatch with the acknowledgement. A pin that crosses no
-migration change needs no acknowledgement.
-
-Divergent history, a third SHA, invalid labels, and label/image drift fail
-closed. A same-target retry relies on goose to no-op versions already applied.
+Specifying a SHA or version does not change this policy. A failed migration can
+be retried with the same candidate and the input enabled; successfully applied
+versions are not rerun. Application rollback leaves the database forward-only.
+The operator confirms compatibility with the current schema before deploying
+older images.
 
 The dedicated GCP Secret Manager secret `postgres-migration-dsn` is required.
 There is no fallback to `postgres-master-dsn`. Supabase migrations must use a
@@ -120,173 +110,178 @@ Never run `DROP EXTENSION postgis CASCADE` on a migrated database.
 ### Candidate images and attestation
 
 Release-impacting merges to `main` publish `radar`, `geoworker`, and
-`device-cleanup` to the dev Artifact Registry. Images use the full commit SHA
-as their tag; `latest`, mutable aliases, and rebuilt images are not release
-inputs. Documentation and other non-impacting commits do not rebuild images.
+`device-cleanup` to the dev Artifact Registry. New candidate tags use the first
+seven hexadecimal characters of the commit SHA; internal identity and the
+`release-sha` label retain the full SHA. Existing full-SHA tags remain valid.
+Ambiguous prefixes, short-tag collisions, and conflicting short/full tags fail
+closed. Documentation-only changes do not rebuild images.
 
-### Tag mutability
+CI remains in `ci.yml`, preserving the attestation signer used by older images.
+Each target is built through `docker/build-push-action` to a run-scoped staging
+tag. CI attests the action's exact digest, verifies it, and only then adds the
+short SHA tag. Staging tags expire under the existing cleanup policy. Existing
+valid images are reused; interrupted publication can build missing targets.
+An existing tag without valid provenance is rejected rather than re-attested.
+All three targets must have valid images before a candidate can be released.
 
-Neither registry enables Artifact Registry's `--immutable-tags`, and that is
-deliberate rather than an oversight. That setting also blocks deletion of
-tagged images, which would break the cleanup policies both repositories rely
-on and would make release tags permanent once the planned `v*` scheme exists.
+### Tag mutability and retention
 
-A commit-SHA tag is therefore movable in principle. What stops a moved tag from
-reaching a deployment is attestation, not the registry: a re-pointed tag
-resolves to a digest with no valid provenance for that commit, and the resolver
-fails closed. Attestation is the single control here. Do not weaken it on the
-assumption that registry immutability is also holding the line, and do not
-enable immutable tags without first redesigning retention.
+Neither registry enables Artifact Registry's `--immutable-tags`: that setting
+would block deletion of tagged images and conflict with existing cleanup.
+Attestation binds each digest to this repository, `ci.yml`, and the complete
+candidate commit. Tag text alone is never sufficient evidence. Automation
+refuses to replace an existing candidate or version tag with different content.
 
-The checked-in target catalog at `.github/scripts/release/targets.json` is the
-single source for the three release targets and their deployment order. The
-impact path list in `impact_path_args()` in `.github/scripts/release/release.sh`
-is the single source for paths that require a new candidate image. Adding a
-path only requires changing that function; its output determines whether an
-older candidate remains compatible with current release automation.
+Stable `vX.Y.Z` tags in the prod registry use the existing GCP version-retention
+rule. Untagged-by-version releases remain subject to current cleanup. Recovery
+is available only while the exact images and valid provenance remain retained;
+retention is not changed by these workflows. See the
+[attestation decision](adr/0001-attested-candidate-images.md) for the staging
+and credential threat model.
 
-### Where release logic lives
+### Workflow ownership
 
-Every step the workflows perform lives in `.github/scripts/release/release.sh`
-as a subcommand, so that `release_test.sh` can reach it. A workflow step is a
-call to one of these plus the GitHub Actions that cannot be expressed in bash
-(authentication, buildx, `actions/attest`). Do not inline release logic in
-YAML: anything written there is untested by construction.
+Actions owns triggering, permissions, authentication, tool setup, conditions,
+and stage order. A shared local composite action owns digest copying and tag
+publication for both release and version workflows. Focused helpers own
+candidate/version resolution and deployment-result checks. Simple CLI calls stay in named steps;
+there is no shell dispatcher or gcloud error-text parser. When existence matters,
+a successful scoped JSON list is matched exactly; a failed query fails the step.
+The target catalog lists the three target names; deployment order is
+explicit in the release workflow. Scheduler lookup produces an existence output;
+separate create/update steps use Actions conditions.
 
-| Subcommand | Used by |
-|---|---|
-| `impact-paths` | documentation and manual inspection |
-| `check-error-contract` | release, before anything reads resource state |
-| `candidate-changes` | CI, to decide whether to publish |
-| `stage-candidate` / `verify-attestation` / `finalize-candidate` | CI candidate publication |
-| `resolve-candidate` | release, to select and verify the candidate |
-| `preflight` | release, to validate fleet state and pick the baseline |
-| `migration-phases` | release, to select goose phases |
-| `promote` | prod release, to copy digests into the prod registry |
-| `deploy` / `verify` | release |
+Selected manifests and SQL are checked out by `actions/checkout` into a separate
+directory at the resolved full candidate SHA. Kustomize prepares the manifests;
+the pinned yq action applies current configuration and validates all targets
+before publication or deployment. YAML expressions are shared with local tests,
+including the 100% latest-revision traffic policy for older templates. Rendered
+files stay private to the runner and are removed at the end of the release.
 
-Functions above the `# === dispatch ===` marker are sourced directly by
-`release_test.sh`. Keep that marker line exactly as written.
+Focused release tests require Bash, Git, jq, kubectl (with Kustomize), and yq
+v4.53.6. Run `bash .github/scripts/release/release_test.sh`. CI obtains the test
+yq binary from the same digest-pinned action image used for rendering; Ruby and
+Go are not needed for these checks. The application CI still uses Go.
 
-Missing-resource detection is concentrated in `not_found.sh`. Every matcher
-there accepts only a real `NOT_FOUND` status token or one complete, exactly
-observed error line; whole-line matching is what makes a status denylist
-unnecessary. Those literals are re-probed against the live API by
-`check-error-contract` on every release, because a fixture can only prove that
-the parsing still reads the old string, never that gcloud still emits it.
+External actions are pinned to full commit SHAs; tool versions follow their
+purpose. Govulncheck uses the official action's latest scanner, while
+golangci-lint and actionlint also track latest tool releases. These checks remain
+required: updated findings or tool failures can fail CI, with no automatic
+fallback to an older tool. The scanner action reuses the existing checkout and
+selects Go from `go.mod`, overriding its default `stable` selection.
 
-The resolver checks at most the newest 50 first-parent commits. If no complete
-compatible candidate is found in that window, publish a new release-impacting
-candidate rather than relying on an unbounded registry scan.
-
-CI pushes each image to a run-scoped staging tag, resolves and attests its exact
-digest, verifies the attestation, and only then adds the SHA tag. The staging
-tag is left in place afterwards; it aliases the same digest, is never a release
-input, and expires with its image version. A release resolves the selected
-candidate's three SHA tags once and writes a run-local JSON bundle:
-
-```json
-{
-  "release_sha": "<40-character-main-commit-sha>",
-  "images": {
-    "radar": "<registry>/<repository>/radar@sha256:<64-hex-digest>",
-    "geoworker": "<registry>/<repository>/geoworker@sha256:<64-hex-digest>",
-    "device-cleanup": "<registry>/<repository>/device-cleanup@sha256:<64-hex-digest>"
-  }
-}
-```
-
-The bundle lasts only for that workflow run; there is no OCI manifest marker.
-GitHub attestations bind each exact image digest to this repository, the
-candidate workflow, and the `main` commit. Release fails unless all three
-digests resolve and pass verification. An existing image with an invalid or
-missing attestation fails closed; the resolver never silently falls back to an
-older candidate in that case.
+Keep the existing gcloud latest default, Buildx/BuildKit defaults, and
+`ubuntu-latest` runners. Go setup continues to follow `go.mod`. Keep yq, gcrane,
+and Goose pinned because they render deployment data, copy release content, or
+execute SQL; validate behavior when upgrading them. Published applications
+remain identified by exact image digests, independently of CI tool updates.
 
 ### Release Cloud Run
 
-`Release Cloud Run` has a required `environment` input, either `dev` or `prod`,
-and an optional `release_sha` input containing a commit SHA, abbreviated to at
-least 7 hexadecimal characters or given in full. An empty `release_sha` makes
-the workflow execute only current protected automation (`CONTROL_SHA`) and walk
-first-parent history to select the newest ancestor with all three complete,
-attested candidate images (`RELEASE_SHA`). When `release_sha` is supplied, the
-resolver expands it to the full SHA, selects that commit directly, still
-requires a complete set of digest-pinned images and valid attestations, and
-skips the impact-path freshness check.
+Dispatch `Release Cloud Run` from current remote `main`:
 
-An abbreviation is expanded with `git rev-parse --verify`, which rejects both
-unknown and ambiguous prefixes, so widening the accepted input does not widen
-what can be deployed. Image tags are always the full 40 characters; everything
-downstream of the resolver, including the bundle, carries the expanded form.
+| Input | Contract |
+|-------|----------|
+| `environment` | Required: `dev` or `prod`. |
+| `release_ref` | SHA (at least seven characters) or stable `vX.Y.Z`; required for prod unless retrying. Empty for dev selects the newest compatible candidate. |
+| `run_migrations` | Default `false`; explicitly enables all migration phases. |
+| `retry_run_id` | Optional failed release run; mutually exclusive with `release_ref`. |
 
-This separation allows a docs-only commit after a verified dev release to
-promote that same candidate without rebuilding it. The resolver rejects any
-candidate whose range to `CONTROL_SHA` changes a release-impacting path. If no
-compatible complete candidate exists, the release fails closed and a new
-release-impacting commit must produce one.
+A supplied SHA must resolve uniquely to an ancestor of current `main`. A version
+Git tag must have its matching dated changelog heading and may resolve to an
+older candidate only across changes that do not affect release content. Dev's
+automatic selection examines at most 50 first-parent commits and does not cross
+release-impacting changes. Missing or invalid attestation stops resolution;
+publishing a fresh candidate is preferable to an unbounded search.
 
-The checked-in workflow verifies the control SHA against remote `main` once,
-before any read or mutation, and rejects all reruns. Dispatch a new release run
-for every retry. Those checks do not protect against someone dispatching a
-historical workflow definition that predates them.
+The current main commit supplies workflow and helper code (`CONTROL_SHA`). The
+selected candidate supplies deployment templates and migration SQL
+(`RELEASE_SHA`). Environment variables and secrets use their current values;
+rollback does not restore their historical values. Incompatible old templates
+stop before deployment. Select a new dispatch for every retry; GitHub's rerun
+button is rejected so recovery executes current automation.
 
-### What the review gates actually enforce
+Prod eligibility is an operator decision: confirm dev testing and schema
+compatibility before dispatch. Automation does not require dev to currently run
+the candidate and does not maintain a historical dev qualification system.
+Prod first uses retained valid prod images, otherwise copies exact verified dev
+digests without rebuilding. Dev tags need not survive for a retained prod image
+to be used.
 
-Two different controls are both called "review". Keep them apart.
+A release performs these stages:
 
-**Merge review** decides what reaches `main`. The `main` ruleset requires a
-pull request with one approving review, and bypass is granted to the repository
-admin role only. In practice that means a non-admin collaborator's pull request
-needs an approval, and the admin's own merges do not. Dependabot pull requests
-are authored by the bot, so an admin merging them is also merging without a
-second pair of eyes: the protection against a poisoned action bump is reading
-the diff, not the ruleset.
+1. Resolve and verify all three digests and required configuration, then render
+   all selected-version templates before changing the environment.
+2. Upload a nonsecret release-plan Actions artifact with the full SHA, digests,
+   environment, and migration choice; retain it for 30 days. Never upload
+   rendered templates, DSNs, or secret values.
+3. For prod, copy missing images and verify destinations; version releases also
+   apply the corresponding version tags.
+4. If requested, prepare migration tools, read the DSN using the Secret Manager
+   action with masked output, and run pre/shared/post. With migrations disabled,
+   skip all migration setup, DSN access, and database operations.
+5. Deploy `geoworker`, `device-cleanup`, then `radar` through the official Cloud
+   Run deploy action. Deploying cleanup does not execute the job.
+6. Verify full release labels and exact digests, service readiness and actual
+   traffic routing, and Radar `/health` using the deploy action's URL output. This is deployment verification, not
+   end-to-end notification or database business acceptance.
+7. Write a summary with candidate SHA, exact digests, migration selection, and
+   recovery information. Step results are available in the Actions UI.
 
-**Deployment review** decides whether a dispatched prod run may proceed. It is
-the `prod` GitHub Environment's `required_reviewers` rule, and it is unrelated
-to pull requests. This repository has one maintainer, `prevent_self_review` is
-`false`, and the maintainer is the only listed reviewer. The gate is therefore
-a deliberate pause before prod is touched, not separation of duties, and it
-does not defend against the dispatcher. Use the pause to confirm that the run's
-`github.sha` is the current remote `main` HEAD. Dev has no required reviewer.
+### Retry and rollback
 
-Turning this into real separation of duties requires setting
-`prevent_self_review` to `true` and adding a second reviewer with access to the
-`prod` environment. Until that happens, do not write automation whose safety
-argument depends on a second person existing.
+Use a new current-main dispatch with `retry_run_id` to recover a failed,
+cancelled, or timed-out main `workflow_dispatch` run of this repository's release
+workflow. The artifact must belong to that run and match the target environment.
+The workflow revalidates image provenance and availability, then uses the
+original full SHA and digests without selecting a newer candidate. Choose
+`run_migrations` anew; the summary displays the original and current choice.
+If the artifact has expired or was never uploaded, fixed-plan retry is
+unavailable; explicitly select and verify a release reference instead.
 
-A release processes the complete bundle in this order:
+A rollback is an explicit release of older retained images and their templates.
+Confirm current configuration and schema compatibility; migration execution
+remains an independent choice and never performs Goose `down`. Partial
+application deployment is recovered by converging all three targets, not by an
+automatic database rollback.
 
-0. Re-probe the gcloud not-found error contract against the live API.
-1. For prod, verify dev and copy exact digests into the prod registry.
-2. Run required migration phases; pinned releases skip migrations and must
-   clear the schema-drift check described above.
-3. Deploy `geoworker`, `device-cleanup`, then `radar`.
-4. Verify `release-sha`, exact digest, readiness, and Radar `/health`.
+If an existing candidate tag has missing or invalid attestation, quarantine the
+SHA and publish a fresh release-impacting commit. The candidate identity has
+`artifactregistry.tags.create` and `.update`, but not `.delete`. Removing a bad
+tag requires registry-admin authority and explicitly approved break-glass
+handling. Never manually attest an unknown image.
 
-Prod requires dev to be currently running the same selected SHA and three source
-digests. Promotion copies without rebuilding and verifies every destination.
-An existing prod SHA tag is accepted only when its digest is identical. A dev
-release that has already been replaced cannot be promoted.
+### Manual versions and changelog
 
-If a candidate SHA tag exists but its attestation is missing or invalid, CI
-fails closed and never re-attests the existing digest. Do not rerun the failed
-candidate workflow. The standard recovery is to quarantine the affected SHA and
-publish a new release-impacting commit; CI must create a new SHA tag and verify
-its attestation before release.
+Maintain [`CHANGELOG.md`](../CHANGELOG.md) in English, collecting changes under
+`Unreleased`. Before assigning a version, move the intended notes into
+`## [X.Y.Z] - YYYY-MM-DD`, including migration requirements and compatibility
+notes, and merge them to main. Manually create the immutable-by-policy Git tag
+`vX.Y.Z` on that commit. Stable versions only are supported; prerelease tags and
+automatic version calculation are outside this workflow.
 
-Removing the bad tag instead is possible but is not CI's to do: the candidate
-identity holds `roles/artifactregistry.writer`, which grants
-`artifactregistry.tags.create` and `.update` but not `.delete`. Tag removal
-therefore requires a registry admin and is an explicitly approved break-glass
-procedure. Do not manually attest an unknown image.
+Dispatch `Version Images` from current main with the existing Git tag in
+`version`. Using the prod Environment and release identity, it verifies the
+corresponding candidate, reuses prod images or copies exact dev digests, and
+adds short-SHA and version tags to all three prod images. It neither rebuilds,
+migrates, nor deploys. Repeating the operation accepts identical digests and
+completes partial tagging; different content under the same tag is rejected.
+Git tag creation itself does not dispatch a deployment. A version identifies
+fixed content, not proof of successful prod deployment, and prod releases do
+not require a version tag.
 
-Release and operational workflows share the non-canceling
-`cloud-run-release` concurrency group across both environments. It covers
-migrations, deployment, job execution, scheduler changes, and Cloudflare
-synchronization. Use these workflows rather than routine direct `gcloud`
-deployment commands.
+### Review and operations
+
+Merge review controls what reaches main; deployment review is the prod
+Environment's separate required-reviewers pause. With a single maintainer and
+self-review permitted, this is deliberate confirmation, not separation of
+duties. Confirm the dispatch SHA is current remote main during the pause;
+a historical workflow may predate the workflow's own guard. Existing protection
+settings and identities are unchanged by this refactor.
+
+Release, version marking, and operations share the `cloud-run-release`
+concurrency group across environments. Running work is not cancelled; pending
+runs may be replaced, so this is a mutex rather than a durable queue.
 
 `Cloud Run Operations` separately supports:
 
@@ -294,13 +289,11 @@ deployment commands.
 - `configure-device-cleanup-scheduler`
 - prod-only `sync-cloudflare-origin-secret`
 
-Operations dispatches are limited to the current `main` head. Reruns are
-permitted while `main` is unchanged; if `main` advances, dispatch a new
-operation run after reviewing the current configuration.
-
-The scheduler name is fixed as `device-cleanup-daily`; schedule and time zone
-remain explicit inputs with defaults `0 3 * * *` and `Asia/Taipei`. Operations
-does not publish candidates, deploy images, or run migrations.
+Operations dispatches are limited to current main. Reruns are permitted while
+main is unchanged; otherwise dispatch anew after reviewing configuration. The
+scheduler remains `device-cleanup-daily` with default schedule `0 3 * * *` and
+time zone `Asia/Taipei`. Operations does not publish images, deploy targets, or
+run migrations.
 
 ## Identities and Configuration
 
@@ -386,17 +379,14 @@ record this rollout before declaring readiness:
 - [ ] Dev dispatches are restricted to current `main`; each Environment
   contains the correct non-overlapping secrets and variables, including the
   numeric `GCP_PROJECT_NUMBER` required by the Cloud Run Job manifest.
-- [ ] The prod Environment requires an external reviewer, prevents the
-  triggering actor from self-approving, and its approval procedure verifies
-  the run's `github.sha` against the current remote `main` HEAD. This gate is
-  required even though the current workflow performs its own remote-main
-  check, because a historical workflow definition may not contain that check.
+- [ ] The prod Environment retains the single-maintainer confirmation pause,
+  and the operator verifies the dispatch SHA against current remote main.
 - [ ] Candidate, release, operations, runtime, and scheduler identities exist
   with the scopes above.
 - [ ] Neither Artifact Registry repository enables immutable tags, and the
-  posture in "Tag mutability" above still holds. Staging tags are never
-  deleted: they alias a digest that already carries its SHA tag and expire with
-  their image version, so the accumulation is bounded by the cleanup policy. If
+  posture in "Tag mutability and retention" above still holds. CI leaves staging
+  tags for cleanup, including those from interrupted publication; retention
+  bounds their lifetime unless the image also carries a retained version tag. If
   retention is ever changed to keep versions indefinitely, revisit this.
 - [ ] Required Google APIs are enabled and all three resources implement the
   `release-sha` label contract.
@@ -404,9 +394,12 @@ record this rollout before declaring readiness:
   newest compatible ancestor without rebuilding; a release-impacting commit
   without a complete candidate fails closed and is recovered by publishing a
   new candidate.
-- [ ] A pinned release SHA is a current-main ancestor with complete attested
-  images; pinned releases skip migrations and are used for approved rollback
-  or version pinning.
+- [ ] Explicit SHA, old full-SHA tags, version tags, retained-prod recovery,
+  and failed-run artifact retry resolve the intended attested digests.
+- [ ] Disabled migrations skip tool setup, secret retrieval, and DB access;
+  enabled migrations use selected-version SQL and the documented phase order.
+- [ ] Version tagging tolerates partial completion without overwriting content;
+  actual GCP retention and cross-registry provenance have been checked.
 - [ ] `postgres-migration-dsn` is release-only and verified as the intended
   direct/session-mode port `5432` database.
 - [ ] Prod Cloudflare secrets and identifiers match the deployed origin rule;
@@ -426,7 +419,8 @@ Break-glass is not a second normal deployment path. Obtain approval, record the
 operator and reason, confirm no release or operation is active, and preserve
 attestation evidence, current labels, and running digests.
 
-1. Inspect all three resources. Do not infer a baseline from one label or tag.
+1. Inspect all three resources. Record actual labels, digests, and traffic
+   rather than trusting one target.
 2. Keep the database forward-only; never run goose `down` or rewrite applied
    migrations. Use only `postgres-migration-dsn` and the documented phase order.
 3. Retry the same SHA and exact attested digests first. Never substitute

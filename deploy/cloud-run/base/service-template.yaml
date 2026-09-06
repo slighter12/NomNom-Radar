@@ -7,6 +7,9 @@ metadata:
   annotations:
     run.googleapis.com/ingress: all
 spec:
+  traffic:
+    - latestRevision: true
+      percent: 100
   template:
     metadata:
       labels:

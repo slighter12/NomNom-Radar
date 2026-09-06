@@ -24,11 +24,12 @@ docker build \
 CI publishes the target as:
 
 ```text
-${GCP_DEV_REGISTRY}/${IMAGE_NAME}/device-cleanup:${RELEASE_SHA}
+${GCP_DEV_REGISTRY}/${IMAGE_NAME}/device-cleanup:${RELEASE_SHORT_SHA}
 ```
 
-`IMAGE_NAME` is the lowercase repository owner and `RELEASE_SHA` is the
-selected full `main` candidate SHA. Use the unified `Release Cloud Run`
+`IMAGE_NAME` is the lowercase repository owner and `RELEASE_SHORT_SHA` is the
+first seven characters of the candidate commit. The `release-sha` resource
+label keeps the full SHA; deployment uses the exact digest. Use the unified `Release Cloud Run`
 workflow with its `environment` input. The job deploys between `geoworker` and
 `radar` with the same `release-sha` label and exact-digest contract.
 
@@ -72,10 +73,11 @@ Job-specific prerequisites:
 - `GCP_SCHEDULER_SA_EMAIL` differs from the Cloud Run runtime identity, and its
   permission to invoke Cloud Run is limited to `device-cleanup` alone.
 
-The workflow describes the fixed job first, updates it when it exists, and
-creates it only when the describe returns NOT_FOUND. It does not grant IAM.
-Manual fallback, under the break-glass policy, must use the same
-describe-then-update-or-create behavior and explicit project:
+The workflow lists jobs in the configured project and region and matches the
+fixed resource name. A successful empty match permits creation; a query failure
+stops the operation. An existing job is updated. It does not grant IAM. Manual
+fallback under the break-glass policy uses the same existence check and explicit
+project:
 
 ```sh
 gcloud scheduler jobs create http device-cleanup-daily \
