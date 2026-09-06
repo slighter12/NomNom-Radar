@@ -37,6 +37,7 @@ jobs:
     environment: ${{ inputs.environment }}
     concurrency:
       group: cloud-run-release
+      queue: max
       cancel-in-progress: false
     permissions:
       contents: read

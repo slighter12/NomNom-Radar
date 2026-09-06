@@ -1,129 +1,227 @@
 name: Version Images
-
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Existing Git tag vX.Y.Z with a matching CHANGELOG.md entry"
+        description: Stable version vX.Y.Z; an existing tag fixes the source commit
         required: true
         type: string
-
+permissions:
+  contents: read
+env:
+  CONTROL_SHA: ${{ github.sha }}
+  OWNER: ${{ github.repository_owner }}
 jobs:
-  release:
-    name: Preserve version images in prod
+  request:
+    if: github.ref == 'refs/heads/main'
+    name: Select exact version content
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 15
     environment: prod
-    concurrency:
-      group: cloud-run-release
-      cancel-in-progress: false
-    permissions:
-      contents: read
-      attestations: read
     env:
-      CONTROL_SHA: ${{ github.sha }}
-      TARGET_ENVIRONMENT: prod
-      RELEASE_REF: ${{ inputs.version }}
-      REQUIRE_VERSION: "true"
-      RUN_MIGRATIONS: "false"
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       REGISTRY: ${{ vars.GCP_REGISTRY }}
       DEV_PROJECT_ID: ${{ vars.GCP_DEV_PROJECT_ID }}
       DEV_REGISTRY: ${{ vars.GCP_DEV_REGISTRY }}
-      OWNER: ${{ github.repository_owner }}
-
+    permissions:
+      contents: read
+      attestations: read
+    outputs:
+      release_sha: ${{ steps.request.outputs.release_sha }}
+      missing: ${{ steps.images.outputs.missing }}
+      existing: ${{ steps.request.outputs.existing }}
     steps:
-      - name: Validate trusted dispatch
-        run: |
-          set -euo pipefail
-          test "${GITHUB_REF}" = refs/heads/main || {
-            echo "::error::Release dispatches must originate from main."
-            exit 1
-          }
-          test "${GITHUB_RUN_ATTEMPT}" = 1 || {
-            echo "::error::Release runs cannot be rerun; dispatch a new run from current main."
-            exit 1
-          }
-          printf '%s' "${CONTROL_SHA}" | grep -Eq '^[0-9a-f]{40}$' || {
-            echo "::error::The workflow commit must be a full commit SHA."
-            exit 1
-          }
-          [[ "${RELEASE_REF}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo '::error::Expected vX.Y.Z.'; exit 1; }
-          for name in PROJECT_ID REGISTRY DEV_PROJECT_ID DEV_REGISTRY; do
-            test -n "${!name:-}" || { echo "::error::Missing version configuration: ${name}"; exit 1; }
-          done
-
-      # Always execute automation from the same protected commit that supplied
-      # this workflow. Candidate images are payload, never executable scripts.
-      - name: Checkout trusted release automation
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout trusted automation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Require current remote main HEAD
+      - name: Validate version request
+        id: request
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
+          VERSION: ${{ inputs.version }}
+        run: |-
           set -euo pipefail
-          remote_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)
-          test "${remote_sha}" = "${CONTROL_SHA}" || {
-            echo "::error::Main advanced after dispatch; start a new release run."
-            exit 1
-          }
-
+          source .github/scripts/release/candidate.sh
+          is_version "$VERSION"
+          sha=$(version_commit "$VERSION")
+          existing=false
+          if [ -n "$sha" ]; then existing=true; else sha=$CONTROL_SHA; fi
+          git merge-base --is-ancestor "$sha" "$CONTROL_SHA"
+          pattern=${VERSION//./[.]}
+          git show "$sha:CHANGELOG.md" > "$RUNNER_TEMP/version-changelog"
+          grep -Eq "^## \[${pattern#v}\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" "$RUNNER_TEMP/version-changelog"
+          printf 'release_sha=%s\nexisting=%s\n' "$sha" "$existing" >> "$GITHUB_OUTPUT"
       - name: Google Auth
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
-          credentials_json: "${{ secrets.GCP_RELEASE_SA_KEY }}"
-
+          credentials_json: ${{ secrets.GCP_RELEASE_SA_KEY }}
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
         with:
           project_id: ${{ env.PROJECT_ID }}
-
-      - name: Configure Registry auth
+      - name: Configure registry authentication
         run: gcloud auth configure-docker "${DEV_REGISTRY%%/*},${REGISTRY%%/*}" --quiet
-
-      - name: Resolve and verify version digests
-        id: candidate
+      - name: Inspect exact images
+        id: images
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash .github/scripts/release/resolve.sh
-
-      - name: Save fixed version plan
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+          VERSION: ${{ inputs.version }}
+          RELEASE_SHA: ${{ steps.request.outputs.release_sha }}
+          EXISTING: ${{ steps.request.outputs.existing }}
+        run: |-
+          set -euo pipefail
+          source .github/scripts/release/candidate.sh
+          allow_missing=false
+          if [ "$EXISTING" = false ]; then allow_missing=true; fi
+          resolve_version_images "$RELEASE_SHA" "$VERSION" "$allow_missing"
+  candidate:
+    name: Check source and prepare missing candidates
+    needs: request
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    with:
+      release_sha: ${{ needs.request.outputs.release_sha }}
+      build_targets: ${{ needs.request.outputs.missing }}
+    secrets:
+      GCP_CANDIDATE_SA_KEY: ${{ secrets.GCP_CANDIDATE_SA_KEY }}
+  release:
+    name: Preserve exact images and publish version
+    needs:
+      - request
+      - candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: prod
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGISTRY: ${{ vars.GCP_REGISTRY }}
+      DEV_PROJECT_ID: ${{ vars.GCP_DEV_PROJECT_ID }}
+      DEV_REGISTRY: ${{ vars.GCP_DEV_REGISTRY }}
+    permissions:
+      contents: write
+      attestations: read
+    outputs:
+      images: ${{ steps.summary.outputs.images }}
+    steps:
+      - name: Checkout trusted automation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          name: version-plan
-          path: ${{ steps.candidate.outputs.bundle_file }}
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Publish planned images
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Revalidate fixed request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_SHA: ${{ needs.request.outputs.release_sha }}
+          EXISTING: ${{ needs.request.outputs.existing }}
+        run: |-
+          set -euo pipefail
+          source .github/scripts/release/candidate.sh
+          current=$(version_commit "$VERSION")
+          if [ -n "$current" ]; then
+            test "$current" = "$RELEASE_SHA" || { release_error 'version already selects another commit'; exit 1; }
+          else
+            test "$EXISTING" = false || { release_error 'existing version tag was deleted'; exit 1; }
+          fi
+      - name: Google Auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          credentials_json: ${{ secrets.GCP_RELEASE_SA_KEY }}
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+      - name: Configure registry authentication
+        run: gcloud auth configure-docker "${DEV_REGISTRY%%/*},${REGISTRY%%/*}" --quiet
+      - name: Resolve prepared images
         id: images
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_SHA: ${{ needs.request.outputs.release_sha }}
+        run: |-
+          set -euo pipefail
+          source .github/scripts/release/candidate.sh
+          resolve_version_images "$RELEASE_SHA" "$VERSION" false
+      - name: Prepare all prod images and SHA tags
         uses: ./.github/actions/publish-images
         env:
           GH_TOKEN: ${{ github.token }}
         with:
-          plan: ${{ steps.candidate.outputs.bundle_file }}
+          images: ${{ steps.images.outputs.images_file }}
+          tags: ${{ steps.images.outputs.sha_tags }}
           registry: ${{ env.REGISTRY }}
           project-id: ${{ env.PROJECT_ID }}
-
-      - name: Write version summary
-        if: always()
+      - name: Establish Git tag
         env:
-          RELEASE_SHA: ${{ steps.candidate.outputs.release_sha }}
-          VERSION: ${{ steps.candidate.outputs.version }}
-          BUNDLE_FILE: ${{ steps.candidate.outputs.bundle_file }}
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_SHA: ${{ needs.request.outputs.release_sha }}
+          EXISTING: ${{ needs.request.outputs.existing }}
+        run: |-
+          set -euo pipefail
+          source .github/scripts/release/candidate.sh
+          current=$(version_commit "$VERSION")
+          if [ -n "$current" ]; then
+            test "$current" = "$RELEASE_SHA" || { release_error 'version tag moved'; exit 1; }
+          else
+            test "$EXISTING" = false || { release_error 'existing version tag was deleted'; exit 1; }
+            jq -n --arg ref "refs/tags/$VERSION" --arg sha "$RELEASE_SHA" '{ref:$ref,sha:$sha}' > "$RUNNER_TEMP/version-ref.json"
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" --method POST --input "$RUNNER_TEMP/version-ref.json" >/dev/null
+            test "$(version_commit "$VERSION")" = "$RELEASE_SHA"
+          fi
+          # Preparation already copied all images; tagging now uses prod directly.
+          jq '.sources = .images' "$RUNNER_TEMP/version-images.json" > "$RUNNER_TEMP/prepared-images.json"
+          mv "$RUNNER_TEMP/prepared-images.json" "$RUNNER_TEMP/version-images.json"
+      - name: Publish version image tags
+        uses: ./.github/actions/publish-images
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          images: ${{ steps.images.outputs.images_file }}
+          tags: ${{ steps.images.outputs.version_tags }}
+          registry: ${{ env.REGISTRY }}
+          project-id: ${{ env.PROJECT_ID }}
+      - name: Report exact images
+        id: summary
+        run: echo "images=$(jq -c .images "$RUNNER_TEMP/version-images.json")" >> "$GITHUB_OUTPUT"
+    concurrency:
+      group: cloud-run-release
+      queue: max
+      cancel-in-progress: false
+  summary:
+    if: always()
+    needs:
+      - request
+      - candidate
+      - release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Report version outcome
+        env:
+          VERSION: ${{ inputs.version }}
+          RELEASE_SHA: ${{ needs.request.outputs.release_sha }}
+          RESULT: ${{ needs.release.result }}
+          IMAGES: ${{ needs.release.outputs.images }}
         run: |
           {
             echo '## Version images'
-            printf '\nVersion: `%s`\nCandidate: `%s`\n' "${VERSION}" "${RELEASE_SHA}"
-            if [ -n "${BUNDLE_FILE}" ] && [ -f "${BUNDLE_FILE}" ]; then
-              echo '| Target | Image |'
-              echo '| --- | --- |'
-              jq -r '.images | to_entries[] | "| \(.key) | `\(.value)` |"' "${BUNDLE_FILE}"
+            printf 'Version: `%s`\nRelease SHA: `%s`\n' "$VERSION" "$RELEASE_SHA"
+            if [ "$RESULT" = success ]; then
+              echo 'Preservation complete: all three prod images and required tags were verified.'
+              jq -r 'to_entries[] | "- \(.key): `\(.value)`"' <<<"$IMAGES"
+            else
+              echo 'Preservation did not complete. Dispatch from main with the same version to retry; an existing Git tag fixes the source commit; existing SHA images are required.'
             fi
-            echo 'No application deployment or migration was requested by this workflow.'
-          } >> "${GITHUB_STEP_SUMMARY}"
+            echo 'No deployment or migration occurred.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "$RESULT" = success

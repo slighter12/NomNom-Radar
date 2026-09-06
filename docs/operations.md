@@ -114,9 +114,11 @@ Release-impacting merges to `main` publish `radar`, `geoworker`, and
 seven hexadecimal characters of the commit SHA; internal identity and the
 `release-sha` label retain the full SHA. Existing full-SHA tags remain valid.
 Ambiguous prefixes, short-tag collisions, and conflicting short/full tags fail
-closed. Documentation-only changes do not rebuild images.
+closed. Documentation-only main pushes do not rebuild images; a new version request builds
+its exact commit when images are missing, including changelog-only commits.
 
-CI remains in `ci.yml`, preserving the attestation signer used by older images.
+CI remains in `ci.yml`, also callable by Version Images as a reusable workflow,
+preserving the attestation signer used by older images.
 Each target is built through `docker/build-push-action` to a run-scoped staging
 tag. CI attests the action's exact digest, verifies it, and only then adds the
 short SHA tag. Staging tags expire under the existing cleanup policy. Existing
@@ -143,9 +145,14 @@ and credential threat model.
 
 Actions owns triggering, permissions, authentication, tool setup, conditions,
 and stage order. A shared local composite action owns digest copying and tag
-publication for both release and version workflows. Focused helpers own
-candidate/version resolution and deployment-result checks. Simple CLI calls stay in named steps;
-there is no shell dispatcher or gcloud error-text parser. When existence matters,
+publication for prod promotion and version preservation. Dev deployment never
+calls that action. Callers provide an exact image mapping and an explicit JSON
+array of tags; deployment supplies only the short SHA, while Version Images adds
+the stable version after creating its Git tag. A plan's version is
+selection metadata, including in historical retry plans, and never authorizes
+publication. The workflow visibly owns request selection, CI, preparation, and tagging.
+Shared data helpers resolve remote tag commits and exact-SHA image mappings.
+Simple CLI calls stay in named steps; no gcloud error-text parser is used. When existence matters,
 a successful scoped JSON list is matched exactly; a failed query fails the step.
 The target catalog lists the three target names; deployment order is
 explicit in the release workflow. Scheduler lookup produces an existence output;
@@ -167,7 +174,11 @@ External actions are pinned to full commit SHAs; tool versions follow their
 purpose. Govulncheck uses the official action's latest scanner, while
 golangci-lint and actionlint also track latest tool releases. These checks remain
 required: updated findings or tool failures can fail CI, with no automatic
-fallback to an older tool. The scanner action reuses the existing checkout and
+fallback to an older tool. GitHub supports concurrency `queue: max`, but the
+current actionlint schema does not. CI excludes only its unknown-`queue`
+diagnostic; release semantic tests validate queue values and shared
+serialization. Remove that narrow exception when actionlint supports the key.
+The scanner action reuses the existing checkout and
 selects Go from `go.mod`, overriding its default `stable` selection.
 
 Keep the existing gcloud latest default, Buildx/BuildKit defaults, and
@@ -188,8 +199,8 @@ Dispatch `Release Cloud Run` from current remote `main`:
 | `retry_run_id` | Optional failed release run; mutually exclusive with `release_ref`. |
 
 A supplied SHA must resolve uniquely to an ancestor of current `main`. A version
-Git tag must have its matching dated changelog heading and may resolve to an
-older candidate only across changes that do not affect release content. Dev's
+Git tag must have its matching dated changelog heading and resolve to images
+for that exact commit. Dev's
 automatic selection examines at most 50 first-parent commits and does not cross
 release-impacting changes. Missing or invalid attestation stops resolution;
 publishing a fresh candidate is preferable to an unbounded search.
@@ -215,8 +226,10 @@ A release performs these stages:
 2. Upload a nonsecret release-plan Actions artifact with the full SHA, digests,
    environment, and migration choice; retain it for 30 days. Never upload
    rendered templates, DSNs, or secret values.
-3. For prod, copy missing images and verify destinations; version releases also
-   apply the corresponding version tags.
+3. Dev performs no registry mutations, even for legacy full-SHA-only images.
+   For prod, copy missing exact digests, verify destinations, and establish
+   missing short-SHA tags. Deployment never publishes version image tags,
+   including when a version selects content or remains in a retry plan.
 4. If requested, prepare migration tools, read the DSN using the Secret Manager
    action with masked output, and run pre/shared/post. With migrations disabled,
    skip all migration setup, DSN access, and database operations.
@@ -253,22 +266,52 @@ handling. Never manually attest an unknown image.
 
 ### Manual versions and changelog
 
-Maintain [`CHANGELOG.md`](../CHANGELOG.md) in English, collecting changes under
-`Unreleased`. Before assigning a version, move the intended notes into
-`## [X.Y.Z] - YYYY-MM-DD`, including migration requirements and compatibility
-notes, and merge them to main. Manually create the immutable-by-policy Git tag
-`vX.Y.Z` on that commit. Stable versions only are supported; prerelease tags and
-automatic version calculation are outside this workflow.
+Maintain [`CHANGELOG.md`](../CHANGELOG.md) in English. Move intended notes from
+`Unreleased` into `## [X.Y.Z] - YYYY-MM-DD` and merge to main. Dispatch **Version
+Images** from main with the intended canonical `vX.Y.Z`. Versions and changelogs
+remain operator-maintained; do not push a Git tag to initiate publication.
 
-Dispatch `Version Images` from current main with the existing Git tag in
-`version`. Using the prod Environment and release identity, it verifies the
-corresponding candidate, reuses prod images or copies exact dev digests, and
-adds short-SHA and version tags to all three prod images. It neither rebuilds,
-migrates, nor deploys. Repeating the operation accepts identical digests and
-completes partial tagging; different content under the same tag is rejected.
-Git tag creation itself does not dispatch a deployment. A version identifies
-fixed content, not proof of successful prod deployment, and prod releases do
-not require a version tag.
+A new request fixes the dispatch main SHA. It inspects exact-SHA prod images
+before dev, runs its own checks through reusable Go CI, and builds only missing
+targets. A changelog-only commit requires its own images. All three verified
+images and SHA tags are saved to prod before a lightweight Git tag is created;
+stable image tags follow. This workflow never deploys or runs migrations.
+
+Version Images uses the existing `prod` Environment, its approval rules,
+`GCP_RELEASE_SA_KEY`, and registry variables. Request inspection and final
+publication both use this Environment and may require approval as jobs become
+eligible. No additional Environment, service account or secret is needed.
+The shared candidate job still uses the existing dev candidate credential.
+Only the final publication job has GitHub contents write permission for Git tags.
+
+Before a Git tag exists, a failed attempt may be restarted with the same version
+and the then-current main SHA. Once the tag exists, dispatch the same version to
+retry its fixed commit. Lightweight and annotated tags are both supported; an
+annotation is not interpreted as an application data format. Existing verified
+SHA images are required for recovery: missing images, failed queries or
+conflicting version tags fail instead of triggering a rebuild or moving the tag.
+Partially published image tags are completed, and matching tags are not rewritten.
+There is no independent durable digest record; do not move or rewrite SHA/version
+tags outside the publication workflows. If recovery cannot establish consistent
+existing content, it stops for operator investigation.
+
+The final publication job holds the shared release lock, rechecks Git tags and
+images after waiting, and rejects a competing request selecting a different SHA.
+A competing request that already published the same SHA can be verified and
+completed. Git and registry writes are separate operations, so interrupted
+publication may leave a Git tag awaiting image tagging; use a fresh dispatch to
+recover with current automation. Quality checks and builds do not hold this lock.
+
+Deployment selecting a version also requires images for its exact tag commit.
+Older tags that previously selected a compatible ancestor must instead be deployed
+by the explicit candidate SHA; automatic historical lookup remains only for
+`dev latest`. Existing full-SHA image tags remain supported.
+
+Success summaries list the version, full Release SHA and all three prod digest
+references, explicitly stating no deployment or migration occurred. Actions status
+and existing notifications report failures. Retention policies remain unchanged;
+missing content cannot be reconstructed by recovery. See the
+[exact-commit decision](adr/0002-version-images-match-tag-commit.md).
 
 ### Review and operations
 
@@ -276,12 +319,25 @@ Merge review controls what reaches main; deployment review is the prod
 Environment's separate required-reviewers pause. With a single maintainer and
 self-review permitted, this is deliberate confirmation, not separation of
 duties. Confirm the dispatch SHA is current remote main during the pause;
-a historical workflow may predate the workflow's own guard. Existing protection
-settings and identities are unchanged by this refactor.
+a historical workflow may predate the workflow's own guard. Version publication deliberately shares the existing prod approval gate;
+do not remove its reviewers to bypass that approval.
 
 Release, version marking, and operations share the `cloud-run-release`
-concurrency group across environments. Running work is not cancelled; pending
-runs may be replaced, so this is a mutex rather than a durable queue.
+concurrency group across environments with `queue: max` and
+`cancel-in-progress: false`. Up to 100 pending requests wait without replacing
+each other; excess requests are cancelled visibly and require a new dispatch.
+Version Images, deployment and operations acquire this group at publication
+or operation job level. Version checks and candidate builds do not hold it. Candidate construction uses a separate
+SHA/target group with the same queue policy, shared by both CI entry points.
+Ordering follows when jobs or workflows begin waiting, not necessarily event order. A
+preservation request can wait behind active release/operations work; separation
+from deployment review does not remove this shared serialization.
+See [GitHub concurrency limits](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
+
+The shared group serializes cooperating workflows, not external registry
+writers or cleanup. List-then-add is not atomic. Do not run external tag writers
+concurrently; obtain explicit break-glass authorization when needed. Conflict
+preflight and final verification do not claim to provide registry transactions.
 
 `Cloud Run Operations` separately supports:
 
@@ -366,10 +422,30 @@ revisions retain earlier values. This is an accepted current risk: restrict
 describe permissions, rotate GitHub and Cloudflare values together after
 suspected exposure, and remove obsolete revisions after verified releases.
 
-No secret moves in this phase. Role-specific JSON keys remain in their current
-GitHub locations, and existing GCP secrets remain in Secret Manager. GitHub
-OIDC and Google Cloud Workload Identity Federation are deferred until
-exact-digest promotion is stable.
+Existing keys, variables and GCP secrets remain in their current locations.
+Version publication reuses the prod release identity; its registry authority is
+already needed for promotion. No new key, service account or Environment is
+required. OIDC and Workload Identity Federation remain deferred.
+
+### Live version acceptance
+
+- [ ] Confirm prod approval and existing registry variables/credential work for
+  both inspection and publication jobs; do not change Environment settings.
+- [ ] Verify the publication token can create Git tags under existing tag rules.
+- [ ] Dispatch a new version on main. Confirm checks and missing-image builds
+  use the exact SHA, including a changelog-only source commit.
+- [ ] Verify provenance from main CI and reusable CI, including cross-registry
+  verification after copying into prod.
+- [ ] Confirm failures before Git tag creation leave the version available for
+  a new request; interrupt after creation and retry using existing SHA images.
+- [ ] Verify all three SHA/version image tags and the summary, repeat without tag
+  writes, and exercise competing requests. No deployment or migration occurs.
+- [ ] Confirm retained prod content remains deployable when dev is unavailable.
+  Do not delete images or change access to simulate cleanup without authorization.
+
+Local tests cannot prove live IAM, review gates, attestation claims or cleanup.
+Existing registry retention is unchanged. External registry writers are outside
+GitHub serialization; list-then-add is not an atomic registry transaction.
 
 ## Prerequisites and Readiness
 
@@ -390,7 +466,7 @@ record this rollout before declaring readiness:
   retention is ever changed to keep versions indefinitely, revisit this.
 - [ ] Required Google APIs are enabled and all three resources implement the
   `release-sha` label contract.
-- [ ] A documentation-only commit after a verified candidate promotes the
+- [ ] Dev latest after a documentation-only commit selects the
   newest compatible ancestor without rebuilding; a release-impacting commit
   without a complete candidate fails closed and is recovered by publishing a
   new candidate.

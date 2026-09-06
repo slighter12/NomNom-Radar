@@ -32,6 +32,7 @@ jobs:
     environment: ${{ inputs.environment }}
     concurrency:
       group: cloud-run-release
+      queue: max
       cancel-in-progress: false
     permissions:
       contents: read
@@ -193,12 +194,14 @@ jobs:
           retention-days: 30
 
       - name: Publish planned images
+        if: inputs.environment == 'prod'
         id: images
         uses: ./.github/actions/publish-images
         env:
           GH_TOKEN: ${{ github.token }}
         with:
-          plan: ${{ steps.candidate.outputs.bundle_file }}
+          tags: ${{ steps.candidate.outputs.sha_tags }}
+          images: ${{ steps.candidate.outputs.bundle_file }}
           registry: ${{ env.REGISTRY }}
           project-id: ${{ env.PROJECT_ID }}
 

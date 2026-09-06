@@ -7,6 +7,20 @@ on:
     branches: [main]
   workflow_dispatch:
 
+  workflow_call:
+    inputs:
+      release_sha:
+        description: Exact source commit to check; only the caller main SHA may be built.
+        required: true
+        type: string
+      build_targets:
+        description: JSON array of missing targets, empty for recovery or complete reuse.
+        required: true
+        type: string
+    secrets:
+      GCP_CANDIDATE_SA_KEY:
+        required: true
+
 permissions:
   contents: read
 
@@ -17,6 +31,8 @@ env:
 jobs:
   checks:
     name: Run checks
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -24,6 +40,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.release_sha || github.sha }}
 
       # Tests also use host kubectl and fake CLIs. Reuse the action's exact yq
       # binary so local and action rendering exercise the same expressions.
@@ -49,7 +66,11 @@ jobs:
           args: --config=./.golangci.yaml
 
       - name: Validate workflow syntax
-        run: go run github.com/rhysd/actionlint/cmd/actionlint@latest -shellcheck=
+        # GitHub supports queue since May 2026; actionlint's schema lags behind.
+        # release/tests/workflows.sh validates this key and required serialization.
+        run: >-
+          go run github.com/rhysd/actionlint/cmd/actionlint@latest -shellcheck=
+          -ignore '^unexpected key "queue" for "concurrency" section\.'
 
       - name: Run tests
         run: go test -race ./...
@@ -65,7 +86,9 @@ jobs:
 
   candidate-changes:
     name: Detect candidate changes
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.release_sha != '')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: checks
@@ -83,9 +106,24 @@ jobs:
         id: changes
         env:
           BEFORE_SHA: ${{ github.event.before }}
+          REQUEST_SHA: ${{ inputs.release_sha }}
+          BUILD_TARGETS: ${{ inputs.build_targets }}
         run: |
           set -euo pipefail
           source .github/scripts/release/candidate.sh
+          if [ -n "$REQUEST_SHA" ]; then
+            [[ "$REQUEST_SHA" =~ ^[0-9a-f]{40}$ ]]
+            jq -e 'type == "array" and length == (unique | length)
+              and all(.[]; . == "radar" or . == "geoworker" or . == "device-cleanup")' <<<"$BUILD_TARGETS" >/dev/null
+            if [ "$(jq length <<<"$BUILD_TARGETS")" -gt 0 ]; then
+              test "$REQUEST_SHA" = "$GITHUB_SHA"
+              echo 'candidate=true' >> "$GITHUB_OUTPUT"
+            else
+              echo 'candidate=false' >> "$GITHUB_OUTPUT"
+            fi
+            echo "targets=$(jq -c . <<<"$BUILD_TARGETS")" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           changed=false
           if [[ "${BEFORE_SHA}" =~ ^0+$ ]]; then
             changed=true
@@ -110,6 +148,7 @@ jobs:
         target: ${{ fromJSON(needs.candidate-changes.outputs.targets) }}
     concurrency:
       group: candidate-${{ github.sha }}-${{ matrix.target }}
+      queue: max
       cancel-in-progress: false
     permissions:
       contents: read
@@ -209,7 +248,10 @@ jobs:
           list_tags "${REGISTRY}" "${PROJECT_ID}" > "${RUNNER_TEMP}/tags.json"
           existing=$(candidate_image "${RUNNER_TEMP}/tags.json" "${REGISTRY}" "${TARGET}" "${RELEASE_SHA}")
           test -z "${existing}" || test "${existing}" = "${IMAGE_NAME}@${DIGEST}"
-          gcloud artifacts docker tags add "${IMAGE_NAME}@${DIGEST}" "${IMAGE_NAME}:${RELEASE_SHA:0:7}" --project="${PROJECT_ID}" --quiet
+          short_image=$(tag_digest "$RUNNER_TEMP/tags.json" "$REGISTRY" "$TARGET" "${RELEASE_SHA:0:7}")
+          if [ -z "$short_image" ]; then
+            gcloud artifacts docker tags add "${IMAGE_NAME}@${DIGEST}" "${IMAGE_NAME}:${RELEASE_SHA:0:7}" --project="${PROJECT_ID}" --quiet
+          fi
           list_tags "${REGISTRY}" "${PROJECT_ID}" > "${RUNNER_TEMP}/tags.json"
           final=$(candidate_image "${RUNNER_TEMP}/tags.json" "${REGISTRY}" "${TARGET}" "${RELEASE_SHA}")
           test "${final}" = "${IMAGE_NAME}@${DIGEST}"

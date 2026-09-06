@@ -82,9 +82,8 @@ plan="$RUNNER_TEMP/release-plan/plan.json"
 [ "$(jq -r .release_sha "$plan")" = "$candidate" ] || fail resolved
 ! grep -q registry/dev "$tmp/gcloud.calls" || fail 'prod consulted dev'
 ok 'retained prod candidate does not require dev access'
-env RELEASE_REF=v0.3.0 bash "$scripts/resolve.sh" >/dev/null
-[ "$(jq -r .release_sha "$plan")" = "$candidate" ] || fail 'version docs lookup'
-ok 'version tag on docs commit resolves retained prod candidate without dev'
+reject env RELEASE_REF=v0.3.0 bash "$scripts/resolve.sh"
+ok 'version selection requires images for the exact tag commit'
 jq --arg digest "$other" '. + [{tag:"v0.3.0",image:.[0].image,version:$digest}]' "$tmp/prod.json" > "$tmp/conflicting-version.json"
 cp "$tmp/prod.json" "$tmp/good-prod.json"
 cp "$tmp/conflicting-version.json" "$tmp/prod.json"
@@ -112,12 +111,25 @@ export TARGET_ENVIRONMENT=dev REGISTRY="$DEV_REGISTRY" PROJECT_ID="$DEV_PROJECT_
 bash "$scripts/resolve.sh" >/dev/null
 [ "$(jq -r .release_sha "$plan")" = "$candidate" ] || fail docs
 ok 'dev latest follows only documentation changes to a complete candidate'
+cp "$tmp/dev.json" "$tmp/short-dev.json"
+jq --arg sha "$candidate" 'map(.tag=$sha)' "$tmp/dev.json" > "$tmp/full-dev.json"
+cp "$tmp/full-dev.json" "$tmp/dev.json"
+bash "$scripts/resolve.sh" >/dev/null
+[ "$(jq -r .release_sha "$plan")" = "$candidate" ] || fail 'legacy dev candidate'
+jq -e '.images == .sources' "$plan" >/dev/null || fail 'dev requires copy'
+cp "$tmp/short-dev.json" "$tmp/dev.json"
+ok 'dev full-SHA-only candidate resolves without any registry mutation'
 printf 'application B\n' > internal/app.txt
 git add .
 git commit -qm new-application
 export CONTROL_SHA=$(git rev-parse HEAD)
 reject bash "$scripts/resolve.sh"
 ok 'dev cannot skip unpublished application changes'
+git revert --no-edit HEAD >/dev/null
+export CONTROL_SHA=$(git rev-parse HEAD)
+reject bash "$scripts/resolve.sh"
+ok 'candidate selection cannot cross release-impacting changes followed by a revert'
+
 # The chosen commit supplies deployment data even when the worktree advances.
 export TARGET_ENVIRONMENT=prod REGISTRY=registry/prod PROJECT_ID=prod
 export BUNDLE_FILE="$tmp/retry.json" SOURCE_DIR="$tmp/source" MANIFEST_DIR="$tmp/manifests"
@@ -175,5 +187,6 @@ reject env READY=False bash "$scripts/verify.sh"
 reject env HEALTH_FAIL=true bash "$scripts/verify.sh"
 ok 'verification requires active traffic digest, readiness, and successful health'
 source "$scripts/tests/workflow_runtime.sh"
+bash "$scripts/tests/version_test.sh"
 bash "$scripts/tests/workflows.sh"
 printf '%s checks passed\n' "$passed"

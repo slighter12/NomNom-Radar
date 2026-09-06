@@ -26,12 +26,13 @@ Candidacy is a property of a commit, not of a build.
 _Avoid_: build, artifact, release candidate
 
 **Needs candidate**:
-The decision that a push changed a release-impacting path and must therefore
-publish new images. This is a boolean about work to do, not the noun above.
+The decision that a commit requires new images, either because a push changed
+a release-impacting path or a new version request lacks images for that exact
+commit. This is a boolean about work to do, not the noun above.
 _Avoid_: candidate (as a boolean)
 
 **Release SHA**:
-The candidate commit a release is deploying. Also the value of the
+The candidate commit selected for deployment or version preservation. Also the value of the
 `release-sha` Cloud Run label on every target.
 _Avoid_: version, deployed SHA
 

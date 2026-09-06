@@ -7,6 +7,7 @@ cat > "$tmp/bin/gh" <<'FAKE'
 set -eu
 if [ "$1" = api ]; then cat "$FAKE_DIR/run-metadata.json"; exit; fi
 [ "$1 $2" = 'attestation verify' ]
+[ "${ATTEST_FAIL:-false}" != true ] || exit 1
 case "$*" in *"--source-digest $EXPECTED_SHA"*) ;; *) exit 1 ;; esac
 FAKE
 export RETRY_RUN_ID=123 RELEASE_REF=''
@@ -34,7 +35,9 @@ set -eu
 case "$4" in
  list) [ "${QUERY_FAIL:-false}" != true ] || exit 1; cat "$FAKE_DIR/tag-state.json" ;;
  add)
+   [ "${DENY_TAG_WRITES:-false}" != true ] || exit 1
    printf 'tag %s %s\n' "$5" "$6" >> "$FAKE_DIR/mutations"
+   [ "${DISCARD_TAG_WRITE:-false}" != true ] || exit 0
    base=${6%:*}; tag=${6##*:}; digest=${5##*@}
    jq --arg base "$base" --arg tag "$tag" --arg digest "$digest" \
      'map(select(.image != $base or .tag != $tag)) + [{image:$base,tag:$tag,version:$digest}]' \
@@ -57,19 +60,35 @@ exit 1
 FAKE
 chmod +x "$RUNNER_TEMP/gcrane/gcrane" "$tmp/bin/docker"
 jq '.version="v0.3.0" | .sources |= with_entries(if .key == "device-cleanup" then . else .value |= sub("registry/prod";"registry/dev") end)' "$tmp/retry.json" > "$tmp/promotion-plan.json"
-export BUNDLE_FILE="$tmp/promotion-plan.json"
+export BUNDLE_FILE="$tmp/promotion-plan.json" IMAGE_TAGS="$(jq -nc --arg sha "${candidate:0:7}" '[$sha,"v0.3.0"]')"
 jq -n --arg sha "$candidate" --arg digest "$digest" '[{image:"registry/prod/example/device-cleanup",tag:($sha[0:7]),version:$digest}]' > "$tmp/tag-state.json"
 : > "$tmp/mutations"
 bash "$tmp/images-step.sh"
 jq -e 'length == 6' "$tmp/tag-state.json" >/dev/null || fail 'all short/version tags'
+[ "$(grep -c '^tag ' "$tmp/mutations")" = 5 ] || fail 'existing short tag was rewritten'
 for target in $(target_names); do
   [ "$(candidate_image "$tmp/tag-state.json" "$REGISTRY" "$target" "$candidate" v0.3.0)" = "$REGISTRY/example/$target@$digest" ] || fail 'published digest'
 done
 cp "$tmp/tag-state.json" "$tmp/complete-tags.json"
-bash "$tmp/images-step.sh"
+# Selection metadata is not permission to publish a version, including retry plans.
+printf '[]\n' > "$tmp/tag-state.json"
+: > "$tmp/mutations"
+env IMAGE_TAGS="$(jq -nc --arg sha "${candidate:0:7}" '[$sha]')" bash "$tmp/images-step.sh"
+jq -e 'length == 3 and all(.[]; .tag != "v0.3.0")' "$tmp/tag-state.json" >/dev/null || fail 'deployment published version tags'
+cp "$tmp/complete-tags.json" "$tmp/tag-state.json"
+ok 'version-selected promotion publishes only SHA tags without explicit permission'
+
+: > "$tmp/mutations"
+env DENY_TAG_WRITES=true bash "$tmp/images-step.sh"
+if grep -q '^tag ' "$tmp/mutations"; then fail 'existing tags were rewritten'; fi
 [ "$(jq -Sc 'sort_by(.image,.tag)' "$tmp/tag-state.json")" = "$(jq -Sc 'sort_by(.image,.tag)' "$tmp/complete-tags.json")" ] || fail idempotence
 [ ! -f "$tmp/rebuild" ] || fail rebuild
 ok 'inline promotion completes partial tags and repeats without changing digests or rebuilding'
+jq '.version="" | .sources=.images' "$tmp/promotion-plan.json" > "$tmp/reuse-plan.json"
+: > "$tmp/mutations"
+env IMAGE_TAGS="$(jq -nc --arg sha "${candidate:0:7}" '[$sha]')" BUNDLE_FILE="$tmp/reuse-plan.json" DENY_TAG_WRITES=true bash "$tmp/images-step.sh"
+[ ! -s "$tmp/mutations" ] || fail 'same registry candidate reuse mutated images or tags'
+ok 'same registry candidate reuse succeeds without tag write permissions'
 for conflict_target in device-cleanup radar; do
 for tag in "${candidate:0:7}" v0.3.0; do
   jq --arg image "$REGISTRY/example/$conflict_target" --arg tag "$tag" --arg digest "$other" 'map(if .image == $image and .tag == $tag then .version=$digest else . end)' "$tmp/complete-tags.json" > "$tmp/tag-state.json"
@@ -84,6 +103,12 @@ done
 reject env QUERY_FAIL=true bash "$tmp/images-step.sh"
 [ ! -s "$tmp/mutations" ] || fail 'query failure mutated tags'
 ok 'inline promotion fails closed on tag conflicts and list failures'
+printf '[]\n' > "$tmp/tag-state.json"
+: > "$tmp/mutations"
+reject env ATTEST_FAIL=true bash "$tmp/images-step.sh"
+[ ! -s "$tmp/mutations" ] || fail 'invalid provenance mutated registry'
+reject env DISCARD_TAG_WRITE=true bash "$tmp/images-step.sh"
+ok 'publication verifies provenance before mutations and detects missing final tags'
 
 yq -r '.runs.steps[] | select(.id == "copy") | .run' "$scripts/../../actions/publish-images/action.yml" > "$tmp/copy-step.sh"
 : > "$GITHUB_OUTPUT"

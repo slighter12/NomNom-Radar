@@ -36,7 +36,7 @@ if [ -n "${RETRY_BUNDLE_FILE:-}" ]; then
   version=$(jq -r .version "$RETRY_BUNDLE_FILE")
   git merge-base --is-ancestor "$tag_commit" "$CONTROL_SHA"
   git merge-base --is-ancestor "$release_sha" "$tag_commit"
-  if impact_changed "$release_sha" "$tag_commit"; then
+  if ! compatible_history "$release_sha" "$tag_commit"; then
     release_error 'retry tag commit is not compatible with its candidate'; exit 1
   fi
   images=$(jq -c .images "$RETRY_BUNDLE_FILE")
@@ -68,17 +68,14 @@ else
     git show "${tag_commit}:CHANGELOG.md" > "$tags_dir/changelog"
     grep -Eq "^## \\[${version_pattern#v}\\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" "$tags_dir/changelog" \
       || { release_error 'version requires a matching dated changelog heading'; exit 1; }
-    candidates=$(git rev-list --first-parent --max-count=50 "$tag_commit")
-    exact=false
+    candidates=$tag_commit
+    exact=true
   else
     [[ "$RELEASE_REF" =~ ^[0-9a-f]{7,40}$ ]] \
       || { release_error 'release_ref must be a SHA or vX.Y.Z'; exit 1; }
     tag_commit=$(git rev-parse --verify "${RELEASE_REF}^{commit}")
     candidates=$tag_commit
     exact=true
-  fi
-  if [ "${REQUIRE_VERSION:-false}" = true ] && [ -z "$version" ]; then
-    release_error 'version tagging requires vX.Y.Z'; exit 1
   fi
   git merge-base --is-ancestor "$tag_commit" "$CONTROL_SHA" \
     || { release_error 'selected commit is not a main ancestor'; exit 1; }
@@ -87,7 +84,7 @@ else
   # Only if there is no complete set do we need the dev repository at all.
   for location in destination combined; do
     while IFS= read -r candidate; do
-      if [ "$exact" = false ] && impact_changed "$candidate" "$tag_commit"; then continue; fi
+      if [ "$exact" = false ] && ! compatible_history "$candidate" "$tag_commit"; then break; fi
       images='{}' sources='{}' complete=true
       for target in $(target_names); do
         destination=$(candidate_image "$tags_dir/destination.json" "$REGISTRY" "$target" "$candidate")
@@ -108,7 +105,9 @@ else
         sources=$(jq -c --arg target "$target" --arg source "$source" '. + {($target):$source}' <<<"$sources")
         images=$(jq -c --arg target "$target" --arg image "$(image_base "$REGISTRY" "$target")@${source##*@}" '. + {($target):$image}' <<<"$images")
       done
-      [ "$complete" = true ] || continue
+      if [ "$complete" != true ]; then
+        continue
+      fi
       release_sha=$candidate
       break 2
     done <<<"$candidates"
@@ -127,5 +126,6 @@ jq -n --arg environment "$TARGET_ENVIRONMENT" --arg sha "$release_sha" \
 validate_plan "$plan_dir/plan.json"
 {
   printf 'release_sha=%s\nbundle_file=%s\n' "$release_sha" "$plan_dir/plan.json"
+  printf 'sha_tags=%s\n' "$(jq -nc --arg tag "${release_sha:0:7}" '[$tag]')"
   printf 'version=%s\n' "$version"
 } >> "${GITHUB_OUTPUT:-/dev/stdout}"
