@@ -45,7 +45,8 @@ first reason considerably but leaves the second one untouched. Do not treat WIF
 adoption as grounds for collapsing the staging step.
 
 The Actions-first workflow preserves this sequence and keeps `ci.yml` as the
-signer identity so existing full-SHA-tagged images remain verifiable. Short SHA
+signer identity, including when invoked as a reusable workflow by version
+publication, so existing full-SHA-tagged images remain verifiable. Short SHA
 and optional stable version tags are operator-facing references; provenance
 checks retain the full commit and exact digest. Version tags preserve selected
 prod images under the existing cleanup policy without implying deployment.

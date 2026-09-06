@@ -1,8 +1,11 @@
 name: Publish planned images
-description: Copy verified release digests and publish their candidate and version tags.
+description: Preserve specified verified digests and establish explicitly requested tags.
 inputs:
-  plan:
-    description: Path to the validated release plan.
+  images:
+    description: JSON file with release_sha and exact target-to-images/sources mappings.
+    required: true
+  tags:
+    description: Explicit JSON array of tags to establish for every target.
     required: true
   registry:
     description: Destination Artifact Registry repository.
@@ -17,13 +20,14 @@ runs:
       id: copy
       shell: bash
       env:
-        BUNDLE_FILE: ${{ inputs.plan }}
+        IMAGE_TAGS: ${{ inputs.tags }}
+        BUNDLE_FILE: ${{ inputs.images }}
         REGISTRY: ${{ inputs.registry }}
         PROJECT_ID: ${{ inputs.project-id }}
       run: |
         set -euo pipefail
         source .github/scripts/release/candidate.sh
-        validate_plan "${BUNDLE_FILE}"
+        validate_publication "${BUNDLE_FILE}"
         required=$(jq -r '. as $p | any(.images | keys[]; $p.images[.] != $p.sources[.])' "${BUNDLE_FILE}")
         echo "required=${required}" >> "${GITHUB_OUTPUT}"
 
@@ -50,44 +54,48 @@ runs:
       id: images
       shell: bash
       env:
-        BUNDLE_FILE: ${{ inputs.plan }}
+        IMAGE_TAGS: ${{ inputs.tags }}
+        BUNDLE_FILE: ${{ inputs.images }}
         REGISTRY: ${{ inputs.registry }}
         PROJECT_ID: ${{ inputs.project-id }}
       run: |
         set -euo pipefail
         source .github/scripts/release/candidate.sh
+        validate_publication "${BUNDLE_FILE}"
         release_sha=$(jq -er .release_sha "${BUNDLE_FILE}")
-        version=$(jq -r '.version // empty' "${BUNDLE_FILE}")
         list_tags "${REGISTRY}" "${PROJECT_ID}" > "${RUNNER_TEMP}/destination-tags.json"
+        # Check every target and requested tag before the first mutation.
         while IFS= read -r target; do
-          destination=$(jq -er --arg target "${target}" '.images[$target]' "${BUNDLE_FILE}")
-          existing=$(candidate_image "${RUNNER_TEMP}/destination-tags.json" "${REGISTRY}" "${target}" "${release_sha}" "${version}")
-          test -z "${existing}" || test "${existing}" = "${destination}"
+          destination=$(jq -er --arg target "$target" '.images[$target]' "$BUNDLE_FILE")
+          existing=$(candidate_image "$RUNNER_TEMP/destination-tags.json" "$REGISTRY" "$target" "$release_sha")
+          test -z "$existing" || test "$existing" = "$destination"
+          while IFS= read -r tag; do
+            existing=$(tag_digest "$RUNNER_TEMP/destination-tags.json" "$REGISTRY" "$target" "$tag")
+            test -z "$existing" || test "$existing" = "$destination"
+          done < <(jq -r '.[]' <<<"$IMAGE_TAGS")
+          source_image=$(jq -er --arg target "$target" '.sources[$target]' "$BUNDLE_FILE")
+          verify_image "$source_image" "$release_sha"
         done < <(target_names)
-        # Reject every known conflict before the first copy or tag mutation.
         while IFS= read -r target; do
-          destination=$(jq -er --arg target "${target}" '.images[$target]' "${BUNDLE_FILE}")
-          source_image=$(jq -er --arg target "${target}" '.sources[$target]' "${BUNDLE_FILE}")
-          if [ "${source_image}" != "${destination}" ]; then
-            "${RUNNER_TEMP}/gcrane/gcrane" copy "${source_image}" "${destination}"
+          destination=$(jq -er --arg target "$target" '.images[$target]' "$BUNDLE_FILE")
+          source_image=$(jq -er --arg target "$target" '.sources[$target]' "$BUNDLE_FILE")
+          if [ "$source_image" != "$destination" ]; then
+            "$RUNNER_TEMP/gcrane/gcrane" copy "$source_image" "$destination"
           fi
-          verify_image "${destination}" "${release_sha}"
-          image_name="${destination%@*}"
-          gcloud artifacts docker tags add "${destination}" "${image_name}:${release_sha:0:7}" --project="${PROJECT_ID}" --quiet
-          if [ -n "${version}" ]; then
-            gcloud artifacts docker tags add "${destination}" "${image_name}:${version}" --project="${PROJECT_ID}" --quiet
-          fi
+          # Verify copied content before exposing it through a tag.
+          if [ "$source_image" != "$destination" ]; then verify_image "$destination" "$release_sha"; fi
+          while IFS= read -r tag; do
+            existing=$(tag_digest "$RUNNER_TEMP/destination-tags.json" "$REGISTRY" "$target" "$tag")
+            [ -z "$existing" ] || continue
+            gcloud artifacts docker tags add "$destination" "${destination%@*}:$tag" --project="$PROJECT_ID" --quiet
+          done < <(jq -r '.[]' <<<"$IMAGE_TAGS")
         done < <(target_names)
-        list_tags "${REGISTRY}" "${PROJECT_ID}" > "${RUNNER_TEMP}/destination-tags.json"
+        list_tags "$REGISTRY" "$PROJECT_ID" > "$RUNNER_TEMP/destination-tags.json"
         while IFS= read -r target; do
-          destination=$(jq -er --arg target "${target}" '.images[$target]' "${BUNDLE_FILE}")
-          final=$(candidate_image "${RUNNER_TEMP}/destination-tags.json" "${REGISTRY}" "${target}" "${release_sha}" "${version}")
-          test "${final}" = "${destination}"
-          short_image=$(tag_digest "${RUNNER_TEMP}/destination-tags.json" "${REGISTRY}" "${target}" "${release_sha:0:7}")
-          test "${short_image}" = "${destination}"
-          if [ -n "${version}" ]; then
-            version_image=$(tag_digest "${RUNNER_TEMP}/destination-tags.json" "${REGISTRY}" "${target}" "${version}")
-            test "${version_image}" = "${destination}"
-          fi
+          destination=$(jq -er --arg target "$target" '.images[$target]' "$BUNDLE_FILE")
+          verify_image "$destination" "$release_sha"
+          while IFS= read -r tag; do
+            final=$(tag_digest "$RUNNER_TEMP/destination-tags.json" "$REGISTRY" "$target" "$tag")
+            test "$final" = "$destination"
+          done < <(jq -r '.[]' <<<"$IMAGE_TAGS")
         done < <(target_names)
-
