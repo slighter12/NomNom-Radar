@@ -25,8 +25,15 @@ jobs:
         with:
           persist-credentials: false
 
+      # Tests also use host kubectl and fake CLIs. Reuse the action's exact yq
+      # binary so local and action rendering exercise the same expressions.
+      - name: Provide yq for release helper checks
+        uses: mikefarah/yq@c14f446382944492701b16c1ddb48bb9dbe683e3 # v4.53.6; upstream image pinned by digest
+        with:
+          cmd: mkdir -p .release-tools && cp /usr/bin/yq .release-tools/yq
+
       - name: Run release helper checks
-        run: bash .github/scripts/release/release_test.sh
+        run: PATH="${GITHUB_WORKSPACE}/.release-tools:${PATH}" bash .github/scripts/release/release_test.sh
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -41,13 +48,20 @@ jobs:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
           args: --config=./.golangci.yaml
 
+      - name: Validate workflow syntax
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@latest -shellcheck=
+
       - name: Run tests
         run: go test -race ./...
 
       - name: Scan dependencies
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
-          govulncheck ./...
+        uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1; scanner tracks latest
+        with:
+          repo-checkout: false
+          go-package: ./...
+          go-version-file: go.mod
+          go-version-input: ''
+          check-latest: false
 
   candidate-changes:
     name: Detect candidate changes
@@ -69,7 +83,20 @@ jobs:
         id: changes
         env:
           BEFORE_SHA: ${{ github.event.before }}
-        run: bash .github/scripts/release/release.sh candidate-changes
+        run: |
+          set -euo pipefail
+          source .github/scripts/release/candidate.sh
+          changed=false
+          if [[ "${BEFORE_SHA}" =~ ^0+$ ]]; then
+            changed=true
+          elif impact_changed "${BEFORE_SHA}" "${GITHUB_SHA}"; then
+            changed=true
+          else
+            status=$?
+            test "${status}" = 1 || exit "${status}"
+          fi
+          echo "candidate=${changed}" >> "${GITHUB_OUTPUT}"
+          echo "targets=$(jq -c '.' "${TARGETS_FILE}")" >> "${GITHUB_OUTPUT}"
 
   publish-candidate:
     name: Publish ${{ matrix.target }} candidate image
@@ -125,40 +152,66 @@ jobs:
       - name: Configure Docker auth
         run: gcloud auth configure-docker "${REGISTRY%%/*}" --quiet
 
+      - name: Inspect candidate tag
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          source .github/scripts/release/candidate.sh
+          OWNER=$(printf '%s' "${OWNER}" | tr '[:upper:]' '[:lower:]')
+          list_tags "${REGISTRY}" "${PROJECT_ID}" > "${RUNNER_TEMP}/tags.json"
+          image=$(candidate_image "${RUNNER_TEMP}/tags.json" "${REGISTRY}" "${TARGET}" "${RELEASE_SHA}")
+          echo "image_name=${REGISTRY}/${OWNER}/${TARGET}" >> "${GITHUB_OUTPUT}"
+          echo "staging_tag=${REGISTRY}/${OWNER}/${TARGET}:staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${TARGET}" >> "${GITHUB_OUTPUT}"
+          echo "existing=${image}" >> "${GITHUB_OUTPUT}"
+          if [ -n "${image}" ]; then
+            verify_image "${image}" "${RELEASE_SHA}"
+          fi
+
       - name: Set up Docker Buildx
+        if: steps.candidate.outputs.existing == ''
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Build and stage candidate image
-        id: stage
-        run: bash .github/scripts/release/release.sh stage-candidate
+        id: build
+        if: steps.candidate.outputs.existing == ''
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          platforms: linux/amd64
+          pull: true
+          provenance: false
+          sbom: false
+          push: true
+          tags: ${{ steps.candidate.outputs.staging_tag }}
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
 
       - name: Attest staged image digest
-        if: steps.stage.outputs.needs_finalize == 'true'
+        if: steps.candidate.outputs.existing == ''
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-name: ${{ env.REGISTRY }}/${{ steps.stage.outputs.owner }}/${{ env.TARGET }}
-          subject-digest: ${{ steps.stage.outputs.digest }}
+          subject-name: ${{ steps.candidate.outputs.image_name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
 
-      - name: Verify candidate attestation
+      - name: Verify and publish candidate tag
+        if: steps.candidate.outputs.existing == ''
         env:
           GH_TOKEN: ${{ github.token }}
-          NEEDS_FINALIZE: ${{ steps.stage.outputs.needs_finalize }}
-          IMAGE: ${{ env.REGISTRY }}/${{ steps.stage.outputs.owner }}/${{ env.TARGET }}@${{ steps.stage.outputs.digest }}
+          IMAGE_NAME: ${{ steps.candidate.outputs.image_name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           set -euo pipefail
-          if bash .github/scripts/release/release.sh verify-attestation; then
-            exit 0
-          fi
-          if [ "${NEEDS_FINALIZE}" = false ]; then
-            echo "::error::Existing SHA tag for ${TARGET} has no valid attestation; stop and follow the approved manual recovery procedure before retrying."
-          else
-            echo "::error::Candidate attestation did not become visible for ${TARGET}."
-          fi
-          exit 1
-
-      - name: Publish verified candidate SHA tag
-        env:
-          NEEDS_FINALIZE: ${{ steps.stage.outputs.needs_finalize }}
-          STAGING_REF: ${{ steps.stage.outputs.staging_ref }}
-          STAGED_DIGEST: ${{ steps.stage.outputs.digest }}
-        run: bash .github/scripts/release/release.sh finalize-candidate
+          source .github/scripts/release/candidate.sh
+          verify_image "${IMAGE_NAME}@${DIGEST}" "${RELEASE_SHA}"
+          list_tags "${REGISTRY}" "${PROJECT_ID}" > "${RUNNER_TEMP}/tags.json"
+          existing=$(candidate_image "${RUNNER_TEMP}/tags.json" "${REGISTRY}" "${TARGET}" "${RELEASE_SHA}")
+          test -z "${existing}" || test "${existing}" = "${IMAGE_NAME}@${DIGEST}"
+          gcloud artifacts docker tags add "${IMAGE_NAME}@${DIGEST}" "${IMAGE_NAME}:${RELEASE_SHA:0:7}" --project="${PROJECT_ID}" --quiet
+          list_tags "${REGISTRY}" "${PROJECT_ID}" > "${RUNNER_TEMP}/tags.json"
+          final=$(candidate_image "${RUNNER_TEMP}/tags.json" "${REGISTRY}" "${TARGET}" "${RELEASE_SHA}")
+          test "${final}" = "${IMAGE_NAME}@${DIGEST}"
+          short_image=$(tag_digest "${RUNNER_TEMP}/tags.json" "${REGISTRY}" "${TARGET}" "${RELEASE_SHA:0:7}")
+          test "${short_image}" = "${IMAGE_NAME}@${DIGEST}"

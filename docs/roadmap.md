@@ -22,16 +22,19 @@ Completed or substantially implemented backend areas:
 - Async geospatial notification flow with Pub/Sub/local publisher, geo worker, PMTiles routing, and Haversine fallback.
 - Supabase/PostgreSQL migration support and Cloud Run service/job deployment workflows.
 
-## Remaining V1 Verification
+## Verification Status
 
-These are verification or integration risks, not new product scope:
+The maintainer has confirmed functional validation of the APIs currently exposed
+to the app and the app itself. App/API functional acceptance is no longer an
+outstanding v1 milestone.
 
-- Cloud Run device-cleanup scheduling in each target environment.
-- Firebase push delivery behavior with real app credentials and real invalid-token responses.
-- Client device rebind flow for stale or invalid devices.
-- Client refresh-token single-flight behavior.
-- Argon2id benchmark on the target Cloud Run shape.
-- PMTiles source, road layer, and production route data availability.
+The revised CI/CD workflows require separate hosted CI and live release/retry
+acceptance; see [operations readiness](operations.md#prerequisites-and-readiness).
+
+Environment-specific operational evidence, such as cleanup scheduling,
+Argon2id benchmarks on the target Cloud Run shape, and production PMTiles data
+availability, is separate from app/API functional acceptance. This confirmation
+does not record individual results for those checks.
 
 ## Next Product Directions
 
