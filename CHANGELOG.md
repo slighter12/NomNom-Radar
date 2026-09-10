@@ -4,7 +4,7 @@ User-visible changes and release-operation requirements are recorded here.
 Stable versions use `## [X.Y.Z] - YYYY-MM-DD` headings and matching `vX.Y.Z`
 Git tags. A version entry identifies content, not a successful prod deployment.
 
-## [Unreleased]
+## [0.0.1] - 2026-09-10
 
 Initial documented backend baseline, assembled from the current
 [implementation status](docs/roadmap.md) and [architecture](docs/architecture.md).
