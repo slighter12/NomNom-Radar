@@ -57,8 +57,10 @@ done
 jq -e '
   [.jobs[].steps[]?] as $steps
   | any($steps[]; (.uses // "" | startswith("actions/attest@")) and .with["subject-digest"] == "${{ steps.build.outputs.digest }}")
-    and any($steps[]; .id == "build" and (.uses // "" | startswith("docker/build-push-action@")))
-' "$json/ci.json" >/dev/null || { echo 'Build attestation must consume the build output digest' >&2; exit 1; }
+    and any($steps[]; .id == "build" and (.uses // "" | startswith("docker/build-push-action@"))
+      and (.with.outputs | type == "string" and contains("push-by-digest=true") and contains("name-canonical=true") and contains("push=true"))
+    and all($steps[]; (.with.tags // "") | contains("staging-") | not))
+' "$json/ci.json" >/dev/null || { echo 'Build must attest a digest-only push without staging tags' >&2; exit 1; }
 jq -e '
   .jobs.release.steps as $steps
   | [$steps[] | select((.uses // "" | test("^(actions/setup-go|google-github-actions/get-secretmanager-secrets)@")) or (.run // "" | test("go install|secrets versions access|goose.*up"; "s")))] as $migration

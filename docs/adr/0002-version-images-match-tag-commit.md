@@ -3,7 +3,7 @@
 Version publication uses images for the exact main commit selected at dispatch,
 even for changelog-only changes. Verified images for that SHA are reused; missing
 targets are built through reusable CI with the same quality checks, signer and
-staging/attestation guarantees as main CI. A successful image build alone is not
+digest/attestation guarantees as main CI. A successful image build alone is not
 a successful quality check.
 
 Prepare all prod images and SHA tags before creating a lightweight Git tag, then

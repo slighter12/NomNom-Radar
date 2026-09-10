@@ -119,12 +119,12 @@ its exact commit when images are missing, including changelog-only commits.
 
 CI remains in `ci.yml`, also callable by Version Images as a reusable workflow,
 preserving the attestation signer used by older images.
-Each target is built through `docker/build-push-action` to a run-scoped staging
-tag. CI attests the action's exact digest, verifies it, and only then adds the
-short SHA tag. Staging tags expire under the existing cleanup policy. Existing
-valid images are reused; interrupted publication can build missing targets.
-An existing tag without valid provenance is rejected rather than re-attested.
-All three targets must have valid images before a candidate can be released.
+Each target is pushed through `docker/build-push-action` by digest without a
+temporary tag. CI attests the action's exact digest, verifies it, and only then
+adds the short SHA tag. Existing valid images are reused; interrupted
+publication can build missing targets. An existing tag without valid provenance
+is rejected rather than re-attested. All three targets must have valid images
+before a candidate can be released.
 
 ### Tag mutability and retention
 
@@ -138,8 +138,8 @@ Stable `vX.Y.Z` tags in the prod registry use the existing GCP version-retention
 rule. Untagged-by-version releases remain subject to current cleanup. Recovery
 is available only while the exact images and valid provenance remain retained;
 retention is not changed by these workflows. See the
-[attestation decision](adr/0001-attested-candidate-images.md) for the staging
-and credential threat model.
+[attestation decision](adr/0001-attested-candidate-images.md) for the digest
+publication and credential threat model.
 
 ### Workflow ownership
 
@@ -460,10 +460,11 @@ record this rollout before declaring readiness:
 - [ ] Candidate, release, operations, runtime, and scheduler identities exist
   with the scopes above.
 - [ ] Neither Artifact Registry repository enables immutable tags, and the
-  posture in "Tag mutability and retention" above still holds. CI leaves staging
-  tags for cleanup, including those from interrupted publication; retention
-  bounds their lifetime unless the image also carries a retained version tag. If
-  retention is ever changed to keep versions indefinitely, revisit this.
+  posture in "Tag mutability and retention" above still holds. CI pushes
+  untagged digests until attestation succeeds; interrupted publication leaves
+  no candidate tag. Retention bounds untagged digest lifetime unless the image
+  later carries a retained version tag. If retention is ever changed to keep
+  versions indefinitely, revisit this.
 - [ ] Required Google APIs are enabled and all three resources implement the
   `release-sha` label contract.
 - [ ] Dev latest after a documentation-only commit selects the
