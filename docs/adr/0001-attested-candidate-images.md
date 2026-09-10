@@ -1,13 +1,10 @@
 # Candidate images get their SHA tag only after attestation
 
-CI builds each candidate image to a run-scoped staging tag, resolves its exact
-digest, attests that digest, verifies the attestation, and only then adds the
-`:<7-character-commit-sha>` tag. The staging tag is then left to expire with its image
-version rather than deleted, because deleting it needs a permission the
-candidate identity deliberately does not hold. The obvious
-alternative — build and push straight to the SHA tag, then attest — is roughly
-twenty lines shorter, and it is what a reader will be tempted to collapse this
-back into.
+CI pushes each candidate image by digest without a tag, attests that digest,
+verifies the attestation, and only then adds the `:<7-character-commit-sha>`
+tag. The obvious alternative — build and push straight to the SHA tag, then
+attest — is roughly twenty lines shorter, and it is what a reader will be
+tempted to collapse this back into.
 
 ## Why
 
@@ -29,9 +26,8 @@ by design. Because tags here are mutable, the commit is not permanently lost —
 but removing the tag needs `artifactregistry.tags.delete`, which the candidate
 identity does not hold. Recovery therefore stops being automatic and becomes a
 registry-admin break-glass action, or a quarantined SHA and a fresh
-release-impacting commit. The staging tag exists so that an interrupted run
-leaves a throwaway tag that nothing consults, instead of a published one that
-requires a privileged human to clean up.
+release-impacting commit. A digest-only push leaves no candidate tag for the
+resolver to consult, so an interrupted run can safely build again.
 
 ## Consequences
 
@@ -42,7 +38,7 @@ repositories depend on, so it is not a free hardening step.
 
 Moving the candidate publisher to Workload Identity Federation would weaken the
 first reason considerably but leaves the second one untouched. Do not treat WIF
-adoption as grounds for collapsing the staging step.
+adoption as grounds for publishing the SHA tag before attestation.
 
 The Actions-first workflow preserves this sequence and keeps `ci.yml` as the
 signer identity, including when invoked as a reusable workflow by version
