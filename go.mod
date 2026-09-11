@@ -28,7 +28,7 @@ require (
 	golang.org/x/crypto v0.56.0
 	golang.org/x/net v0.58.0
 	golang.org/x/time v0.16.0
-	google.golang.org/api v0.295.0
+	google.golang.org/api v0.297.0
 	gorm.io/driver/postgres v1.6.2
 	gorm.io/gen v0.3.29
 	gorm.io/gorm v1.31.2
