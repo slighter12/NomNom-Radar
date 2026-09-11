@@ -5,7 +5,7 @@ go 1.26.7
 require (
 	cloud.google.com/go/pubsub/v2 v2.7.0
 	firebase.google.com/go/v4 v4.21.0
-	github.com/go-playground/validator/v10 v10.30.3
+	github.com/go-playground/validator/v10 v10.30.4
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
