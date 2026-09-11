@@ -5,7 +5,7 @@ go 1.26.7
 require (
 	cloud.google.com/go/pubsub/v2 v2.7.0
 	firebase.google.com/go/v4 v4.21.0
-	github.com/go-playground/validator/v10 v10.30.3
+	github.com/go-playground/validator/v10 v10.30.4
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
@@ -25,9 +25,9 @@ require (
 	github.com/yeqown/go-qrcode/writer/standard v1.4.0
 	go.uber.org/fx v1.24.0
 	gocloud.dev v0.46.0
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 	golang.org/x/net v0.58.0
-	golang.org/x/time v0.15.0
+	golang.org/x/time v0.16.0
 	google.golang.org/api v0.297.0
 	gorm.io/driver/postgres v1.6.2
 	gorm.io/gen v0.3.29
