@@ -99,12 +99,14 @@ func waitForListener(t *testing.T, echoServer *echo.Echo) string {
 		if ln := echoServer.Listener; ln != nil {
 			tcpAddr, ok := ln.Addr().(*net.TCPAddr)
 			require.True(t, ok, "listener address should be TCP")
+
 			return "http://" + net.JoinHostPort("127.0.0.1", strconv.Itoa(tcpAddr.Port)) + "/protocol-probe"
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
 
 	t.Fatal("server did not start listening")
+
 	return ""
 }
 
@@ -123,5 +125,6 @@ func getWithProtocols(t *testing.T, url string, protocols *http.Protocols) *http
 
 	resp, err := client.Do(req)
 	require.NoError(t, err)
+
 	return resp
 }
