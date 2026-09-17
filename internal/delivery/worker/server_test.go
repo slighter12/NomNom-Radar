@@ -26,14 +26,13 @@ func TestServeHTTP1AndUnencryptedHTTP2(t *testing.T) {
 	})
 
 	cfg := &config.Config{}
-	cfg.HTTP.Port = 0
 	srv := &workerServer{
 		cfg:    cfg,
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		server: echoServer,
 	}
 
-	url := startServer(t, srv, echoServer)
+	url := startServer(t, srv, cfg)
 
 	t.Run("http1", func(t *testing.T) {
 		var protocols http.Protocols
@@ -67,8 +66,16 @@ type protocolServer interface {
 	stop(context.Context) error
 }
 
-func startServer(t *testing.T, srv protocolServer, echoServer *echo.Echo) string {
+func startServer(t *testing.T, srv protocolServer, cfg *config.Config) string {
 	t.Helper()
+
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	port := ln.Addr().(*net.TCPAddr).Port
+	require.NoError(t, ln.Close())
+	cfg.HTTP.Port = port
+
+	url := "http://" + net.JoinHostPort("127.0.0.1", strconv.Itoa(port)) + "/protocol-probe"
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -88,26 +95,40 @@ func startServer(t *testing.T, srv protocolServer, echoServer *echo.Echo) string
 		}
 	})
 
-	return waitForListener(t, echoServer)
+	waitUntilReady(t, url)
+
+	return url
 }
 
-func waitForListener(t *testing.T, echoServer *echo.Echo) string {
+func waitUntilReady(t *testing.T, url string) {
 	t.Helper()
+
+	var protocols http.Protocols
+	protocols.SetHTTP1(true)
+	client := &http.Client{
+		Timeout: 100 * time.Millisecond,
+		Transport: &http.Transport{
+			Protocols: &protocols,
+		},
+	}
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if ln := echoServer.Listener; ln != nil {
-			tcpAddr, ok := ln.Addr().(*net.TCPAddr)
-			require.True(t, ok, "listener address should be TCP")
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+		require.NoError(t, err)
 
-			return "http://" + net.JoinHostPort("127.0.0.1", strconv.Itoa(tcpAddr.Port)) + "/protocol-probe"
+		resp, err := client.Do(req)
+		if err == nil {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			require.NoError(t, resp.Body.Close())
+
+			return
 		}
+
 		time.Sleep(5 * time.Millisecond)
 	}
 
-	t.Fatal("server did not start listening")
-
-	return ""
+	t.Fatal("server did not become ready")
 }
 
 func getWithProtocols(t *testing.T, url string, protocols *http.Protocols) *http.Response {
