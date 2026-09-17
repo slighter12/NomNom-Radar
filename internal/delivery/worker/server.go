@@ -18,7 +18,6 @@ import (
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"go.uber.org/fx"
-	"golang.org/x/net/http2"
 )
 
 type workerServer struct {
@@ -93,10 +92,15 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 func (s *workerServer) Serve(ctx context.Context) error {
 	hostPort := net.JoinHostPort("0.0.0.0", strconv.Itoa(s.cfg.HTTP.Port))
 	s.logger.Info("Starting Worker HTTP server", slog.String("host_port", hostPort))
-	h2Server := &http2.Server{
-		IdleTimeout: s.cfg.HTTP.Timeouts.IdleTimeout,
-	}
-	if err := s.server.StartH2CServer(hostPort, h2Server); err != nil && !errors.Is(err, http.ErrServerClosed) {
+
+	// Serve HTTP/1 and unencrypted HTTP/2 (h2c) on the same port via the
+	// standard library, avoiding the deprecated golang.org/x/net/http2 API.
+	var protocols http.Protocols
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+	s.server.Server.Protocols = &protocols
+
+	if err := s.server.Start(hostPort); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 

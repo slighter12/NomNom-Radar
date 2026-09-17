@@ -7,7 +7,7 @@ import (
 	"github.com/slighter12/go-lib/database/postgres"
 )
 
-func TestApplyPostgresMasterDSNFromEnv_InvalidSupabaseDSN_ReturnsError(t *testing.T) {
+func TestApplyPostgresMasterDSNFromEnv_InvalidDSN_ReturnsError(t *testing.T) {
 	cfg := &Config{
 		Postgres: &postgres.DBConn{
 			Master: postgres.ConnectionConfig{
@@ -20,10 +20,11 @@ func TestApplyPostgresMasterDSNFromEnv_InvalidSupabaseDSN_ReturnsError(t *testin
 		},
 	}
 
-	// Mimic a placeholder DSN value copied directly from docs.
+	// pgx 5.11 parses URIs with a libpq-compatible parser, not net/url.
+	// Square brackets in a password are valid; a broken percent-escape is not.
 	t.Setenv(
 		postgresMasterDSNEnvKey,
-		"postgresql://postgres.fsiewohfvathirorxhau:[YOUR-PASSWORD]@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres?sslmode=require",
+		"postgresql://postgres.fsiewohfvathirorxhau:p%ZZword@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres?sslmode=require",
 	)
 
 	err := applyPostgresMasterDSNFromEnv(cfg)
@@ -81,5 +82,34 @@ func TestApplyPostgresMasterDSNFromEnv_ValidSupabaseDSN_OverridesMasterConfig(t 
 	}
 	if got := cfg.Postgres.Database; got != "postgres" {
 		t.Fatalf("unexpected database: got %q", got)
+	}
+}
+
+func TestApplyPostgresMasterDSNFromEnv_LiteralBracketPassword_OverridesMasterConfig(t *testing.T) {
+	cfg := &Config{
+		Postgres: &postgres.DBConn{
+			Master: postgres.ConnectionConfig{
+				Host:     "localhost",
+				Port:     "5432",
+				UserName: "user",
+				Password: "password",
+			},
+			Database: "auth_db",
+		},
+	}
+
+	// Unencoded '[' / ']' in userinfo are rejected by net/url but accepted by
+	// pgx 5.11's libpq-compatible URI parser as a literal password.
+	t.Setenv(
+		postgresMasterDSNEnvKey,
+		"postgresql://postgres.fsiewohfvathirorxhau:[YOUR-PASSWORD]@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres?sslmode=require",
+	)
+
+	if err := applyPostgresMasterDSNFromEnv(cfg); err != nil {
+		t.Fatalf("applyPostgresMasterDSNFromEnv returned error: %v", err)
+	}
+
+	if got := cfg.Postgres.Master.Password; got != "[YOUR-PASSWORD]" {
+		t.Fatalf("unexpected password: got %q", got)
 	}
 }
