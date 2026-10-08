@@ -45,7 +45,7 @@ jobs:
       # Tests also use host kubectl and fake CLIs. Reuse the action's exact yq
       # binary so local and action rendering exercise the same expressions.
       - name: Provide yq for release helper checks
-        uses: mikefarah/yq@c14f446382944492701b16c1ddb48bb9dbe683e3 # v4.53.6; upstream image pinned by digest
+        uses: mikefarah/yq@504fc38780cc46be8444ea1b72fb55919fc0bfb0 # v4.53.6; upstream image pinned by digest
         with:
           cmd: mkdir -p .release-tools && cp /usr/bin/yq .release-tools/yq
 
