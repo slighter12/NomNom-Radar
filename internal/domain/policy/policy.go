@@ -42,12 +42,8 @@ func DefaultRefreshTokenPolicy() RefreshTokenPolicy {
 // LockoutMinutes computes lockout duration for the next lockout event.
 // lockoutCount is the historical lockout count before increment.
 func (p LoginThrottlePolicy) LockoutMinutes(lockoutCount int) int {
-	if lockoutCount < 0 {
-		lockoutCount = 0
-	}
-
 	minutes := p.InitialLockoutMinutes
-	for i := 0; i < lockoutCount; i++ {
+	for range lockoutCount {
 		minutes *= p.BackoffMultiplier
 		if minutes >= p.MaxLockoutMinutes {
 			return p.MaxLockoutMinutes

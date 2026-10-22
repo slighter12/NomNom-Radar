@@ -21,8 +21,7 @@ func isUniqueConstraintViolation(err error) bool {
 		return true
 	}
 
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23505" {
 		return true
 	}
 

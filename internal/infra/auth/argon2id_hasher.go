@@ -306,13 +306,17 @@ func parseParameters(raw string) (uint32, uint32, uint8, error) {
 	)
 
 	for _, value := range values {
-		switch {
-		case strings.HasPrefix(value, "m="):
-			memory, err = strconv.ParseUint(strings.TrimPrefix(value, "m="), 10, 32)
-		case strings.HasPrefix(value, "t="):
-			iterations, err = strconv.ParseUint(strings.TrimPrefix(value, "t="), 10, 32)
-		case strings.HasPrefix(value, "p="):
-			parallelism, err = strconv.ParseUint(strings.TrimPrefix(value, "p="), 10, 8)
+		key, raw, ok := strings.Cut(value, "=")
+		if !ok {
+			return 0, 0, 0, errors.New("invalid parameter key")
+		}
+		switch key {
+		case "m":
+			memory, err = strconv.ParseUint(raw, 10, 32)
+		case "t":
+			iterations, err = strconv.ParseUint(raw, 10, 32)
+		case "p":
+			parallelism, err = strconv.ParseUint(raw, 10, 8)
 		default:
 			return 0, 0, 0, errors.New("invalid parameter key")
 		}

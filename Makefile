@@ -49,8 +49,8 @@ test-usecase-race: ## launch usecase tests with race detection
 lint: ## lints the entire codebase
 	@golangci-lint run ./... --config=./.golangci.yaml
 
-modernize: ## apply go modernize fixes (requires Go toolchain)
-	go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -fix ./...
+modernize: ## apply go fix modernizers for the go.mod Go version
+	go fix ./...
 
 #######
 # sec #
