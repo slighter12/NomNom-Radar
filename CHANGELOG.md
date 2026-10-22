@@ -4,6 +4,22 @@ User-visible changes and release-operation requirements are recorded here.
 Stable versions use `## [X.Y.Z] - YYYY-MM-DD` headings and matching `vX.Y.Z`
 Git tags. A version entry identifies content, not a successful prod deployment.
 
+## [0.0.2] - 2026-10-22
+
+### Changed
+
+- Build with Go 1.27.3 to pick up standard library vulnerability fixes.
+- Serve unencrypted HTTP/2 (h2c) alongside HTTP/1 on the API and worker through
+  the standard library `http.Server` instead of the deprecated
+  `golang.org/x/net/http2` server.
+- Push candidate images by digest.
+- Update Go module and GitHub Actions dependencies.
+
+### Release Notes
+
+- No database migrations or Cloud Run template changes since 0.0.1; deploy with
+  migrations disabled.
+
 ## [0.0.1] - 2026-09-10
 
 Initial documented backend baseline, assembled from the current
