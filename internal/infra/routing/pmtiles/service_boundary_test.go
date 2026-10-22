@@ -441,14 +441,12 @@ func TestTileCache_Concurrent(t *testing.T) {
 			if source == target {
 				continue
 			}
-			wg.Add(1)
-			go func(src, tgt usecase.Coordinate) {
-				defer wg.Done()
-				_, err := svc.CalculateDistance(ctx, src, tgt)
+			wg.Go(func() {
+				_, err := svc.CalculateDistance(ctx, source, target)
 				if err != nil {
 					errChan <- err
 				}
-			}(source, target)
+			})
 		}
 	}
 

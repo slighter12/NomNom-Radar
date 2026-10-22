@@ -232,16 +232,14 @@ func (s *jwtService) generateToken(
 	linkingMetadata *linkingTokenMetadata,
 ) (string, error) {
 	claims := service.Claims{
-		UserID: userID,
-		Roles:  roles,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			NotBefore: jwt.NewNumericDate(time.Now()),
-			Subject:   userID.String(),
-			ID:        uuid.NewString(),
-		},
-		Type: tokenType,
+		UserID:    userID,
+		Roles:     roles,
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
+		NotBefore: jwt.NewNumericDate(time.Now()),
+		Subject:   userID.String(),
+		ID:        uuid.NewString(),
+		Type:      tokenType,
 	}
 	if linkingMetadata != nil {
 		claims.Provider = linkingMetadata.Provider

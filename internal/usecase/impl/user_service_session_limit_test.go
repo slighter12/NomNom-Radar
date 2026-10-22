@@ -520,10 +520,7 @@ func TestUserService_Login_EnforcesSessionLimit_Concurrent(t *testing.T) {
 	var otherErrorCount atomic.Int64
 
 	for i := range concurrentLogins {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-
+		wg.Go(func() {
 			loginCtx := context.WithValue(ctx, sessionLimitLoginContextKey, i)
 			out, err := uc.Login(loginCtx, input)
 			switch {
@@ -539,7 +536,7 @@ func TestUserService_Login_EnforcesSessionLimit_Concurrent(t *testing.T) {
 			default:
 				otherErrorCount.Add(1)
 			}
-		}(i)
+		})
 	}
 
 	wg.Wait()

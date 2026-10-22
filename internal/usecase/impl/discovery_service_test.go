@@ -256,8 +256,8 @@ func TestDiscoveryService_SearchPublicMerchants_RejectsPartialCoordinates(t *tes
 func appErrorDetails(t *testing.T, err error) string {
 	t.Helper()
 
-	var appErr domainerrors.AppError
-	require.True(t, errors.As(err, &appErr))
+	appErr, ok := errors.AsType[domainerrors.AppError](err)
+	require.True(t, ok)
 
 	return appErr.Details()
 }
