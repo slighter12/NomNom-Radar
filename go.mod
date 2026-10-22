@@ -1,6 +1,6 @@
 module radar
 
-go 1.27.1
+go 1.27.3
 
 require (
 	cloud.google.com/go/pubsub/v2 v2.7.0
