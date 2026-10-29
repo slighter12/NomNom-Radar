@@ -14,7 +14,7 @@ require (
 	github.com/knadh/koanf/providers/env/v2 v2.0.2
 	github.com/knadh/koanf/providers/file v1.2.1
 	github.com/knadh/koanf/v2 v2.4.1
-	github.com/labstack/echo/v4 v4.16.1
+	github.com/labstack/echo/v4 v4.16.2
 	github.com/makiuchi-d/gozxing v0.1.1
 	github.com/paulmach/orb v0.13.0
 	github.com/protomaps/go-pmtiles v1.31.2
