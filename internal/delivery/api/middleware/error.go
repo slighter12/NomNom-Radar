@@ -73,7 +73,7 @@ func (m *ErrorMiddleware) HandleErrors(next echo.HandlerFunc) echo.HandlerFunc {
 }
 
 // RecoverPanics converts a panic in an inner middleware or handler into an
-// error carrying the panic stack. Register it inside HandleErrors so the panic
+// INTERNAL_ERROR carrying the panic value and stack. Register it inside HandleErrors so the panic
 // becomes the canonical 500 response before the request logger records it.
 func (m *ErrorMiddleware) RecoverPanics(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) (err error) {
@@ -87,11 +87,15 @@ func (m *ErrorMiddleware) RecoverPanics(next echo.HandlerFunc) echo.HandlerFunc 
 				panic(recovered)
 			}
 
+			var panicErr error
 			if isErr {
-				err = stack.With(fmt.Errorf("recovered panic: %w", recoveredErr))
+				panicErr = fmt.Errorf("recovered panic: %w", recoveredErr)
 			} else {
-				err = stack.With(fmt.Errorf("recovered panic: %v", recovered))
+				panicErr = fmt.Errorf("recovered panic: %v", recovered)
 			}
+			// Report every panic as INTERNAL_ERROR while keeping the panic value
+			// and its stack in the error tree for the source error log.
+			err = stack.Replace(stack.With(panicErr), domainerrors.ErrInternalError)
 		}()
 
 		return next(c)
