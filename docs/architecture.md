@@ -36,7 +36,8 @@ PostgreSQL
 Current API areas:
 
 - Public auth: email registration/login, refresh/logout, Google OAuth callback, merchant onboarding, provider linking.
-- Authenticated user: profile, user locations, devices, device health, subscriptions, QR subscription.
+- Authenticated account (Consumer or Merchant): profile, devices, device health.
+- Authenticated Consumer only: user locations, subscriptions, QR subscription.
 - Discovery: active categories, subcategories, hubs, and authenticated consumer search over publicly visible merchants.
 - Merchant: locations, menu, QR, verification, discovery profile, location notifications, notification history.
 
