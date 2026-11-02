@@ -2,13 +2,16 @@ package middleware
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
+	"net/http"
 
 	"radar/internal/delivery"
 	"radar/internal/delivery/api/response"
 	domainerrors "radar/internal/domain/errors"
 
 	"github.com/labstack/echo/v4"
+	"github.com/slighter12/go-lib/errors/stack"
 )
 
 // ErrorMiddleware handles errors in the HTTP pipeline
@@ -66,6 +69,32 @@ func (m *ErrorMiddleware) HandleErrors(next echo.HandlerFunc) echo.HandlerFunc {
 		m.HandleHTTPError(err, c)
 
 		return nil
+	}
+}
+
+// RecoverPanics converts a panic in an inner middleware or handler into an
+// error carrying the panic stack. Register it inside HandleErrors so the panic
+// becomes the canonical 500 response before the request logger records it.
+func (m *ErrorMiddleware) RecoverPanics(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) (err error) {
+		defer func() {
+			recovered := recover()
+			if recovered == nil {
+				return
+			}
+			recoveredErr, isErr := recovered.(error)
+			if isErr && errors.Is(recoveredErr, http.ErrAbortHandler) {
+				panic(recovered)
+			}
+
+			if isErr {
+				err = stack.With(fmt.Errorf("recovered panic: %w", recoveredErr))
+			} else {
+				err = stack.With(fmt.Errorf("recovered panic: %v", recovered))
+			}
+		}()
+
+		return next(c)
 	}
 }
 

@@ -63,8 +63,9 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 	requestLogger := apimiddleware.NewRequestLoggerMiddleware(params.Logger, params.Cfg)
 	echoServer.Use(requestLogger.Log)
 
-	// 4. Convert returned errors into HTTP responses inside the middleware chain.
+	// 4. Convert returned errors and inner panics into HTTP responses inside the middleware chain.
 	echoServer.Use(errorMiddleware.HandleErrors)
+	echoServer.Use(errorMiddleware.RecoverPanics)
 
 	// 5. Domain guard middleware
 	domainGuard := apimiddleware.NewDomainGuardMiddleware(params.Cfg)
