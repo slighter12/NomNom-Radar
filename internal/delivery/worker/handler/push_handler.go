@@ -161,15 +161,16 @@ func (h *PushHandler) HandlePush(c echo.Context) error {
 	return c.NoContent(http.StatusOK)
 }
 
-// extractRequestID extracts request ID from message attributes, event, or generates a new one
+// extractRequestID extracts request ID from message attributes, event, or generates a new one.
+// Message and event IDs are used only when they pass the shared request ID format rule.
 func (h *PushHandler) extractRequestID(ctx context.Context, pushMsg *PubSubMessage, event *service.NotificationEvent) string {
 	// 1. Try message attribute request_id (from Pub/Sub)
-	if requestID, ok := pushMsg.Message.Attributes["request_id"]; ok && requestID != "" {
+	if requestID := pushMsg.Message.Attributes["request_id"]; observability.IsAcceptableRequestID(requestID) {
 		return requestID
 	}
 
 	// 2. Try event field (from JSON payload)
-	if event.RequestID != "" {
+	if observability.IsAcceptableRequestID(event.RequestID) {
 		return event.RequestID
 	}
 
