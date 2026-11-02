@@ -230,6 +230,80 @@ func TestErrorMiddleware_HandleHTTPError_RedactsTokenLikeRequestFields(t *testin
 	assert.NotContains(t, logOutput, "nested-secret")
 }
 
+func TestErrorMiddleware_HandleHTTPError_RedactsLocationAndNameFields(t *testing.T) {
+	e := echo.New()
+	body := strings.NewReader(`{
+		"full_address":"1 Secret Rd",
+		"lng":121.5,
+		"location_name":"Grandma House",
+		"name":"Alice Chen",
+		"home_address":"2 Hidden Ln",
+		"contact_email":"contact-secret",
+		"contact_phone":"0912345678",
+		"nested":{
+			"full_address":"3 Nested St",
+			"lng":"121.6",
+			"items":[{"name":"Bob Lin","location_name":"Night Office","home-address":"4 Dash Ave"}]
+		},
+		"qr_data":"radar://subscribe/visible-merchant",
+		"category_id":"category-visible"
+	}`)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/locations/user?lng=121.7&page=2", body)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
+	errorMiddleware := NewErrorMiddleware(logger)
+	handler := requestLogger.Log(errorMiddleware.HandleErrors(CaptureRequestBodyForErrorLog(func(c echo.Context) error {
+		return domainerrors.ErrValidationFailed
+	})))
+
+	err := handler(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	record := decodeLogRecord(t, logs.String())
+	requestLog, ok := record["request"].(map[string]any)
+	require.True(t, ok)
+	bodyLog, ok := requestLog["body"].(map[string]any)
+	require.True(t, ok)
+	queryLog, ok := requestLog["query"].(map[string]any)
+	require.True(t, ok)
+
+	for _, key := range []string{"full_address", "lng", "location_name", "name", "home_address", "contact_email", "contact_phone"} {
+		assert.Equal(t, redactedLogValue, bodyLog[key], key)
+	}
+	nestedLog, ok := bodyLog["nested"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, redactedLogValue, nestedLog["full_address"])
+	assert.Equal(t, redactedLogValue, nestedLog["lng"])
+	itemsLog, ok := nestedLog["items"].([]any)
+	require.True(t, ok)
+	require.Len(t, itemsLog, 1)
+	itemLog, ok := itemsLog[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, redactedLogValue, itemLog["name"])
+	assert.Equal(t, redactedLogValue, itemLog["location_name"])
+	assert.Equal(t, redactedLogValue, itemLog["home-address"])
+
+	assert.Equal(t, redactedLogValue, queryLog["lng"])
+	assert.Equal(t, "2", queryLog["page"])
+	assert.Equal(t, "radar://subscribe/visible-merchant", bodyLog["qr_data"])
+	assert.Equal(t, "category-visible", bodyLog["category_id"])
+
+	logOutput := logs.String()
+	for _, secret := range []string{
+		"Secret Rd", "121.5", "Grandma House", "Alice Chen", "Hidden Ln", "contact-secret", "0912345678",
+		"Nested St", "121.6", "Bob Lin", "Night Office", "Dash Ave", "121.7",
+	} {
+		assert.NotContains(t, logOutput, secret)
+	}
+}
+
 func TestErrorMiddleware_HandleHTTPError_RedactsInvalidJSONBody(t *testing.T) {
 	e := echo.New()
 	body := strings.NewReader(`{"email":"owner@example.com","password":"Password123!","token":"secret-token"`)
