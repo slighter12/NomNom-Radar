@@ -77,6 +77,14 @@ Device reliability is part of the v1 trust boundary:
 - `cmd/device-cleanup` soft-deletes permanently stale device records.
 - Clients can query device health and rebind stale or invalid devices through the register path. See `docs/reference/device-health-api.md` for the active client contract.
 
+## Auth Trust Boundary
+
+These current behaviors are accepted trade-offs, not defects. Revisit them when the stated condition changes.
+
+- Access tokens are stateless. `/api/v1` authentication verifies the token signature, type, and expiry without a database lookup, so logout and session revocation stop refresh but leave issued access tokens valid until they expire (default TTL 15 minutes). Role changes take effect at the next refresh. Revisit when shared infrastructure such as Redis or Valkey is available for revocation checks.
+- Ownership violations return HTTP `403` with a resource-specific code rather than `404`. Resource IDs are random UUIDs, so distinguishing "not yours" from "not found" does not enable practical enumeration, and the codes are part of the API contract.
+- The authenticated API rate limiter runs after authentication and is keyed by user ID. Requests with missing or invalid tokens are rejected before rate limiting; rejecting them costs one HMAC verification.
+
 ## Data and Integrations
 
 Core dependencies:

@@ -7,6 +7,22 @@ This glossary exists because several words in this repository mean more than
 one thing depending on where you are standing, and each collision has already
 produced a real defect.
 
+## Accounts and roles
+
+**Account**:
+One sign-in identity. An account may hold a consumer profile, a merchant
+profile, or both; its roles are derived from which profiles it holds.
+_Avoid_: user (when meaning any account)
+
+**Consumer**:
+An account that holds a consumer profile. Its role value in tokens is `user`.
+_Avoid_: user (when meaning the role), customer
+
+**Merchant**:
+An account that holds a merchant profile. Its role value in tokens is
+`merchant`.
+_Avoid_: vendor (when meaning the account), store
+
 ## Release and delivery
 
 **Target**:
