@@ -39,3 +39,5 @@ Error responses use a stable machine-readable code and a client-safe message:
 ## Request IDs
 
 Clients should retain `meta.request_id` when reporting failures or unexpected behavior. The same correlation ID is used by the server's request lifecycle logging.
+
+Clients may send an `X-Request-Id` header. The API server and the geo worker keep it only when it is 1-128 characters of ASCII letters, digits, `.`, `_`, or `-`; otherwise they replace it with a new UUID without returning an error. The chosen ID is echoed in the `X-Request-Id` response header and `meta.request_id`.

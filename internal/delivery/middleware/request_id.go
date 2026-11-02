@@ -9,6 +9,9 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// maxRequestIDLength bounds client-supplied request IDs echoed into headers, bodies, and logs.
+const maxRequestIDLength = 128
+
 // RequestIDMiddleware generates or extracts a unique Request ID for each request and creates a request-scoped logger
 type RequestIDMiddleware struct {
 	logger *slog.Logger
@@ -27,8 +30,8 @@ func (m *RequestIDMiddleware) Process(next echo.HandlerFunc) echo.HandlerFunc {
 		// Attempt to get Request ID from request headers
 		requestID := c.Request().Header.Get(observability.HeaderXRequestID)
 
-		// Generate a new Request ID if not provided by the client
-		if requestID == "" {
+		// Generate a new Request ID when the client omits it or sends an unsafe value
+		if !isAcceptableRequestID(requestID) {
 			requestID = uuid.New().String()
 		}
 
@@ -46,4 +49,23 @@ func (m *RequestIDMiddleware) Process(next echo.HandlerFunc) echo.HandlerFunc {
 
 		return next(c)
 	}
+}
+
+// isAcceptableRequestID reports whether a client-supplied request ID is
+// 1-128 characters drawn only from ASCII letters, digits, '.', '_', and '-'.
+func isAcceptableRequestID(requestID string) bool {
+	if requestID == "" || len(requestID) > maxRequestIDLength {
+		return false
+	}
+
+	for i := 0; i < len(requestID); i++ {
+		ch := requestID[i]
+		switch {
+		case ch >= 'a' && ch <= 'z', ch >= 'A' && ch <= 'Z', ch >= '0' && ch <= '9', ch == '.', ch == '_', ch == '-':
+		default:
+			return false
+		}
+	}
+
+	return true
 }
