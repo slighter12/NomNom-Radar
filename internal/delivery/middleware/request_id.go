@@ -32,6 +32,9 @@ func (m *RequestIDMiddleware) Process(next echo.HandlerFunc) echo.HandlerFunc {
 			requestID = uuid.New().String()
 		}
 
+		// Overwrite the request header so later logging never sees a rejected original
+		c.Request().Header.Set(observability.HeaderXRequestID, requestID)
+
 		// Add Request ID to response headers
 		c.Response().Header().Set(observability.HeaderXRequestID, requestID)
 
