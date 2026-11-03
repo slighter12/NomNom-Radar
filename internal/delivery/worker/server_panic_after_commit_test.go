@@ -43,6 +43,7 @@ func TestWorkerServer_PanicAfterCommittedResponseLogsOneErrorRecord(t *testing.T
 			e.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/committed-panic", nil))
 
 			require.Equal(t, http.StatusOK, rec.Code)
+			assert.Equal(t, "partial", rec.Body.String(), "no error envelope may follow a committed response")
 			output := slogOutput.String()
 			require.Equal(t, 1, strings.Count(output, "\n"), "want exactly one log record, got:\n%s", output)
 			var record map[string]any
