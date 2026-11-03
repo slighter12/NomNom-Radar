@@ -28,13 +28,15 @@ func NewErrorMiddleware(logger *slog.Logger) *ErrorMiddleware {
 
 // HandleHTTPError handles errors as Echo's HTTPErrorHandler
 func (m *ErrorMiddleware) HandleHTTPError(err error, c echo.Context) {
-	if c.Response().Committed {
-		return
-	}
 	if errors.Is(err, delivery.ErrResponseHandled) {
 		return
 	}
+	// Record the source error even when the response is already committed so
+	// the request logger still reports the failure.
 	setSourceErrorLog(c, err)
+	if c.Response().Committed {
+		return
+	}
 
 	// Attempt to parse as AppError
 	if appErr, ok := errors.AsType[domainerrors.AppError](err); ok {
