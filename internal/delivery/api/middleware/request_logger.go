@@ -75,16 +75,7 @@ func (m *RequestLoggerMiddleware) logRequest(c echo.Context, start time.Time) {
 	level := slog.LevelInfo
 	if status >= http.StatusBadRequest || failedAfterCommit {
 		level = slog.LevelWarn
-		attrs = append(attrs, slog.Any("request", buildSanitizedRequestLog(c)))
-		if status >= http.StatusBadRequest {
-			attrs = append(attrs, slog.Any("response_error", responseErrorLogFromContext(c, status)))
-		}
-		if hasSourceErr {
-			attrs = append(attrs, slog.String("source_error_type", sourceErr.Type))
-			if sourceErr.Message != "" {
-				attrs = append(attrs, slog.String("source_error_message", sourceErr.Message))
-			}
-		}
+		attrs = append(attrs, failureLogAttrs(c, status, sourceErr, hasSourceErr)...)
 	}
 	if status >= http.StatusInternalServerError || failedAfterCommit {
 		level = slog.LevelError
@@ -92,6 +83,23 @@ func (m *RequestLoggerMiddleware) logRequest(c echo.Context, start time.Time) {
 	}
 
 	m.logger.LogAttrs(c.Request().Context(), level, "HTTP request", attrs...)
+}
+
+// failureLogAttrs returns the sanitized request, response error, and source
+// error fields logged for a failed request.
+func failureLogAttrs(c echo.Context, status int, sourceErr sourceErrorLog, hasSourceErr bool) []slog.Attr {
+	attrs := []slog.Attr{slog.Any("request", buildSanitizedRequestLog(c))}
+	if status >= http.StatusBadRequest {
+		attrs = append(attrs, slog.Any("response_error", responseErrorLogFromContext(c, status)))
+	}
+	if hasSourceErr {
+		attrs = append(attrs, slog.String("source_error_type", sourceErr.Type))
+		if sourceErr.Message != "" {
+			attrs = append(attrs, slog.String("source_error_message", sourceErr.Message))
+		}
+	}
+
+	return attrs
 }
 
 func requestIDForLog(c echo.Context) string {
