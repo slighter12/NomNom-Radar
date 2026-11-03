@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -26,10 +27,10 @@ func TestWorkerServer_RecoveredPanicAlwaysMapsToInternalError(t *testing.T) {
 		value      any
 		wantSource string
 	}{
-		{name: "string", value: "string panic value", wantSource: "string panic value"},
-		{name: "plain error", value: errors.New("plain panic error"), wantSource: "plain panic error"},
-		{name: "app error", value: domainerrors.ErrValidationFailed, wantSource: domainerrors.ErrValidationFailed.Error()},
-		{name: "echo http error", value: echo.ErrForbidden, wantSource: echo.ErrForbidden.Error()},
+		{name: "string", value: "string panic value", wantSource: "recovered panic (string)"},
+		{name: "plain error", value: errors.New("plain panic error"), wantSource: "recovered panic (*errors.errorString)"},
+		{name: "app error", value: domainerrors.ErrValidationFailed, wantSource: fmt.Sprintf("recovered panic (%T)", domainerrors.ErrValidationFailed)},
+		{name: "echo http error", value: echo.ErrForbidden, wantSource: "recovered panic (*echo.HTTPError)"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var logs bytes.Buffer
@@ -46,12 +47,12 @@ func TestWorkerServer_RecoveredPanicAlwaysMapsToInternalError(t *testing.T) {
 			rec := httptest.NewRecorder()
 			e.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/panic-mapping", nil))
 
-			assertRecoveredPanicMappedToInternalError(t, rec, logs.String(), tc.wantSource)
+			assertRecoveredPanicMappedToInternalError(t, rec, logs.String(), tc.wantSource, "RecoveredPanicAlwaysMapsToInternalError")
 		})
 	}
 }
 
-func assertRecoveredPanicMappedToInternalError(t *testing.T, rec *httptest.ResponseRecorder, output, wantSource string) {
+func assertRecoveredPanicMappedToInternalError(t *testing.T, rec *httptest.ResponseRecorder, output, wantSource, stackFunc string) {
 	t.Helper()
 
 	require.Equal(t, http.StatusInternalServerError, rec.Code, rec.Body.String())
@@ -67,6 +68,6 @@ func assertRecoveredPanicMappedToInternalError(t *testing.T, rec *httptest.Respo
 	assert.Equal(t, "INTERNAL_ERROR", responseError["code"])
 	stackValue, ok := record["stack"].(string)
 	require.True(t, ok)
-	assert.Contains(t, stackValue, "RecoveredPanicAlwaysMapsToInternalError")
-	assert.Contains(t, record["source_error_message"], wantSource)
+	assert.Contains(t, stackValue, stackFunc)
+	assert.Equal(t, wantSource, record["source_error_message"])
 }

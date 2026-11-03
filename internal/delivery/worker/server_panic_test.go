@@ -80,6 +80,7 @@ func assertSinglePanicLifecycleLog(t *testing.T, output, requestID, panicFunc st
 	stackValue, ok := record["stack"].(string)
 	require.True(t, ok)
 	assert.Contains(t, stackValue, panicFunc)
-	assert.Contains(t, record["source_error_message"], "handler exploded")
+	assert.Equal(t, "recovered panic (string)", record["source_error_message"])
+	assert.NotContains(t, output, "handler exploded")
 	assert.NotContains(t, output, "panic-secret")
 }
