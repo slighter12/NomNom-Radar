@@ -343,6 +343,11 @@ func isSensitiveKey(key string) bool {
 	if strings.Contains(normalized, "token") {
 		return true
 	}
+	if strings.HasSuffix(normalized, "_address") ||
+		strings.HasSuffix(normalized, "_email") ||
+		strings.HasSuffix(normalized, "_phone") {
+		return true
+	}
 
 	switch normalized {
 	case "authorization",
@@ -360,12 +365,16 @@ func isSensitiveKey(key string) bool {
 		"email",
 		"phone",
 		"address",
+		"full_address",
+		"location_name",
+		"name",
 		"business_license",
 		"store_name",
 		"latitude",
 		"longitude",
 		"lat",
-		"lon":
+		"lon",
+		"lng":
 		return true
 	default:
 		return false

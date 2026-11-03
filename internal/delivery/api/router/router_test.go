@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -27,6 +28,7 @@ import (
 const (
 	testUserToken     = "user-token"
 	testMerchantToken = "merchant-token"
+	testDualRoleToken = "dual-role-token"
 	testRefreshToken  = "refresh-token"
 )
 
@@ -197,6 +199,98 @@ func (uc *routerTestUserUsecase) UnlinkGoogleAccount(context.Context, uuid.UUID)
 	return nil
 }
 
+type routerTestLocationUsecase struct{}
+
+func (uc *routerTestLocationUsecase) GetUserLocations(context.Context, uuid.UUID) ([]*entity.Address, error) {
+	return []*entity.Address{}, nil
+}
+
+func (uc *routerTestLocationUsecase) AddUserLocation(context.Context, uuid.UUID, *usecase.AddLocationInput) (*entity.Address, error) {
+	return &entity.Address{}, nil
+}
+
+func (uc *routerTestLocationUsecase) UpdateUserLocation(context.Context, uuid.UUID, uuid.UUID, *usecase.UpdateLocationInput) (*entity.Address, error) {
+	return &entity.Address{}, nil
+}
+
+func (uc *routerTestLocationUsecase) DeleteUserLocation(context.Context, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+func (uc *routerTestLocationUsecase) GetMerchantLocations(context.Context, uuid.UUID) ([]*entity.Address, error) {
+	return []*entity.Address{}, nil
+}
+
+func (uc *routerTestLocationUsecase) AddMerchantLocation(context.Context, uuid.UUID, *usecase.AddLocationInput) (*entity.Address, error) {
+	return &entity.Address{}, nil
+}
+
+func (uc *routerTestLocationUsecase) UpdateMerchantLocation(context.Context, uuid.UUID, uuid.UUID, *usecase.UpdateLocationInput) (*entity.Address, error) {
+	return &entity.Address{}, nil
+}
+
+func (uc *routerTestLocationUsecase) DeleteMerchantLocation(context.Context, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+type routerTestSubscriptionUsecase struct{}
+
+func (uc *routerTestSubscriptionUsecase) SubscribeToMerchant(
+	context.Context,
+	uuid.UUID,
+	uuid.UUID,
+	*usecase.DeviceInfo,
+) (*entity.UserMerchantSubscription, error) {
+	return &entity.UserMerchantSubscription{}, nil
+}
+
+func (uc *routerTestSubscriptionUsecase) UnsubscribeFromMerchant(context.Context, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+func (uc *routerTestSubscriptionUsecase) GetUserSubscriptions(context.Context, uuid.UUID) ([]*entity.UserMerchantSubscription, error) {
+	return []*entity.UserMerchantSubscription{}, nil
+}
+
+func (uc *routerTestSubscriptionUsecase) GetMerchantSubscribers(context.Context, uuid.UUID) ([]*entity.UserMerchantSubscription, error) {
+	return []*entity.UserMerchantSubscription{}, nil
+}
+
+func (uc *routerTestSubscriptionUsecase) GenerateSubscriptionQR(context.Context, uuid.UUID) ([]byte, error) {
+	return []byte{}, nil
+}
+
+func (uc *routerTestSubscriptionUsecase) ProcessQRSubscription(
+	context.Context,
+	uuid.UUID,
+	string,
+	*usecase.DeviceInfo,
+) (*entity.UserMerchantSubscription, error) {
+	return &entity.UserMerchantSubscription{}, nil
+}
+
+type routerTestDeviceUsecase struct{}
+
+func (uc *routerTestDeviceUsecase) RegisterDevice(context.Context, uuid.UUID, *usecase.DeviceInfo) (*entity.UserDevice, error) {
+	return &entity.UserDevice{}, nil
+}
+
+func (uc *routerTestDeviceUsecase) UpdateFCMToken(context.Context, uuid.UUID, uuid.UUID, string) error {
+	return nil
+}
+
+func (uc *routerTestDeviceUsecase) GetUserDevices(context.Context, uuid.UUID) ([]*entity.UserDevice, error) {
+	return []*entity.UserDevice{}, nil
+}
+
+func (uc *routerTestDeviceUsecase) GetDeviceHealth(context.Context, uuid.UUID) ([]*usecase.DeviceHealthInfo, error) {
+	return []*usecase.DeviceHealthInfo{}, nil
+}
+
+func (uc *routerTestDeviceUsecase) DeactivateDevice(context.Context, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
 func TestRouter_DiscoveryValuesAllowMerchantRole(t *testing.T) {
 	e := newRouterTestEcho()
 
@@ -273,6 +367,77 @@ func TestRouter_PublicMerchantSearchStillRequiresUserRole(t *testing.T) {
 
 	require.Equal(t, http.StatusForbidden, rec.Code)
 	assert.Contains(t, rec.Body.String(), `"code":"FORBIDDEN"`)
+}
+
+type routerTestRoute struct {
+	method string
+	path   string
+	body   string
+}
+
+func consumerOnlyRoutes() []routerTestRoute {
+	locationID := uuid.NewString()
+	merchantID := uuid.NewString()
+
+	return []routerTestRoute{
+		{
+			method: http.MethodPost,
+			path:   "/api/v1/locations/user",
+			body:   `{"label":"Home","full_address":"1 Test Rd","latitude":25.03,"longitude":121.56}`,
+		},
+		{method: http.MethodGet, path: "/api/v1/locations/user"},
+		{method: http.MethodPut, path: "/api/v1/locations/user/" + locationID, body: `{"label":"Work"}`},
+		{method: http.MethodDelete, path: "/api/v1/locations/user/" + locationID},
+		{method: http.MethodPost, path: "/api/v1/subscriptions", body: `{"merchant_id":"` + merchantID + `"}`},
+		{method: http.MethodGet, path: "/api/v1/subscriptions"},
+		{method: http.MethodDelete, path: "/api/v1/subscriptions/" + merchantID},
+		{method: http.MethodPost, path: "/api/v1/subscriptions/qr", body: `{"qr_data":"radar://subscribe/` + merchantID + `"}`},
+	}
+}
+
+func TestRouter_ConsumerOnlyRoutesRejectMerchantOnlyAccount(t *testing.T) {
+	e := newRouterTestEcho()
+
+	for _, route := range consumerOnlyRoutes() {
+		t.Run(route.method+" "+route.path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+
+			e.ServeHTTP(rec, newRouterTestJSONRequest(route.method, route.path, route.body, testMerchantToken))
+
+			require.Equal(t, http.StatusForbidden, rec.Code)
+			assert.Contains(t, rec.Body.String(), `"code":"FORBIDDEN"`)
+		})
+	}
+}
+
+func TestRouter_ConsumerOnlyRoutesAllowConsumerAndDualRoleAccounts(t *testing.T) {
+	e := newRouterTestEcho()
+
+	for _, token := range []string{testUserToken, testDualRoleToken} {
+		for _, route := range consumerOnlyRoutes() {
+			t.Run(token+" "+route.method+" "+route.path, func(t *testing.T) {
+				rec := httptest.NewRecorder()
+
+				e.ServeHTTP(rec, newRouterTestJSONRequest(route.method, route.path, route.body, token))
+
+				assert.Contains(t, []int{http.StatusOK, http.StatusCreated}, rec.Code, rec.Body.String())
+			})
+		}
+	}
+}
+
+func TestRouter_SharedAccountRoutesAllowMerchantOnlyAccount(t *testing.T) {
+	e := newRouterTestEcho()
+
+	for _, path := range []string{"/api/v1/user/profile", "/api/v1/devices"} {
+		t.Run(path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+
+			e.ServeHTTP(rec, newRouterTestRequest(http.MethodGet, path, testMerchantToken))
+
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		})
+	}
 }
 
 func TestRouter_ProfileSupportsAPIV1Route(t *testing.T) {
@@ -470,6 +635,11 @@ func newRouterTestEchoWithConfigAndUserUsecase(cfg *config.Config, userUC usecas
 				Roles:  []string{string(entity.RoleMerchant)},
 				Type:   service.TokenTypeAccess,
 			},
+			testDualRoleToken: {
+				UserID: uuid.New(),
+				Roles:  []string{string(entity.RoleUser), string(entity.RoleMerchant)},
+				Type:   service.TokenTypeAccess,
+			},
 			testRefreshToken: {
 				UserID: userID,
 				Type:   service.TokenTypeRefresh,
@@ -492,6 +662,18 @@ func newRouterTestEchoWithConfigAndUserUsecase(cfg *config.Config, userUC usecas
 			DiscoveryUC: &routerTestDiscoveryUsecase{},
 			Logger:      slog.Default(),
 		}),
+		LocationHandler: handler.NewLocationHandler(handler.LocationHandlerParams{
+			LocationUC: &routerTestLocationUsecase{},
+			Logger:     slog.Default(),
+		}),
+		SubscriptionHandler: handler.NewSubscriptionHandler(handler.SubscriptionHandlerParams{
+			SubscriptionUC: &routerTestSubscriptionUsecase{},
+			Logger:         slog.Default(),
+		}),
+		DeviceHandler: handler.NewDeviceHandler(handler.DeviceHandlerParams{
+			DeviceUC: &routerTestDeviceUsecase{},
+			Logger:   slog.Default(),
+		}),
 		AuthMiddleware: authMiddleware,
 		Config:         cfg,
 	})
@@ -506,6 +688,17 @@ func newRouterTestRequest(method, target, token string) *http.Request {
 	req := httptest.NewRequestWithContext(context.Background(), method, target, nil)
 	if token != "" {
 		req.Header.Set(echo.HeaderAuthorization, "Bearer "+token)
+	}
+
+	return req
+}
+
+func newRouterTestJSONRequest(method, target, body, token string) *http.Request {
+	req := newRouterTestRequest(method, target, token)
+	if body != "" {
+		req.Body = io.NopCloser(strings.NewReader(body))
+		req.ContentLength = int64(len(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	}
 
 	return req

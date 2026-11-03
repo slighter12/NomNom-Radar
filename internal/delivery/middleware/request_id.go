@@ -27,10 +27,13 @@ func (m *RequestIDMiddleware) Process(next echo.HandlerFunc) echo.HandlerFunc {
 		// Attempt to get Request ID from request headers
 		requestID := c.Request().Header.Get(observability.HeaderXRequestID)
 
-		// Generate a new Request ID if not provided by the client
-		if requestID == "" {
+		// Generate a new Request ID when the client omits it or sends an unsafe value
+		if !observability.IsAcceptableRequestID(requestID) {
 			requestID = uuid.New().String()
 		}
+
+		// Overwrite the request header so later logging never sees a rejected original
+		c.Request().Header.Set(observability.HeaderXRequestID, requestID)
 
 		// Add Request ID to response headers
 		c.Response().Header().Set(observability.HeaderXRequestID, requestID)

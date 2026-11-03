@@ -13,6 +13,9 @@ const (
 
 	// HeaderXRequestID is the HTTP header used to carry the correlation ID.
 	HeaderXRequestID = "X-Request-Id"
+
+	// maxRequestIDLength bounds externally supplied request IDs echoed into headers, bodies, and logs.
+	maxRequestIDLength = 128
 )
 
 // WithCorrelationID returns a context carrying the request correlation ID.
@@ -50,4 +53,23 @@ func LoggerFromContextOrDefault(ctx context.Context, fallback *slog.Logger) *slo
 	}
 
 	return fallback
+}
+
+// IsAcceptableRequestID reports whether an externally supplied request ID is
+// 1-128 characters drawn only from ASCII letters, digits, '.', '_', and '-'.
+func IsAcceptableRequestID(requestID string) bool {
+	if requestID == "" || len(requestID) > maxRequestIDLength {
+		return false
+	}
+
+	for i := 0; i < len(requestID); i++ {
+		ch := requestID[i]
+		switch {
+		case ch >= 'a' && ch <= 'z', ch >= 'A' && ch <= 'Z', ch >= '0' && ch <= '9', ch == '.', ch == '_', ch == '-':
+		default:
+			return false
+		}
+	}
+
+	return true
 }

@@ -141,12 +141,15 @@ func (r *router) registerAPIV1UserRoutes(apiV1 *echo.Group) {
 		userGroup.GET("/profile", r.userHandler.GetProfile)
 	}
 
-	locationsGroup := apiV1.Group("/locations")
+	// User locations and subscriptions belong to the consumer profile, so
+	// merchant-only accounts are rejected. Profile and devices stay shared.
+	locationsGroup := apiV1.Group("/locations/user")
+	locationsGroup.Use(r.authMiddleware.RequireRole(entity.RoleUser))
 	{
-		locationsGroup.POST("/user", r.locationHandler.CreateUserLocation)
-		locationsGroup.GET("/user", r.locationHandler.GetUserLocations)
-		locationsGroup.PUT("/user/:locationId", r.locationHandler.UpdateUserLocation)
-		locationsGroup.DELETE("/user/:locationId", r.locationHandler.DeleteUserLocation)
+		locationsGroup.POST("", r.locationHandler.CreateUserLocation)
+		locationsGroup.GET("", r.locationHandler.GetUserLocations)
+		locationsGroup.PUT("/:locationId", r.locationHandler.UpdateUserLocation)
+		locationsGroup.DELETE("/:locationId", r.locationHandler.DeleteUserLocation)
 	}
 
 	devicesGroup := apiV1.Group("/devices")
@@ -159,6 +162,7 @@ func (r *router) registerAPIV1UserRoutes(apiV1 *echo.Group) {
 	}
 
 	subscriptionsGroup := apiV1.Group("/subscriptions")
+	subscriptionsGroup.Use(r.authMiddleware.RequireRole(entity.RoleUser))
 	{
 		subscriptionsGroup.POST("", r.subscriptionHandler.SubscribeToMerchant)
 		subscriptionsGroup.DELETE("/:merchantId", r.subscriptionHandler.UnsubscribeFromMerchant)

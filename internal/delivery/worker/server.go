@@ -61,11 +61,9 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 	requestLogger := apimiddleware.NewRequestLoggerMiddleware(params.Logger, params.Cfg)
 	e.Use(requestLogger.Log)
 
-	// 4. Convert returned errors into HTTP responses inside the middleware chain
+	// 4. Convert returned errors and inner panics into HTTP responses inside the middleware chain
 	e.Use(errorMiddleware.HandleErrors)
-
-	// 5. Keep a bounded JSON body copy for sanitized error-only request logging
-	e.Use(apimiddleware.CaptureRequestBodyForErrorLog)
+	e.Use(errorMiddleware.RecoverPanics)
 
 	// Health check endpoint
 	e.GET("/health", func(c echo.Context) error {
