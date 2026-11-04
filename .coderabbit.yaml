@@ -55,6 +55,9 @@ reviews:
     ignore_title_keywords:
       - "WIP"
       - "DO NOT REVIEW"
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
   finishing_touches:
     docstrings:
       enabled: false
