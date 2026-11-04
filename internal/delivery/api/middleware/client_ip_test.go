@@ -119,3 +119,49 @@ func TestRequestLogger_UsesOnlyAuthenticatedCloudflareClientIP(t *testing.T) {
 		})
 	}
 }
+
+func TestClientIPExtractor_RealIPIgnoresForgedForwardingHeaders(t *testing.T) {
+	testCases := []struct {
+		name       string
+		secret     string
+		headers    map[string]string
+		wantRealIP string
+	}{
+		{name: "direct forged XFF", headers: map[string]string{"X-Forwarded-For": "198.51.100.10"}, wantRealIP: "192.0.2.10"},
+		{name: "direct forged X-Real-IP", headers: map[string]string{"X-Real-IP": "198.51.100.10"}, wantRealIP: "192.0.2.10"},
+		{name: "direct forged CF-Connecting-IP", headers: map[string]string{cloudflareClientIPHeader: "198.51.100.10"}, wantRealIP: "192.0.2.10"},
+		{
+			name:       "cloudflare without secret ignores CF header",
+			headers:    map[string]string{cloudflareClientIPHeader: "198.51.100.10", "X-Forwarded-For": "198.51.100.11"},
+			wantRealIP: "192.0.2.10",
+		},
+		{
+			name:   "cloudflare with secret ignores forged XFF and X-Real-IP",
+			secret: "origin-secret",
+			headers: map[string]string{
+				cloudflareSecretHeader: "origin-secret",
+				"X-Forwarded-For":      "198.51.100.11",
+				"X-Real-IP":            "198.51.100.12",
+			},
+			wantRealIP: "192.0.2.10",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &config.Config{}
+			cfg.HTTP.CloudflareSecret = tc.secret
+			e := echo.New()
+			e.IPExtractor = NewClientIPExtractor(cfg)
+
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
+			req.RemoteAddr = "192.0.2.10:8080"
+			for k, v := range tc.headers {
+				req.Header.Set(k, v)
+			}
+			ctx := e.NewContext(req, httptest.NewRecorder())
+
+			assert.Equal(t, tc.wantRealIP, ctx.RealIP())
+		})
+	}
+}

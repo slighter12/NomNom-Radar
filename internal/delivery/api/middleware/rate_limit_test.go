@@ -364,3 +364,33 @@ func serveSessionRateLimitRequest(e *echo.Echo, req *http.Request) *httptest.Res
 
 	return response
 }
+
+func TestAuthRateLimiter_KeysByPeerIPIgnoringForgedForwardingHeaders(t *testing.T) {
+	for _, header := range []string{"X-Forwarded-For", "X-Real-IP", cloudflareClientIPHeader} {
+		t.Run(header, func(t *testing.T) {
+			e := echo.New()
+			e.IPExtractor = NewClientIPExtractor(&config.Config{})
+			cfg := &config.Config{}
+			cfg.HTTP.RateLimit = newRateLimitConfig(0.001, 1, time.Minute)
+			limiter, err := NewAuthRateLimiter(cfg)
+			require.NoError(t, err)
+			require.NotNil(t, limiter)
+			e.POST("/auth/login", func(c echo.Context) error { return c.NoContent(http.StatusNoContent) }, limiter)
+
+			serve := func(remoteAddr, forged string) int {
+				req := newRateLimitRequest("/auth/login", remoteAddr)
+				req.Header.Set(header, forged)
+				rec := httptest.NewRecorder()
+				e.ServeHTTP(rec, req)
+
+				return rec.Code
+			}
+
+			assert.Equal(t, http.StatusNoContent, serve("192.0.2.1:1000", "198.51.100.1"))
+			// Rotating the forged header from the same peer must not escape the bucket.
+			assert.Equal(t, http.StatusTooManyRequests, serve("192.0.2.1:1000", "198.51.100.2"))
+			// A different peer presenting the same forged value gets its own bucket.
+			assert.Equal(t, http.StatusNoContent, serve("192.0.2.2:1000", "198.51.100.1"))
+		})
+	}
+}
