@@ -3,7 +3,7 @@ module radar
 go 1.27.3
 
 require (
-	cloud.google.com/go/pubsub/v2 v2.8.0
+	cloud.google.com/go/pubsub/v2 v2.8.1
 	firebase.google.com/go/v4 v4.22.0
 	github.com/go-playground/validator/v10 v10.30.6
 	github.com/go-viper/mapstructure/v2 v2.5.0
