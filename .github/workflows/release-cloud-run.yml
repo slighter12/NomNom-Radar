@@ -176,7 +176,7 @@ jobs:
 
       - name: Render and validate all deployment templates
         id: render
-        uses: mikefarah/yq@504fc38780cc46be8444ea1b72fb55919fc0bfb0 # v4.53.6; upstream image pinned by digest
+        uses: mikefarah/yq@f2944b823f84906a127dbd29e4c2a3e60c4e550e # v4.53.6; upstream image pinned by digest
         env:
           MANIFEST_DIR: .release-data/manifests
           BUNDLE_FILE: .release-data/plan.json
