@@ -5,6 +5,7 @@ go 1.27.4
 require (
 	cloud.google.com/go/pubsub/v2 v2.9.0
 	firebase.google.com/go/v4 v4.23.0
+	github.com/dustin/go-humanize v1.1.0
 	github.com/go-playground/validator/v10 v10.30.6
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -69,7 +70,6 @@ require (
 	github.com/bits-and-blooms/bitset v1.30.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2 // indirect
-	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.40.0 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.3.3 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect

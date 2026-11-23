@@ -8,9 +8,7 @@ import (
 	"math"
 	"net"
 	"net/http"
-	"regexp"
 	"strconv"
-	"strings"
 
 	"radar/config"
 	"radar/internal/delivery"
@@ -20,6 +18,7 @@ import (
 	"radar/internal/delivery/middleware"
 	"radar/internal/domain/lifecycle"
 
+	"github.com/dustin/go-humanize"
 	"github.com/labstack/echo/v5"
 	echomiddleware "github.com/labstack/echo/v5/middleware"
 	"go.uber.org/fx"
@@ -161,50 +160,16 @@ func (s *apiServer) stop(ctx context.Context) error {
 	return nil
 }
 
-var (
-	// IEC units (KiB, Mi, ...) are powers of 1024.
-	bodyLimitBinaryPattern = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s?([KMGTPE])iB?$`)
-	// SI units (K, KB, M, MB, ...) are powers of 1000; a bare number or "B" is bytes.
-	bodyLimitDecimalPattern = regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s?([KMGTPE]B?|B?)$`)
-)
-
 // parseBodyLimit converts a configured size such as "100KB" into bytes. Echo v5
-// BodyLimit accepts only a byte count, so this reproduces the string grammar
-// Echo v4 delegated to labstack/gommon/bytes: "1KB" and "1M" are decimal
-// (1000-based) while "1KiB" and "1Mi" are binary (1024-based).
-//
-// A limit of zero is rejected. Echo v4 treated zero as "no limit" for bodies of
-// unknown length (chunked uploads) while still refusing any sized body; Echo v5
-// refuses every non-empty body. Neither is a useful limit, and silently
-// allowing unbounded chunked uploads would be unsafe, so startup fails instead.
+// BodyLimit takes a byte count, while Echo v4 parsed the string itself: "1KB"
+// and "1M" are decimal (1000-based), "1KiB" and "1Mi" binary (1024-based), and
+// humanize.ParseBytes keeps those semantics. Zero is rejected because v4 meant
+// "unlimited chunked body" and v5 means "reject every body"; neither is useful.
 func parseBodyLimit(raw string) (int64, error) {
-	base := 1000.0
-	parts := bodyLimitDecimalPattern.FindStringSubmatch(raw)
-	if binaryParts := bodyLimitBinaryPattern.FindStringSubmatch(raw); binaryParts != nil {
-		base, parts = 1024.0, binaryParts
-	}
-	if parts == nil {
-		return 0, fmt.Errorf("invalid http.maxRequestBodySize %q", raw)
+	size, err := humanize.ParseBytes(raw)
+	if err != nil || size == 0 || size > math.MaxInt64 {
+		return 0, fmt.Errorf("invalid http.maxRequestBodySize %q: want 1 byte to %d bytes", raw, int64(math.MaxInt64))
 	}
 
-	amount, err := strconv.ParseFloat(parts[1], 64)
-	if err != nil {
-		return 0, fmt.Errorf("invalid http.maxRequestBodySize %q: %w", raw, err)
-	}
-
-	multiplier := 1.0
-	if unit := strings.ToUpper(parts[2]); unit != "" {
-		// "B" is plain bytes and yields exponent 0, i.e. a multiplier of 1.
-		multiplier = math.Pow(base, float64(strings.IndexByte("KMGTPE", unit[0])+1))
-	}
-	if amount*multiplier >= math.MaxInt64 {
-		return 0, fmt.Errorf("invalid http.maxRequestBodySize %q: too large", raw)
-	}
-
-	limit := int64(amount * multiplier)
-	if limit <= 0 {
-		return 0, fmt.Errorf("invalid http.maxRequestBodySize %q: must be greater than zero", raw)
-	}
-
-	return limit, nil
+	return int64(size), nil
 }
