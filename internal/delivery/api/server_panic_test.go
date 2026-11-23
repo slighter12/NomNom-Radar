@@ -13,13 +13,13 @@ import (
 	"radar/config"
 	"radar/internal/delivery/api/router"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx/fxtest"
 )
 
-func panickingAPIHandler(echo.Context) error {
+func panickingAPIHandler(*echo.Context) error {
 	panic("handler exploded token=panic-secret")
 }
 
@@ -39,7 +39,7 @@ func TestServer_HandlerPanicProducesOneLifecycleErrorLog(t *testing.T) {
 			})
 			require.NoError(t, err)
 			e := srv.(*apiServer).server
-			e.Logger.SetOutput(&echoOutput)
+			e.Logger = slog.New(slog.NewTextHandler(&echoOutput, nil))
 			e.GET("/panic-probe", panickingAPIHandler)
 
 			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/panic-probe", nil)

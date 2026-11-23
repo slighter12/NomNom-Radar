@@ -15,7 +15,7 @@ import (
 	"radar/config"
 	domainerrors "radar/internal/domain/errors"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx/fxtest"
@@ -30,7 +30,7 @@ func TestWorkerServer_RecoveredPanicAlwaysMapsToInternalError(t *testing.T) {
 		{name: "string", value: "string panic value", wantSource: "recovered panic (string)"},
 		{name: "plain error", value: errors.New("plain panic error"), wantSource: "recovered panic (*errors.errorString)"},
 		{name: "app error", value: domainerrors.ErrValidationFailed, wantSource: fmt.Sprintf("recovered panic (%T)", domainerrors.ErrValidationFailed)},
-		{name: "echo http error", value: echo.ErrForbidden, wantSource: "recovered panic (*echo.HTTPError)"},
+		{name: "echo http error", value: echo.NewHTTPError(http.StatusForbidden, "forbidden"), wantSource: "recovered panic (*echo.HTTPError)"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var logs bytes.Buffer
@@ -42,7 +42,7 @@ func TestWorkerServer_RecoveredPanicAlwaysMapsToInternalError(t *testing.T) {
 			})
 			require.NoError(t, err)
 			e := srv.(*workerServer).server
-			e.GET("/panic-mapping", func(echo.Context) error { panic(tc.value) })
+			e.GET("/panic-mapping", func(*echo.Context) error { panic(tc.value) })
 
 			rec := httptest.NewRecorder()
 			e.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/panic-mapping", nil))

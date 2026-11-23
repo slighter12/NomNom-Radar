@@ -13,7 +13,7 @@ import (
 	"radar/internal/platform/observability"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,7 +36,7 @@ func processRequestID(t *testing.T, header *string) requestIDResult {
 
 	var logs bytes.Buffer
 	var contextID string
-	handler := NewRequestIDMiddleware(slog.New(slog.NewJSONHandler(&logs, nil))).Process(func(c echo.Context) error {
+	handler := NewRequestIDMiddleware(slog.New(slog.NewJSONHandler(&logs, nil))).Process(func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		contextID = observability.CorrelationIDFromContext(ctx)
 		observability.LoggerFromContext(ctx).InfoContext(ctx, "probe")

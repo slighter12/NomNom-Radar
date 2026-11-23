@@ -12,7 +12,7 @@ import (
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.uber.org/fx"
 )
 
@@ -88,7 +88,7 @@ func NewMenuHandler(params MenuHandlerParams) *MenuHandler {
 	}
 }
 
-func (h *MenuHandler) GetMerchantMenuItems(c echo.Context) error {
+func (h *MenuHandler) GetMerchantMenuItems(c *echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -109,7 +109,7 @@ func (h *MenuHandler) GetMerchantMenuItems(c echo.Context) error {
 
 // GetPublicMerchantMenu returns the consumer-facing menu for a merchant.
 // The route is intentionally mounted behind the user role and only exposes available items.
-func (h *MenuHandler) GetPublicMerchantMenu(c echo.Context) error {
+func (h *MenuHandler) GetPublicMerchantMenu(c *echo.Context) error {
 	merchantID, err := h.parseMerchantID(c)
 	if err != nil {
 		return err
@@ -128,7 +128,7 @@ func (h *MenuHandler) GetPublicMerchantMenu(c echo.Context) error {
 	return response.Success(c, http.StatusOK, result)
 }
 
-func (h *MenuHandler) CreateMenuItem(c echo.Context) error {
+func (h *MenuHandler) CreateMenuItem(c *echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -166,7 +166,7 @@ func (h *MenuHandler) CreateMenuItem(c echo.Context) error {
 	return response.Success(c, http.StatusCreated, item)
 }
 
-func (h *MenuHandler) UpdateMenuItem(c echo.Context) error {
+func (h *MenuHandler) UpdateMenuItem(c *echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -209,7 +209,7 @@ func (h *MenuHandler) UpdateMenuItem(c echo.Context) error {
 	return response.Success(c, http.StatusOK, item)
 }
 
-func (h *MenuHandler) UpdateMenuItemStatus(c echo.Context) error {
+func (h *MenuHandler) UpdateMenuItemStatus(c *echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -236,7 +236,7 @@ func (h *MenuHandler) UpdateMenuItemStatus(c echo.Context) error {
 	return response.Success(c, http.StatusOK, item)
 }
 
-func (h *MenuHandler) ReorderMenuItems(c echo.Context) error {
+func (h *MenuHandler) ReorderMenuItems(c *echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -257,7 +257,7 @@ func (h *MenuHandler) ReorderMenuItems(c echo.Context) error {
 	return response.Success(c, http.StatusOK, result)
 }
 
-func (h *MenuHandler) DeleteMenuItem(c echo.Context) error {
+func (h *MenuHandler) DeleteMenuItem(c *echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -275,15 +275,15 @@ func (h *MenuHandler) DeleteMenuItem(c echo.Context) error {
 	return response.Success(c, http.StatusOK, map[string]string{responseKeyMessage: "Menu item deleted"})
 }
 
-func (h *MenuHandler) parseMenuItemID(c echo.Context) (uuid.UUID, error) {
+func (h *MenuHandler) parseMenuItemID(c *echo.Context) (uuid.UUID, error) {
 	return bindMenuItemIDPathParam(c, "Invalid menu item ID")
 }
 
-func (h *MenuHandler) parseMerchantID(c echo.Context) (uuid.UUID, error) {
+func (h *MenuHandler) parseMerchantID(c *echo.Context) (uuid.UUID, error) {
 	return bindMerchantIDPathParam(c, "Invalid merchant ID")
 }
 
-func (h *MenuHandler) parseListMerchantMenuItemsInput(c echo.Context) (*usecase.ListMerchantMenuItemsInput, error) {
+func (h *MenuHandler) parseListMerchantMenuItemsInput(c *echo.Context) (*usecase.ListMerchantMenuItemsInput, error) {
 	query := newListMerchantMenuItemsQueryParams()
 	if err := bindQueryParams(c, &query, "Invalid menu item query input"); err != nil {
 		return nil, err
@@ -313,7 +313,7 @@ func (h *MenuHandler) parseListMerchantMenuItemsInput(c echo.Context) (*usecase.
 	}, nil
 }
 
-func (h *MenuHandler) parseListPublicMerchantMenuItemsInput(c echo.Context) (*usecase.ListMerchantMenuItemsInput, error) {
+func (h *MenuHandler) parseListPublicMerchantMenuItemsInput(c *echo.Context) (*usecase.ListMerchantMenuItemsInput, error) {
 	query := newListPublicMerchantMenuItemsQueryParams()
 	if err := bindQueryParams(c, &query, "Invalid menu item query input"); err != nil {
 		return nil, err
@@ -351,7 +351,7 @@ func newListPublicMerchantMenuItemsQueryParams() ListPublicMerchantMenuItemsQuer
 	}
 }
 
-func normalizePaginationQueryParams(c echo.Context, params *PaginationQueryParams) {
+func normalizePaginationQueryParams(c *echo.Context, params *PaginationQueryParams) {
 	if strings.TrimSpace(c.QueryParam("page")) == "" {
 		params.Page = defaultMenuItemsPage
 	}
@@ -361,16 +361,16 @@ func normalizePaginationQueryParams(c echo.Context, params *PaginationQueryParam
 	}
 }
 
-func (h *MenuHandler) validateCreateMenuItemRequest(c echo.Context, req *CreateMenuItemRequest) error {
+func (h *MenuHandler) validateCreateMenuItemRequest(c *echo.Context, req *CreateMenuItemRequest) error {
 	return h.validateMenuItemRequest(c, req, &req.Name, &req.CategoryID, &req.Currency, req.ImageURL, req.ExternalURL)
 }
 
-func (h *MenuHandler) validateUpdateMenuItemRequest(c echo.Context, req *UpdateMenuItemRequest) error {
+func (h *MenuHandler) validateUpdateMenuItemRequest(c *echo.Context, req *UpdateMenuItemRequest) error {
 	return h.validateMenuItemRequest(c, req, &req.Name, &req.CategoryID, &req.Currency, req.ImageURL, req.ExternalURL)
 }
 
 func (h *MenuHandler) validateMenuItemRequest(
-	c echo.Context,
+	c *echo.Context,
 	req any,
 	name, categoryID, currency *string,
 	imageURL, externalURL *string,

@@ -10,7 +10,7 @@ import (
 	"radar/internal/delivery/api/response"
 	domainerrors "radar/internal/domain/errors"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/slighter12/go-lib/errors/stack"
 )
 
@@ -27,14 +27,14 @@ func NewErrorMiddleware(logger *slog.Logger) *ErrorMiddleware {
 }
 
 // HandleHTTPError handles errors as Echo's HTTPErrorHandler
-func (m *ErrorMiddleware) HandleHTTPError(err error, c echo.Context) {
+func (m *ErrorMiddleware) HandleHTTPError(c *echo.Context, err error) {
 	if errors.Is(err, delivery.ErrResponseHandled) {
 		return
 	}
 	// Record the source error even when the response is already committed so
 	// the request logger still reports the failure.
 	setSourceErrorLog(c, err)
-	if c.Response().Committed {
+	if responseCommitted(c) {
 		return
 	}
 
@@ -45,9 +45,10 @@ func (m *ErrorMiddleware) HandleHTTPError(err error, c echo.Context) {
 		return
 	}
 
-	// Check if it is an Echo HTTPError
-	if httpErr, ok := errors.AsType[*echo.HTTPError](err); ok {
-		_ = response.AppError(c, httpErrorAppError(httpErr.Code))
+	// Check if it carries an Echo HTTP status (HTTPError or a sentinel such as
+	// echo.ErrNotFound, which no longer is an *echo.HTTPError in Echo v5).
+	if statusCode := echo.StatusCode(err); statusCode != 0 {
+		_ = response.AppError(c, httpErrorAppError(statusCode))
 
 		return
 	}
@@ -59,7 +60,7 @@ func (m *ErrorMiddleware) HandleHTTPError(err error, c echo.Context) {
 // HandleErrors converts returned Go errors into HTTP responses inside the
 // middleware chain so the deferred request logger can record the final status.
 func (m *ErrorMiddleware) HandleErrors(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		err := next(c)
 		if err == nil {
 			return nil
@@ -68,7 +69,7 @@ func (m *ErrorMiddleware) HandleErrors(next echo.HandlerFunc) echo.HandlerFunc {
 			return nil
 		}
 
-		m.HandleHTTPError(err, c)
+		m.HandleHTTPError(c, err)
 
 		return nil
 	}
@@ -78,7 +79,7 @@ func (m *ErrorMiddleware) HandleErrors(next echo.HandlerFunc) echo.HandlerFunc {
 // INTERNAL_ERROR carrying the panic value's type and stack, never its content. Register it inside HandleErrors so the panic
 // becomes the canonical 500 response before the request logger records it.
 func (m *ErrorMiddleware) RecoverPanics(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) (err error) {
+	return func(c *echo.Context) (err error) {
 		defer func() {
 			recovered := recover()
 			if recovered == nil {

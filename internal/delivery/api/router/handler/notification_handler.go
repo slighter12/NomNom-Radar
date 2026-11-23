@@ -10,7 +10,7 @@ import (
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.uber.org/fx"
 )
 
@@ -54,7 +54,7 @@ type NotificationHistoryQueryParams struct {
 }
 
 // PublishLocationNotification handles publishing a location notification
-func (h *NotificationHandler) PublishLocationNotification(c echo.Context) error {
+func (h *NotificationHandler) PublishLocationNotification(c *echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -123,7 +123,7 @@ func (h *NotificationHandler) validateLocationData(data *usecase.LocationData) e
 }
 
 // GetMerchantNotificationHistory handles retrieving notification history for a merchant
-func (h *NotificationHandler) GetMerchantNotificationHistory(c echo.Context) error {
+func (h *NotificationHandler) GetMerchantNotificationHistory(c *echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -142,7 +142,7 @@ func (h *NotificationHandler) GetMerchantNotificationHistory(c echo.Context) err
 	return response.Success(c, http.StatusOK, notifications)
 }
 
-func (h *NotificationHandler) parseNotificationHistoryQueryParams(c echo.Context) (NotificationHistoryQueryParams, error) {
+func (h *NotificationHandler) parseNotificationHistoryQueryParams(c *echo.Context) (NotificationHistoryQueryParams, error) {
 	query := newNotificationHistoryQueryParams()
 
 	if err := bindQueryParams(c, &query, "Invalid notification history query input"); err != nil {
@@ -159,7 +159,7 @@ func (h *NotificationHandler) parseNotificationHistoryQueryParams(c echo.Context
 	return query, nil
 }
 
-func normalizeNotificationHistoryQueryParams(c echo.Context, query *NotificationHistoryQueryParams) {
+func normalizeNotificationHistoryQueryParams(c *echo.Context, query *NotificationHistoryQueryParams) {
 	if strings.TrimSpace(c.QueryParam("limit")) == "" {
 		query.Limit = defaultNotificationHistoryLimit
 	}

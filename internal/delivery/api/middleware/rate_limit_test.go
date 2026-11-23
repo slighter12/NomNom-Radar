@@ -12,7 +12,7 @@ import (
 	"radar/internal/domain/service"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,10 +28,10 @@ func TestAuthRateLimiter_SharesPerIPBucketAcrossAuthGroups(t *testing.T) {
 
 	authGroup := e.Group("/auth")
 	authGroup.Use(limiter)
-	authGroup.POST("/login", func(c echo.Context) error { return c.NoContent(http.StatusNoContent) })
+	authGroup.POST("/login", func(c *echo.Context) error { return c.NoContent(http.StatusNoContent) })
 	oauthGroup := e.Group("/oauth")
 	oauthGroup.Use(limiter)
-	oauthGroup.POST("/google", func(c echo.Context) error { return c.NoContent(http.StatusNoContent) })
+	oauthGroup.POST("/google", func(c *echo.Context) error { return c.NoContent(http.StatusNoContent) })
 
 	for _, path := range []string{"/auth/login", "/oauth/google"} {
 		req := newRateLimitRequest(path, "192.0.2.1:1000")
@@ -133,7 +133,7 @@ func TestAPIRateLimiter_FallsBackToIPWithoutUserID(t *testing.T) {
 	e := echo.New()
 	e.IPExtractor = NewClientIPExtractor(&config.Config{})
 	e.Use(limiter)
-	e.POST("/api/v1/one", func(c echo.Context) error { return c.NoContent(http.StatusNoContent) })
+	e.POST("/api/v1/one", func(c *echo.Context) error { return c.NoContent(http.StatusNoContent) })
 
 	firstRequest := newRateLimitRequest("/api/v1/one", "192.0.2.1:1000")
 	firstResponse := httptest.NewRecorder()
@@ -242,7 +242,7 @@ func TestSessionRateLimiter_RejectsInvalidConfiguration(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.HTTP.SessionRateLimit = newRateLimitConfig(-1, 1, time.Minute)
 
-	limiter, err := NewSessionRateLimiter(cfg, func(echo.Context) (uuid.UUID, bool) {
+	limiter, err := NewSessionRateLimiter(cfg, func(*echo.Context) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	})
 	assert.Nil(t, limiter)
@@ -269,7 +269,7 @@ func newUserRateLimitEcho(limiter echo.MiddlewareFunc) *echo.Echo {
 	e := echo.New()
 	e.IPExtractor = NewClientIPExtractor(&config.Config{})
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			userID, err := uuid.Parse(c.Request().Header.Get("X-Test-User-ID"))
 			if err == nil {
 				c.Set(string(contextKeyUserID), userID)
@@ -279,7 +279,7 @@ func newUserRateLimitEcho(limiter echo.MiddlewareFunc) *echo.Echo {
 		}
 	})
 	e.Use(limiter)
-	handler := func(c echo.Context) error { return c.NoContent(http.StatusNoContent) }
+	handler := func(c *echo.Context) error { return c.NoContent(http.StatusNoContent) }
 	e.POST("/api/v1/one", handler)
 	e.POST("/api/v1/two", handler)
 
@@ -341,7 +341,7 @@ func newSessionRateLimitEcho(t *testing.T, cfg *config.Config, tokenSvc service.
 	e.IPExtractor = NewClientIPExtractor(&config.Config{})
 	e.Use(CaptureRequestBodyForErrorLog)
 	e.Use(limiter)
-	e.POST("/auth/refresh", func(c echo.Context) error { return c.NoContent(http.StatusNoContent) })
+	e.POST("/auth/refresh", func(c *echo.Context) error { return c.NoContent(http.StatusNoContent) })
 
 	return e
 }
@@ -375,7 +375,7 @@ func TestAuthRateLimiter_KeysByPeerIPIgnoringForgedForwardingHeaders(t *testing.
 			limiter, err := NewAuthRateLimiter(cfg)
 			require.NoError(t, err)
 			require.NotNil(t, limiter)
-			e.POST("/auth/login", func(c echo.Context) error { return c.NoContent(http.StatusNoContent) }, limiter)
+			e.POST("/auth/login", func(c *echo.Context) error { return c.NoContent(http.StatusNoContent) }, limiter)
 
 			serve := func(remoteAddr, forged string) int {
 				req := newRateLimitRequest("/auth/login", remoteAddr)

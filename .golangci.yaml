@@ -92,14 +92,14 @@ linters:
         - fn
       ignore-decls:
         - ok bool
-        - c echo.Context
+        - c *echo.Context
         - q *query.Query
         - tx *gorm.DB
         - e *echo.Echo
         - lc fx.Lifecycle
     wrapcheck:
       ignore-package-globs:
-        - github.com/labstack/echo/v4
+        - github.com/labstack/echo/v5
         - radar/internal/delivery/api/response
         - radar/internal/domain/errors
         - radar/internal/errors

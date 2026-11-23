@@ -9,7 +9,7 @@ import (
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.uber.org/fx"
 )
 
@@ -52,7 +52,7 @@ func NewDiscoveryHandler(params DiscoveryHandlerParams) *DiscoveryHandler {
 	}
 }
 
-func (h *DiscoveryHandler) ListActiveCategories(c echo.Context) error {
+func (h *DiscoveryHandler) ListActiveCategories(c *echo.Context) error {
 	result, err := h.discoveryUC.ListActiveCategories(c.Request().Context())
 	if err != nil {
 		return withSourceStack(err)
@@ -61,7 +61,7 @@ func (h *DiscoveryHandler) ListActiveCategories(c echo.Context) error {
 	return response.Success(c, http.StatusOK, result)
 }
 
-func (h *DiscoveryHandler) ListActiveSubcategories(c echo.Context) error {
+func (h *DiscoveryHandler) ListActiveSubcategories(c *echo.Context) error {
 	result, err := h.discoveryUC.ListActiveSubcategories(c.Request().Context())
 	if err != nil {
 		return withSourceStack(err)
@@ -70,7 +70,7 @@ func (h *DiscoveryHandler) ListActiveSubcategories(c echo.Context) error {
 	return response.Success(c, http.StatusOK, result)
 }
 
-func (h *DiscoveryHandler) ListActiveHubs(c echo.Context) error {
+func (h *DiscoveryHandler) ListActiveHubs(c *echo.Context) error {
 	result, err := h.discoveryUC.ListActiveHubs(c.Request().Context())
 	if err != nil {
 		return withSourceStack(err)
@@ -79,7 +79,7 @@ func (h *DiscoveryHandler) ListActiveHubs(c echo.Context) error {
 	return response.Success(c, http.StatusOK, result)
 }
 
-func (h *DiscoveryHandler) SearchPublicMerchants(c echo.Context) error {
+func (h *DiscoveryHandler) SearchPublicMerchants(c *echo.Context) error {
 	input, err := h.parseSearchPublicMerchantsInput(c)
 	if err != nil {
 		return err
@@ -94,7 +94,7 @@ func (h *DiscoveryHandler) SearchPublicMerchants(c echo.Context) error {
 }
 
 func (h *DiscoveryHandler) parseSearchPublicMerchantsInput(
-	c echo.Context,
+	c *echo.Context,
 ) (*usecase.SearchPublicMerchantsInput, error) {
 	query := newSearchPublicMerchantsQueryParams()
 	if err := bindQueryParams(c, &query, "Invalid merchant search query input"); err != nil {
@@ -148,7 +148,7 @@ func newSearchPublicMerchantsQueryParams() SearchPublicMerchantsQueryParams {
 	}
 }
 
-func parseOptionalUUIDQueryValue(_ echo.Context, name string, rawValue string) (*uuid.UUID, error) {
+func parseOptionalUUIDQueryValue(_ *echo.Context, name string, rawValue string) (*uuid.UUID, error) {
 	rawValue = strings.TrimSpace(rawValue)
 	if rawValue == "" {
 		return nil, nil

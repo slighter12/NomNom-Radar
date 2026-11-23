@@ -12,7 +12,7 @@ import (
 	"radar/config"
 	"radar/internal/delivery/api/router"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx/fxtest"
 )
@@ -38,11 +38,11 @@ func panicValueCases() []struct {
 			wantType: "*errors.errorString",
 		},
 		{
-			name: "echo http error with map message",
-			value: echo.NewHTTPError(http.StatusForbidden, map[string]any{
-				"password":     "echo-password-secret",
-				"full_address": "Evergreen Quixote Terrace",
-			}),
+			name: "echo http error with json message",
+			value: echo.NewHTTPError(
+				http.StatusForbidden,
+				`{"password":"echo-password-secret","full_address":"Evergreen Quixote Terrace"}`,
+			),
 			wantType: "*echo.HTTPError",
 		},
 	}
@@ -70,8 +70,8 @@ func TestServer_RecoveredPanicValueNeverReachesLogs(t *testing.T) {
 			})
 			require.NoError(t, err)
 			e := srv.(*apiServer).server
-			e.Logger.SetOutput(&echoOutput)
-			e.GET("/panic-value", func(echo.Context) error { panic(tc.value) })
+			e.Logger = slog.New(slog.NewTextHandler(&echoOutput, nil))
+			e.GET("/panic-value", func(*echo.Context) error { panic(tc.value) })
 
 			rec := httptest.NewRecorder()
 			e.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/panic-value", nil))

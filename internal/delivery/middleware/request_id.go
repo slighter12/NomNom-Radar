@@ -6,7 +6,7 @@ import (
 	"radar/internal/platform/observability"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // RequestIDMiddleware generates or extracts a unique Request ID for each request and creates a request-scoped logger
@@ -23,7 +23,7 @@ func NewRequestIDMiddleware(logger *slog.Logger) *RequestIDMiddleware {
 
 // Process handles the generation or extraction of the Request ID and creates a logger with requestID
 func (m *RequestIDMiddleware) Process(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		// Attempt to get Request ID from request headers
 		requestID := c.Request().Header.Get(observability.HeaderXRequestID)
 

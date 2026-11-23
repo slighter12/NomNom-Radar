@@ -19,7 +19,7 @@ import (
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.uber.org/fx"
 )
 
@@ -94,7 +94,7 @@ func NewPushHandler(params PushHandlerParams) *PushHandler {
 }
 
 // HandlePush handles incoming Pub/Sub push messages
-func (h *PushHandler) HandlePush(c echo.Context) error {
+func (h *PushHandler) HandlePush(c *echo.Context) error {
 	ctx := c.Request().Context()
 
 	// Parse Pub/Sub message

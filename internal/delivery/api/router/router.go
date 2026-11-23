@@ -8,7 +8,7 @@ import (
 	"radar/internal/delivery/api/router/handler"
 	"radar/internal/domain/entity"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.uber.org/fx"
 )
 

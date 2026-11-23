@@ -12,7 +12,7 @@ import (
 
 	"radar/config"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,8 +20,7 @@ func TestServeHTTP1AndUnencryptedHTTP2(t *testing.T) {
 	t.Parallel()
 
 	echoServer := echo.New()
-	echoServer.HideBanner = true
-	echoServer.GET("/protocol-probe", func(c echo.Context) error {
+	echoServer.GET("/protocol-probe", func(c *echo.Context) error {
 		return c.String(http.StatusOK, "ok")
 	})
 
@@ -31,6 +30,7 @@ func TestServeHTTP1AndUnencryptedHTTP2(t *testing.T) {
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		server: echoServer,
 	}
+	srv.httpServer = newHTTPServer(echoServer, cfg, srv.logger)
 
 	url := startServer(t, srv, cfg)
 

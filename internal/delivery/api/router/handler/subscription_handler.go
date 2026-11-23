@@ -9,7 +9,7 @@ import (
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.uber.org/fx"
 )
 
@@ -48,7 +48,7 @@ type ProcessQRRequest struct {
 }
 
 // SubscribeToMerchant handles subscribing to a merchant
-func (h *SubscriptionHandler) SubscribeToMerchant(c echo.Context) error {
+func (h *SubscriptionHandler) SubscribeToMerchant(c *echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -68,7 +68,7 @@ func (h *SubscriptionHandler) SubscribeToMerchant(c echo.Context) error {
 }
 
 // UnsubscribeFromMerchant handles unsubscribing from a merchant
-func (h *SubscriptionHandler) UnsubscribeFromMerchant(c echo.Context) error {
+func (h *SubscriptionHandler) UnsubscribeFromMerchant(c *echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -87,7 +87,7 @@ func (h *SubscriptionHandler) UnsubscribeFromMerchant(c echo.Context) error {
 }
 
 // GetUserSubscriptions handles retrieving all user subscriptions
-func (h *SubscriptionHandler) GetUserSubscriptions(c echo.Context) error {
+func (h *SubscriptionHandler) GetUserSubscriptions(c *echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -102,7 +102,7 @@ func (h *SubscriptionHandler) GetUserSubscriptions(c echo.Context) error {
 }
 
 // GenerateSubscriptionQR handles generating QR code for merchant subscription
-func (h *SubscriptionHandler) GenerateSubscriptionQR(c echo.Context) error {
+func (h *SubscriptionHandler) GenerateSubscriptionQR(c *echo.Context) error {
 	authenticatedMerchantID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -121,7 +121,7 @@ func (h *SubscriptionHandler) GenerateSubscriptionQR(c echo.Context) error {
 }
 
 // ProcessQRSubscription handles processing QR code subscription
-func (h *SubscriptionHandler) ProcessQRSubscription(c echo.Context) error {
+func (h *SubscriptionHandler) ProcessQRSubscription(c *echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -140,6 +140,6 @@ func (h *SubscriptionHandler) ProcessQRSubscription(c echo.Context) error {
 	return response.Success(c, http.StatusCreated, subscription)
 }
 
-func (h *SubscriptionHandler) parseMerchantID(c echo.Context) (uuid.UUID, error) {
+func (h *SubscriptionHandler) parseMerchantID(c *echo.Context) (uuid.UUID, error) {
 	return bindMerchantIDPathParam(c, "Invalid merchant ID")
 }

@@ -19,7 +19,7 @@ import (
 	"radar/internal/delivery/api/response"
 	domainerrors "radar/internal/domain/errors"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/slighter12/go-lib/errors/stack"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -68,7 +68,7 @@ func TestErrorMiddleware_HandleHTTPError_SkipsCommittedResponse(t *testing.T) {
 
 	bodyBefore := rec.Body.String()
 
-	middleware.HandleHTTPError(delivery.ErrResponseHandled, c)
+	middleware.HandleHTTPError(c, delivery.ErrResponseHandled)
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Equal(t, bodyBefore, rec.Body.String())
@@ -81,7 +81,7 @@ func TestErrorMiddleware_HandleHTTPError_IgnoresHandledResponseSentinel(t *testi
 	c := e.NewContext(req, rec)
 	middleware := NewErrorMiddleware(slog.Default())
 
-	middleware.HandleHTTPError(delivery.ErrResponseHandled, c)
+	middleware.HandleHTTPError(c, delivery.ErrResponseHandled)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Empty(t, rec.Body.String())
@@ -134,7 +134,7 @@ func TestErrorMiddleware_HandleHTTPError_MapsEchoHTTPErrorToCanonicalAppError(t 
 			c := e.NewContext(req, rec)
 			middleware := NewErrorMiddleware(slog.Default())
 
-			middleware.HandleHTTPError(echo.NewHTTPError(tc.statusCode, "echo detail should not leak"), c)
+			middleware.HandleHTTPError(c, echo.NewHTTPError(tc.statusCode, "echo detail should not leak"))
 
 			resp := decodeMiddlewareErrorResponse(t, rec)
 			assert.Equal(t, tc.statusCode, rec.Code)
@@ -170,7 +170,7 @@ func TestErrorMiddleware_HandleHTTPError_LogsSanitizedRequestAndResponseError(t 
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
 	errorMiddleware := NewErrorMiddleware(logger)
-	handler := requestLogger.Log(errorMiddleware.HandleErrors(CaptureRequestBodyForErrorLog(func(c echo.Context) error {
+	handler := requestLogger.Log(errorMiddleware.HandleErrors(CaptureRequestBodyForErrorLog(func(c *echo.Context) error {
 		return domainerrors.ErrInvalidCredentials
 	})))
 
@@ -211,7 +211,7 @@ func TestErrorMiddleware_HandleHTTPError_RedactsTokenLikeRequestFields(t *testin
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
 	errorMiddleware := NewErrorMiddleware(logger)
-	handler := requestLogger.Log(errorMiddleware.HandleErrors(CaptureRequestBodyForErrorLog(func(c echo.Context) error {
+	handler := requestLogger.Log(errorMiddleware.HandleErrors(CaptureRequestBodyForErrorLog(func(c *echo.Context) error {
 		return domainerrors.ErrValidationFailed
 	})))
 
@@ -258,7 +258,7 @@ func TestErrorMiddleware_HandleHTTPError_RedactsLocationAndNameFields(t *testing
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
 	errorMiddleware := NewErrorMiddleware(logger)
-	handler := requestLogger.Log(errorMiddleware.HandleErrors(CaptureRequestBodyForErrorLog(func(c echo.Context) error {
+	handler := requestLogger.Log(errorMiddleware.HandleErrors(CaptureRequestBodyForErrorLog(func(c *echo.Context) error {
 		return domainerrors.ErrValidationFailed
 	})))
 
@@ -317,7 +317,7 @@ func TestErrorMiddleware_HandleHTTPError_RedactsInvalidJSONBody(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
 	errorMiddleware := NewErrorMiddleware(logger)
-	handler := requestLogger.Log(errorMiddleware.HandleErrors(CaptureRequestBodyForErrorLog(func(c echo.Context) error {
+	handler := requestLogger.Log(errorMiddleware.HandleErrors(CaptureRequestBodyForErrorLog(func(c *echo.Context) error {
 		return domainerrors.ErrValidationFailed
 	})))
 
@@ -342,7 +342,7 @@ func TestErrorMiddleware_HandleHTTPError_LogsStackForInternalError(t *testing.T)
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
 	errorMiddleware := NewErrorMiddleware(logger)
-	handler := requestLogger.Log(errorMiddleware.HandleErrors(func(c echo.Context) error {
+	handler := requestLogger.Log(errorMiddleware.HandleErrors(func(c *echo.Context) error {
 		return sourceStackTestError()
 	}))
 
@@ -388,7 +388,7 @@ func TestErrorMiddleware_HandleHTTPError_LogsInnerStackForReclassifiedError(t *t
 	require.True(t, ok)
 	assert.Equal(t, domainerrors.ErrPersistenceFailed, appErr)
 
-	handler := requestLogger.Log(errorMiddleware.HandleErrors(func(echo.Context) error {
+	handler := requestLogger.Log(errorMiddleware.HandleErrors(func(*echo.Context) error {
 		return err
 	}))
 
@@ -413,7 +413,7 @@ func TestRequestLoggerMiddleware_LogsFallbackStackForUnwrappedInternalError(t *t
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
 	errorMiddleware := NewErrorMiddleware(logger)
-	handler := requestLogger.Log(errorMiddleware.HandleErrors(func(c echo.Context) error {
+	handler := requestLogger.Log(errorMiddleware.HandleErrors(func(c *echo.Context) error {
 		return errors.New("database failed")
 	}))
 
@@ -453,7 +453,7 @@ func TestRequestLoggerMiddleware_DoesNotFormatSourceStackForClientError(t *testi
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
-	handler := requestLogger.Log(func(c echo.Context) error {
+	handler := requestLogger.Log(func(c *echo.Context) error {
 		return response.BadRequest(c, "VALIDATION_FAILED", "bad request")
 	})
 
@@ -484,7 +484,7 @@ func TestRequestLoggerMiddleware_LogsDirectSanitizedErrorResponse(t *testing.T) 
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
 	errorMiddleware := NewErrorMiddleware(logger)
-	handler := requestLogger.Log(errorMiddleware.HandleErrors(CaptureRequestBodyForErrorLog(func(c echo.Context) error {
+	handler := requestLogger.Log(errorMiddleware.HandleErrors(CaptureRequestBodyForErrorLog(func(c *echo.Context) error {
 		return response.AuthRequired(c)
 	})))
 
@@ -514,7 +514,7 @@ func TestRequestLoggerMiddleware_LogsHandledResponseSentinelOnce(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
 	errorMiddleware := NewErrorMiddleware(logger)
-	handler := requestLogger.Log(errorMiddleware.HandleErrors(func(c echo.Context) error {
+	handler := requestLogger.Log(errorMiddleware.HandleErrors(func(c *echo.Context) error {
 		err := response.BadRequest(c, "VALIDATION_FAILED", "name is required")
 		require.NoError(t, err)
 
@@ -538,7 +538,7 @@ func TestRequestLoggerMiddleware_SkipsSuccessfulRequestOutsideDebug(t *testing.T
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
-	handler := requestLogger.Log(func(c echo.Context) error {
+	handler := requestLogger.Log(func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})
 
@@ -560,7 +560,7 @@ func TestRequestLoggerMiddleware_LogsSuccessfulRequestInDebug(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Env.Debug = true
 	requestLogger := NewRequestLoggerMiddleware(logger, cfg)
-	handler := requestLogger.Log(func(c echo.Context) error {
+	handler := requestLogger.Log(func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})
 
@@ -583,7 +583,7 @@ func TestCaptureRequestBodyForErrorLog_ClosesOriginalBodyAndRestoresReadableBody
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	handler := CaptureRequestBodyForErrorLog(func(c echo.Context) error {
+	handler := CaptureRequestBodyForErrorLog(func(c *echo.Context) error {
 		body, err := io.ReadAll(c.Request().Body)
 		require.NoError(t, err)
 		assert.Equal(t, `{"debug":"visible"}`, string(body))
@@ -610,7 +610,7 @@ func TestRequestLoggerMiddleware_LogsNestedFieldsWithSnakeCase(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 	requestLogger := NewRequestLoggerMiddleware(logger, &config.Config{})
 	errorMiddleware := NewErrorMiddleware(logger)
-	handler := requestLogger.Log(errorMiddleware.HandleErrors(CaptureRequestBodyForErrorLog(func(c echo.Context) error {
+	handler := requestLogger.Log(errorMiddleware.HandleErrors(CaptureRequestBodyForErrorLog(func(c *echo.Context) error {
 		return domainerrors.ErrValidationFailed
 	})))
 

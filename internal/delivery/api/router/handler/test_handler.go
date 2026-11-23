@@ -6,7 +6,7 @@ import (
 	"radar/internal/delivery/api/middleware"
 	"radar/internal/delivery/api/response"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // TestHandler handles test endpoints for middleware validation
@@ -19,7 +19,7 @@ func NewTestHandler() *TestHandler {
 
 // TestAuthMiddleware tests the authentication middleware
 // This endpoint requires a valid JWT token in the Authorization header
-func (h *TestHandler) TestAuthMiddleware(c echo.Context) error {
+func (h *TestHandler) TestAuthMiddleware(c *echo.Context) error {
 	// Get user information from context (set by auth middleware)
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
@@ -40,7 +40,7 @@ func (h *TestHandler) TestAuthMiddleware(c echo.Context) error {
 }
 
 // TestPublicEndpoint tests a public endpoint (no authentication required)
-func (h *TestHandler) TestPublicEndpoint(c echo.Context) error {
+func (h *TestHandler) TestPublicEndpoint(c *echo.Context) error {
 	return response.Success(c, http.StatusOK, map[string]any{
 		responseKeyMessage: "Public endpoint test successful",
 		responseKeyStatus:  "public",

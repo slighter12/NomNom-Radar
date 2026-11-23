@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"strconv"
@@ -17,8 +18,9 @@ import (
 	"radar/internal/delivery/middleware"
 	"radar/internal/domain/lifecycle"
 
-	"github.com/labstack/echo/v4"
-	echomiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/dustin/go-humanize"
+	"github.com/labstack/echo/v5"
+	echomiddleware "github.com/labstack/echo/v5/middleware"
 	"go.uber.org/fx"
 )
 
@@ -26,6 +28,8 @@ type apiServer struct {
 	cfg    *config.Config
 	logger *slog.Logger
 	server *echo.Echo
+	// httpServer owns the listener lifecycle; Echo v5 no longer exposes one.
+	httpServer *http.Server
 }
 
 // ServerParams holds dependencies for HTTP server, injected by Fx.
@@ -41,11 +45,6 @@ type ServerParams struct {
 func NewServer(params ServerParams) (delivery.Delivery, error) {
 	echoServer := echo.New()
 	echoServer.IPExtractor = apimiddleware.NewClientIPExtractor(params.Cfg)
-	echoServer.HideBanner = true
-	echoServer.Server.ReadTimeout = params.Cfg.HTTP.Timeouts.ReadTimeout
-	echoServer.Server.ReadHeaderTimeout = params.Cfg.HTTP.Timeouts.ReadHeaderTimeout
-	echoServer.Server.WriteTimeout = params.Cfg.HTTP.Timeouts.WriteTimeout
-	echoServer.Server.IdleTimeout = params.Cfg.HTTP.Timeouts.IdleTimeout
 
 	// Set up middleware in correct order
 	// 1. Recover middleware first (to catch panics early)
@@ -81,7 +80,11 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 	}
 
 	// 7. Request body size limit
-	echoServer.Use(echomiddleware.BodyLimit(params.Cfg.HTTP.MaxRequestBodySize))
+	bodyLimit, err := parseBodyLimit(params.Cfg.HTTP.MaxRequestBodySize)
+	if err != nil {
+		return nil, fmt.Errorf("configure request body limit: %w", err)
+	}
+	echoServer.Use(echomiddleware.BodyLimit(bodyLimit))
 
 	// 8. Keep a bounded JSON body copy for sanitized error-only request logging.
 	echoServer.Use(apimiddleware.CaptureRequestBodyForErrorLog)
@@ -96,9 +99,10 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 	r.RegisterTestRoutes(echoServer)
 
 	srv := &apiServer{
-		cfg:    params.Cfg,
-		logger: params.Logger,
-		server: echoServer,
+		cfg:        params.Cfg,
+		logger:     params.Logger,
+		server:     echoServer,
+		httpServer: newHTTPServer(echoServer, params.Cfg, params.Logger),
 	}
 
 	params.Lc.Append(fx.Hook{
@@ -108,19 +112,36 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 	return srv, nil
 }
 
+// newHTTPServer builds the standard library server that fronts Echo. It serves
+// HTTP/1 and unencrypted HTTP/2 (h2c) on the same port via the standard
+// library, avoiding the deprecated golang.org/x/net/http2 API.
+func newHTTPServer(handler http.Handler, cfg *config.Config, logger *slog.Logger) *http.Server {
+	var protocols http.Protocols
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+
+	return &http.Server{
+		Handler:           handler,
+		ReadTimeout:       cfg.HTTP.Timeouts.ReadTimeout,
+		ReadHeaderTimeout: cfg.HTTP.Timeouts.ReadHeaderTimeout,
+		WriteTimeout:      cfg.HTTP.Timeouts.WriteTimeout,
+		IdleTimeout:       cfg.HTTP.Timeouts.IdleTimeout,
+		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
+		Protocols:         &protocols,
+	}
+}
+
 func (s *apiServer) Serve(ctx context.Context) error {
 	hostPort := net.JoinHostPort("0.0.0.0", strconv.Itoa(s.cfg.HTTP.Port))
 	s.logger.Info("Starting API HTTP server", slog.String("host_port", hostPort))
 
-	// Serve HTTP/1 and unencrypted HTTP/2 (h2c) on the same port via the
-	// standard library, avoiding the deprecated golang.org/x/net/http2 API.
-	var protocols http.Protocols
-	protocols.SetHTTP1(true)
-	protocols.SetUnencryptedHTTP2(true)
-	s.server.Server.Protocols = &protocols
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", hostPort)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", hostPort, err)
+	}
 
-	if err := s.server.Start(hostPort); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
+	if err := s.httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("serve %s HTTP: %w", "'+name+'", err)
 	}
 
 	return nil
@@ -132,5 +153,23 @@ func (s *apiServer) stop(ctx context.Context) error {
 
 	s.logger.Info("Shutting down API HTTP server")
 
-	return s.server.Shutdown(shutdownCtx)
+	if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("shutdown %s HTTP server: %w", "'+name+'", err)
+	}
+
+	return nil
+}
+
+// parseBodyLimit converts a configured size such as "100KB" into bytes. Echo v5
+// BodyLimit takes a byte count, while Echo v4 parsed the string itself: "1KB"
+// and "1M" are decimal (1000-based), "1KiB" and "1Mi" binary (1024-based), and
+// humanize.ParseBytes keeps those semantics. Zero is rejected because v4 meant
+// "unlimited chunked body" and v5 means "reject every body"; neither is useful.
+func parseBodyLimit(raw string) (int64, error) {
+	size, err := humanize.ParseBytes(raw)
+	if err != nil || size == 0 || size > math.MaxInt64 {
+		return 0, fmt.Errorf("invalid http.maxRequestBodySize %q: want 1 byte to %d bytes", raw, int64(math.MaxInt64))
+	}
+
+	return int64(size), nil
 }

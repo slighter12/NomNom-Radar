@@ -7,7 +7,7 @@ import (
 
 	"radar/config"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 const cloudflareClientIPHeader = "CF-Connecting-IP"

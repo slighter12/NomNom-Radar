@@ -13,7 +13,7 @@ import (
 	"radar/config"
 	"radar/internal/delivery/api/router"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/fx/fxtest"
@@ -34,8 +34,8 @@ func TestServer_PanicAfterCommittedResponseLogsOneErrorRecord(t *testing.T) {
 			})
 			require.NoError(t, err)
 			e := srv.(*apiServer).server
-			e.Logger.SetOutput(&echoOutput)
-			e.GET("/committed-panic", func(c echo.Context) error {
+			e.Logger = slog.New(slog.NewTextHandler(&echoOutput, nil))
+			e.GET("/committed-panic", func(c *echo.Context) error {
 				if err := c.String(http.StatusOK, "partial"); err != nil {
 					return err
 				}
@@ -78,7 +78,7 @@ func TestServer_SuccessfulRequestIsNotLoggedWithDebugOff(t *testing.T) {
 	})
 	require.NoError(t, err)
 	e := srv.(*apiServer).server
-	e.GET("/ok", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
+	e.GET("/ok", func(c *echo.Context) error { return c.String(http.StatusOK, "ok") })
 
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/ok", nil))

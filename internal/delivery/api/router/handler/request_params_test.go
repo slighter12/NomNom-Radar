@@ -11,7 +11,7 @@ import (
 	apimiddleware "radar/internal/delivery/api/middleware"
 	apivalidator "radar/internal/delivery/api/validator"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,7 +20,7 @@ type testValidationPayload struct {
 	Name string `json:"name" validate:"required"`
 }
 
-func newJSONContext(method, target, body string) (echo.Context, *httptest.ResponseRecorder) {
+func newJSONContext(method, target, body string) (*echo.Context, *httptest.ResponseRecorder) {
 	e := echo.New()
 	e.Validator = apivalidator.New()
 
@@ -59,10 +59,10 @@ func TestBindAndValidateRequest_StopsAfterValidationError(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), `"details":"name is required"`)
 }
 
-func writeTestErrorResponse(c echo.Context, err error) {
+func writeTestErrorResponse(c *echo.Context, err error) {
 	if err == nil {
 		return
 	}
 
-	apimiddleware.NewErrorMiddleware(slog.Default()).HandleHTTPError(err, c)
+	apimiddleware.NewErrorMiddleware(slog.Default()).HandleHTTPError(c, err)
 }

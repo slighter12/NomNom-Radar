@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 const (
@@ -27,7 +27,7 @@ const (
 // CaptureRequestBodyForErrorLog keeps a bounded copy of JSON request bodies so
 // the centralized error handler can log a sanitized request after binding.
 func CaptureRequestBodyForErrorLog(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		req := c.Request()
 		if req.Body == nil || !requestMayHaveBody(req.Method) || !isJSONContentType(req.Header.Get(echo.HeaderContentType)) {
 			return next(c)
@@ -99,7 +99,7 @@ func (log responseErrorLog) LogValue() slog.Value {
 	return slog.GroupValue(attrs...)
 }
 
-func buildSanitizedRequestLog(c echo.Context) sanitizedRequestLog {
+func buildSanitizedRequestLog(c *echo.Context) sanitizedRequestLog {
 	req := c.Request()
 	body, bodyTruncated := sanitizedBody(c)
 
@@ -113,7 +113,7 @@ func buildSanitizedRequestLog(c echo.Context) sanitizedRequestLog {
 	}
 }
 
-func sanitizedBody(c echo.Context) (any, bool) {
+func sanitizedBody(c *echo.Context) (any, bool) {
 	raw, ok := c.Get(capturedRequestBodyKey).([]byte)
 	if !ok || len(raw) == 0 {
 		return nil, false

@@ -10,7 +10,7 @@ import (
 
 	validatorpkg "github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 type PaginationQueryParams struct {
@@ -42,15 +42,15 @@ func NewLimitOffsetQueryParams(defaultLimit, defaultOffset int) LimitOffsetQuery
 	}
 }
 
-func bindQueryParams(c echo.Context, params any, invalidMessage string) error {
-	if err := (&echo.DefaultBinder{}).BindQueryParams(c, params); err != nil {
+func bindQueryParams(c *echo.Context, params any, invalidMessage string) error {
+	if err := echo.BindQueryParams(c, params); err != nil {
 		return invalidInputError(invalidMessage)
 	}
 
 	return nil
 }
 
-func bindRequest(c echo.Context, req any, invalidMessage string) error {
+func bindRequest(c *echo.Context, req any, invalidMessage string) error {
 	if err := c.Bind(req); err != nil {
 		return invalidInputError(invalidMessage)
 	}
@@ -58,7 +58,7 @@ func bindRequest(c echo.Context, req any, invalidMessage string) error {
 	return nil
 }
 
-func validateRequest(c echo.Context, req any) error {
+func validateRequest(c *echo.Context, req any) error {
 	if err := c.Validate(req); err != nil {
 		return validationFailedError(validationMessage(err, req))
 	}
@@ -66,7 +66,7 @@ func validateRequest(c echo.Context, req any) error {
 	return nil
 }
 
-func bindAndValidateRequest(c echo.Context, req any, invalidMessage string) error {
+func bindAndValidateRequest(c *echo.Context, req any, invalidMessage string) error {
 	if err := bindRequest(c, req, invalidMessage); err != nil {
 		return err
 	}
@@ -82,7 +82,7 @@ func requireBoundPayload[T any](payload *T) error {
 	return nil
 }
 
-func bindRequiredPayload[T any](c echo.Context, invalidMessage string) (*T, error) {
+func bindRequiredPayload[T any](c *echo.Context, invalidMessage string) (*T, error) {
 	var payload *T
 	if err := bindRequest(c, &payload, invalidMessage); err != nil {
 		return nil, err
@@ -97,23 +97,23 @@ func bindRequiredPayload[T any](c echo.Context, invalidMessage string) (*T, erro
 	return payload, nil
 }
 
-func bindMerchantIDPathParam(c echo.Context, invalidMessage string) (uuid.UUID, error) {
+func bindMerchantIDPathParam(c *echo.Context, invalidMessage string) (uuid.UUID, error) {
 	return bindUUIDPathParam(c, "merchantId", invalidMessage)
 }
 
-func bindLocationIDPathParam(c echo.Context, invalidMessage string) (uuid.UUID, error) {
+func bindLocationIDPathParam(c *echo.Context, invalidMessage string) (uuid.UUID, error) {
 	return bindUUIDPathParam(c, "locationId", invalidMessage)
 }
 
-func bindMenuItemIDPathParam(c echo.Context, invalidMessage string) (uuid.UUID, error) {
+func bindMenuItemIDPathParam(c *echo.Context, invalidMessage string) (uuid.UUID, error) {
 	return bindUUIDPathParam(c, "menuItemId", invalidMessage)
 }
 
-func bindDeviceIDPathParam(c echo.Context, invalidMessage string) (uuid.UUID, error) {
+func bindDeviceIDPathParam(c *echo.Context, invalidMessage string) (uuid.UUID, error) {
 	return bindUUIDPathParam(c, "deviceId", invalidMessage)
 }
 
-func bindUUIDPathParam(c echo.Context, paramName, invalidMessage string) (uuid.UUID, error) {
+func bindUUIDPathParam(c *echo.Context, paramName, invalidMessage string) (uuid.UUID, error) {
 	value := strings.TrimSpace(c.Param(paramName))
 	if value == "" {
 		return uuid.Nil, invalidIDError(invalidMessage)
@@ -127,7 +127,7 @@ func bindUUIDPathParam(c echo.Context, paramName, invalidMessage string) (uuid.U
 	return id, nil
 }
 
-func validatePaginationQueryParams(c echo.Context, params *PaginationQueryParams) error {
+func validatePaginationQueryParams(c *echo.Context, params *PaginationQueryParams) error {
 	if err := c.Validate(params); err != nil {
 		return validationFailedError(validationMessage(err, params))
 	}

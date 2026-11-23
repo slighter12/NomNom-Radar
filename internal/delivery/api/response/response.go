@@ -7,7 +7,7 @@ import (
 	"radar/internal/platform/observability"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // SuccessResponse defines the structure for successful responses
@@ -44,7 +44,7 @@ type MetaInfo struct {
 }
 
 // Success returns a successful response
-func Success(c echo.Context, statusCode int, data any) error {
+func Success(c *echo.Context, statusCode int, data any) error {
 	return c.JSON(statusCode, SuccessResponse{
 		Data: data,
 		Meta: &MetaInfo{
@@ -54,7 +54,7 @@ func Success(c echo.Context, statusCode int, data any) error {
 }
 
 // Error returns an error response
-func Error(c echo.Context, statusCode int, errorCode string, message string, details any) error {
+func Error(c *echo.Context, statusCode int, errorCode string, message string, details any) error {
 	// Details should not be included for 5xx errors or authentication/authorization errors
 	if statusCode >= 500 || statusCode == 401 || statusCode == 403 {
 		details = nil
@@ -79,7 +79,7 @@ func Error(c echo.Context, statusCode int, errorCode string, message string, det
 	})
 }
 
-func requestID(c echo.Context) string {
+func requestID(c *echo.Context) string {
 	if id := observability.CorrelationIDFromContext(c.Request().Context()); id != "" {
 		return id
 	}
@@ -97,61 +97,61 @@ func appErrorDetails(appErr domainerrors.AppError) any {
 }
 
 // AppError renders a canonical AppError directly through its HTTP metadata.
-func AppError(c echo.Context, appErr domainerrors.AppError) error {
+func AppError(c *echo.Context, appErr domainerrors.AppError) error {
 	return Error(c, appErr.HTTPCode(), appErr.ErrorCode(), appErr.Message(), appErrorDetails(appErr))
 }
 
 // BadRequest returns a 400 error
-func BadRequest(c echo.Context, errorCode string, message string) error {
+func BadRequest(c *echo.Context, errorCode string, message string) error {
 	return Error(c, http.StatusBadRequest, errorCode, message, nil)
 }
 
 // BadRequestWithDetails returns a 400 error with details
-func BadRequestWithDetails(c echo.Context, errorCode string, message string, details any) error {
+func BadRequestWithDetails(c *echo.Context, errorCode string, message string, details any) error {
 	return Error(c, http.StatusBadRequest, errorCode, message, details)
 }
 
 // BindingError returns a binding error response
-func BindingError(c echo.Context, errorCode string, message string) error {
+func BindingError(c *echo.Context, errorCode string, message string) error {
 	return Error(c, http.StatusBadRequest, errorCode, message, nil)
 }
 
 // Unauthorized returns a 401 error
-func Unauthorized(c echo.Context, errorCode string, message string) error {
+func Unauthorized(c *echo.Context, errorCode string, message string) error {
 	return Error(c, http.StatusUnauthorized, errorCode, message, nil)
 }
 
 // AuthRequired returns the canonical 401 error for missing authentication.
-func AuthRequired(c echo.Context) error {
+func AuthRequired(c *echo.Context) error {
 	return AppError(c, domainerrors.ErrUnauthorized)
 }
 
 // InvalidToken returns the canonical 401 error for invalid authentication tokens.
-func InvalidToken(c echo.Context) error {
+func InvalidToken(c *echo.Context) error {
 	return AppError(c, domainerrors.ErrInvalidToken)
 }
 
 // Forbidden returns a 403 error
-func Forbidden(c echo.Context, errorCode string, message string) error {
+func Forbidden(c *echo.Context, errorCode string, message string) error {
 	return Error(c, http.StatusForbidden, errorCode, message, nil)
 }
 
 // ForbiddenAccess returns the canonical 403 error for failed authorization.
-func ForbiddenAccess(c echo.Context) error {
+func ForbiddenAccess(c *echo.Context) error {
 	return AppError(c, domainerrors.ErrForbidden)
 }
 
 // NotFound returns a 404 error
-func NotFound(c echo.Context, errorCode string, message string) error {
+func NotFound(c *echo.Context, errorCode string, message string) error {
 	return Error(c, http.StatusNotFound, errorCode, message, nil)
 }
 
 // Conflict returns a 409 error
-func Conflict(c echo.Context, errorCode string, message string) error {
+func Conflict(c *echo.Context, errorCode string, message string) error {
 	return Error(c, http.StatusConflict, errorCode, message, nil)
 }
 
 // InternalServerError returns a 500 error
-func InternalServerError(c echo.Context, errorCode string, message string) error {
+func InternalServerError(c *echo.Context, errorCode string, message string) error {
 	return Error(c, http.StatusInternalServerError, errorCode, message, nil)
 }
