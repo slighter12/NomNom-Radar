@@ -11,7 +11,7 @@ import (
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // ContextKey is a custom type for context keys to avoid collisions.
@@ -26,7 +26,7 @@ const (
 
 // GetUserID extracts the authenticated user ID from context.
 // Returns the user ID and a boolean indicating success.
-func GetUserID(c echo.Context) (uuid.UUID, bool) {
+func GetUserID(c *echo.Context) (uuid.UUID, bool) {
 	val := c.Get(string(contextKeyUserID))
 	id, ok := val.(uuid.UUID)
 
@@ -35,7 +35,7 @@ func GetUserID(c echo.Context) (uuid.UUID, bool) {
 
 // GetRoles extracts the user roles from context.
 // Returns the roles and a boolean indicating success.
-func GetRoles(c echo.Context) (entity.Roles, bool) {
+func GetRoles(c *echo.Context) (entity.Roles, bool) {
 	val := c.Get(string(contextKeyRoles))
 	roles, ok := val.(entity.Roles)
 
@@ -54,7 +54,7 @@ func NewAuthMiddleware(tokenSvc service.TokenService, cfg *config.Config) *AuthM
 }
 
 // RefreshTokenSubject returns the user in the request's refresh token, if any.
-func (m *AuthMiddleware) RefreshTokenSubject(c echo.Context) (uuid.UUID, bool) {
+func (m *AuthMiddleware) RefreshTokenSubject(c *echo.Context) (uuid.UUID, bool) {
 	if c == nil {
 		return uuid.Nil, false
 	}
@@ -79,7 +79,7 @@ func (m *AuthMiddleware) RefreshTokenSubject(c echo.Context) (uuid.UUID, bool) {
 
 // Authenticate is the core middleware function that validates the JWT access token.
 func (m *AuthMiddleware) Authenticate(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		authHeader := c.Request().Header.Get("Authorization")
 		if authHeader == "" {
 			return response.AuthRequired(c)
@@ -116,7 +116,7 @@ func (m *AuthMiddleware) Authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 // It must be used AFTER the Authenticate middleware.
 func (m *AuthMiddleware) RequireRole(requiredRole entity.Role) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			roles, ok := GetRoles(c)
 			if !ok {
 				return response.ForbiddenAccess(c)

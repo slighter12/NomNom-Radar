@@ -10,7 +10,7 @@ import (
 
 	"radar/config"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -107,7 +107,7 @@ func TestRequestLogger_UsesOnlyAuthenticatedCloudflareClientIP(t *testing.T) {
 			var logs bytes.Buffer
 			logger := slog.New(slog.NewJSONHandler(&logs, nil))
 			requestLogger := NewRequestLoggerMiddleware(logger, cfg)
-			handler := requestLogger.Log(func(c echo.Context) error {
+			handler := requestLogger.Log(func(c *echo.Context) error {
 				return c.NoContent(http.StatusBadRequest)
 			})
 

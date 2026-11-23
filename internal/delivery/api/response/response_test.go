@@ -10,7 +10,7 @@ import (
 	domainerrors "radar/internal/domain/errors"
 	"radar/internal/platform/observability"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -125,7 +125,7 @@ func TestAppError_UsesResponseFilteringAndNormalizesEmptyDetails(t *testing.T) {
 	}
 }
 
-func newResponseTestContext() (echo.Context, *httptest.ResponseRecorder) {
+func newResponseTestContext() (*echo.Context, *httptest.ResponseRecorder) {
 	e := echo.New()
 	ctx := observability.WithCorrelationID(context.Background(), "req-123")
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)

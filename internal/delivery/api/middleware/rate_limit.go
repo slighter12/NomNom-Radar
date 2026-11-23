@@ -6,9 +6,8 @@ import (
 	"radar/config"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
-	echomiddleware "github.com/labstack/echo/v4/middleware"
-	"golang.org/x/time/rate"
+	"github.com/labstack/echo/v5"
+	echomiddleware "github.com/labstack/echo/v5/middleware"
 )
 
 // NewAuthRateLimiter creates the in-process limiter shared by authentication routes.
@@ -26,14 +25,14 @@ func NewAuthRateLimiter(cfg *config.Config) (echo.MiddlewareFunc, error) {
 	}
 
 	store := echomiddleware.NewRateLimiterMemoryStoreWithConfig(echomiddleware.RateLimiterMemoryStoreConfig{
-		Rate:      rate.Limit(*settings.Rate),
+		Rate:      *settings.Rate,
 		Burst:     *settings.Burst,
 		ExpiresIn: *settings.ExpiresIn,
 	})
 
 	return echomiddleware.RateLimiterWithConfig(echomiddleware.RateLimiterConfig{
 		Store: store,
-		IdentifierExtractor: func(c echo.Context) (string, error) {
+		IdentifierExtractor: func(c *echo.Context) (string, error) {
 			return c.RealIP(), nil
 		},
 	}), nil
@@ -43,7 +42,7 @@ func NewAuthRateLimiter(cfg *config.Config) (echo.MiddlewareFunc, error) {
 // It keys requests by the refresh-token user ID and falls back to the client IP.
 func NewSessionRateLimiter(
 	cfg *config.Config,
-	identify func(echo.Context) (uuid.UUID, bool),
+	identify func(*echo.Context) (uuid.UUID, bool),
 ) (echo.MiddlewareFunc, error) {
 	settings := config.DefaultSessionRateLimitConfig()
 	if cfg != nil && cfg.HTTP.SessionRateLimit != nil {
@@ -57,14 +56,14 @@ func NewSessionRateLimiter(
 	}
 
 	store := echomiddleware.NewRateLimiterMemoryStoreWithConfig(echomiddleware.RateLimiterMemoryStoreConfig{
-		Rate:      rate.Limit(*settings.Rate),
+		Rate:      *settings.Rate,
 		Burst:     *settings.Burst,
 		ExpiresIn: *settings.ExpiresIn,
 	})
 
 	return echomiddleware.RateLimiterWithConfig(echomiddleware.RateLimiterConfig{
 		Store: store,
-		IdentifierExtractor: func(c echo.Context) (string, error) {
+		IdentifierExtractor: func(c *echo.Context) (string, error) {
 			if identify != nil {
 				if userID, ok := identify(c); ok {
 					return userID.String(), nil
@@ -91,14 +90,14 @@ func NewAPIRateLimiter(cfg *config.Config) (echo.MiddlewareFunc, error) {
 	}
 
 	store := echomiddleware.NewRateLimiterMemoryStoreWithConfig(echomiddleware.RateLimiterMemoryStoreConfig{
-		Rate:      rate.Limit(*settings.Rate),
+		Rate:      *settings.Rate,
 		Burst:     *settings.Burst,
 		ExpiresIn: *settings.ExpiresIn,
 	})
 
 	return echomiddleware.RateLimiterWithConfig(echomiddleware.RateLimiterConfig{
 		Store: store,
-		IdentifierExtractor: func(c echo.Context) (string, error) {
+		IdentifierExtractor: func(c *echo.Context) (string, error) {
 			if userID, ok := GetUserID(c); ok {
 				return userID.String(), nil
 			}

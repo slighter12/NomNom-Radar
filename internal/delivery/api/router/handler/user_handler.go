@@ -16,7 +16,7 @@ import (
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.uber.org/fx"
 )
 
@@ -101,7 +101,7 @@ func NewUserHandler(params UserHandlerParams) *UserHandler {
 }
 
 // RegisterUser handles the user registration request.
-func (h *UserHandler) RegisterUser(c echo.Context) error {
+func (h *UserHandler) RegisterUser(c *echo.Context) error {
 	input, err := bindRequiredPayload[usecase.RegisterUserInput](c, "Invalid registration input")
 	if err != nil {
 		return err
@@ -119,7 +119,7 @@ func (h *UserHandler) RegisterUser(c echo.Context) error {
 }
 
 // RegisterMerchant handles the merchant registration request.
-func (h *UserHandler) RegisterMerchant(c echo.Context) error {
+func (h *UserHandler) RegisterMerchant(c *echo.Context) error {
 	input, err := bindRequiredPayload[usecase.RegisterMerchantInput](c, "Invalid registration input")
 	if err != nil {
 		return err
@@ -135,7 +135,7 @@ func (h *UserHandler) RegisterMerchant(c echo.Context) error {
 }
 
 // Login handles the user login request.
-func (h *UserHandler) Login(c echo.Context) error {
+func (h *UserHandler) Login(c *echo.Context) error {
 	input, err := bindRequiredPayload[usecase.LoginInput](c, "Invalid login input")
 	if err != nil {
 		return err
@@ -153,7 +153,7 @@ func (h *UserHandler) Login(c echo.Context) error {
 }
 
 // RefreshToken handles the token refresh request.
-func (h *UserHandler) RefreshToken(c echo.Context) error {
+func (h *UserHandler) RefreshToken(c *echo.Context) error {
 	input, err := bindRequiredPayload[usecase.RefreshTokenInput](c, "Invalid refresh token input")
 	if err != nil {
 		return err
@@ -168,7 +168,7 @@ func (h *UserHandler) RefreshToken(c echo.Context) error {
 }
 
 // Logout handles the user logout request.
-func (h *UserHandler) Logout(c echo.Context) error {
+func (h *UserHandler) Logout(c *echo.Context) error {
 	input, err := bindRequiredPayload[usecase.LogoutInput](c, "Invalid logout input")
 	if err != nil {
 		return err
@@ -182,7 +182,7 @@ func (h *UserHandler) Logout(c echo.Context) error {
 }
 
 // GoogleCallback handles the Google Sign-In callback.
-func (h *UserHandler) GoogleCallback(c echo.Context) error {
+func (h *UserHandler) GoogleCallback(c *echo.Context) error {
 	// Extract input parameters
 	input, err := h.extractGoogleCallbackInput(c)
 	if err != nil {
@@ -199,7 +199,7 @@ func (h *UserHandler) GoogleCallback(c echo.Context) error {
 }
 
 // CompleteMerchantOnboarding finalizes merchant onboarding for a verified identity.
-func (h *UserHandler) CompleteMerchantOnboarding(c echo.Context) error {
+func (h *UserHandler) CompleteMerchantOnboarding(c *echo.Context) error {
 	input, err := bindRequiredPayload[usecase.CompleteMerchantOnboardingInput](c, "Invalid merchant onboarding input")
 	if err != nil {
 		return err
@@ -213,7 +213,7 @@ func (h *UserHandler) CompleteMerchantOnboarding(c echo.Context) error {
 	return response.Success(c, http.StatusOK, output)
 }
 
-func (h *UserHandler) SubmitMerchantVerification(c echo.Context) error {
+func (h *UserHandler) SubmitMerchantVerification(c *echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -231,7 +231,7 @@ func (h *UserHandler) SubmitMerchantVerification(c echo.Context) error {
 	return response.Success(c, http.StatusOK, map[string]string{responseKeyStatus: "verified"})
 }
 
-func (h *UserHandler) GetMerchantDiscoveryProfile(c echo.Context) error {
+func (h *UserHandler) GetMerchantDiscoveryProfile(c *echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -245,7 +245,7 @@ func (h *UserHandler) GetMerchantDiscoveryProfile(c echo.Context) error {
 	return response.Success(c, http.StatusOK, result)
 }
 
-func (h *UserHandler) UpdateMerchantProfile(c echo.Context) error {
+func (h *UserHandler) UpdateMerchantProfile(c *echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -278,7 +278,7 @@ func (h *UserHandler) UpdateMerchantProfile(c echo.Context) error {
 	return response.Success(c, http.StatusOK, map[string]string{responseKeyMessage: "Merchant profile updated"})
 }
 
-func (h *UserHandler) UpdateMerchantDiscoveryProfile(c echo.Context) error {
+func (h *UserHandler) UpdateMerchantDiscoveryProfile(c *echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -302,7 +302,7 @@ func (h *UserHandler) UpdateMerchantDiscoveryProfile(c echo.Context) error {
 	return response.Success(c, http.StatusOK, result)
 }
 
-func (h *UserHandler) LinkProvider(c echo.Context) error {
+func (h *UserHandler) LinkProvider(c *echo.Context) error {
 	input, err := bindRequiredPayload[usecase.LinkProviderInput](c, "Invalid link provider input")
 	if err != nil {
 		return err
@@ -320,7 +320,7 @@ func (h *UserHandler) LinkProvider(c echo.Context) error {
 
 // extractGoogleCallbackInput extracts and validates input from the request.
 // Query params (code, state) are read from the URL; the rest comes from the JSON body.
-func (h *UserHandler) extractGoogleCallbackInput(c echo.Context) (*usecase.GoogleCallbackInput, error) {
+func (h *UserHandler) extractGoogleCallbackInput(c *echo.Context) (*usecase.GoogleCallbackInput, error) {
 	var query GoogleCallbackQueryParams
 	if err := bindQueryParams(c, &query, "Invalid Google callback input"); err != nil {
 		return nil, err
@@ -349,7 +349,7 @@ func (h *UserHandler) extractGoogleCallbackInput(c echo.Context) (*usecase.Googl
 }
 
 // GetProfile handles the request to get the current user's profile.
-func (h *UserHandler) GetProfile(c echo.Context) error {
+func (h *UserHandler) GetProfile(c *echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -363,13 +363,13 @@ func (h *UserHandler) GetProfile(c echo.Context) error {
 	return response.Success(c, http.StatusOK, user)
 }
 
-func setRetryAfterHeaderOnLockout(c echo.Context, err error) {
+func setRetryAfterHeaderOnLockout(c *echo.Context, err error) {
 	if lockoutErr, ok := errors.AsType[*usecase.LockoutError](err); ok {
 		c.Response().Header().Set("Retry-After", strconv.Itoa(lockoutErr.RetryAfterSeconds))
 	}
 }
 
 // HealthCheck is a simple handler to check if the service is up.
-func HealthCheck(c echo.Context) error {
+func HealthCheck(c *echo.Context) error {
 	return response.Success(c, http.StatusOK, map[string]string{responseKeyStatus: "ok"})
 }

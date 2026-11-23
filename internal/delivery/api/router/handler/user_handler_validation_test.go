@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +17,7 @@ func TestUserHandler_InvalidPayloadsAreRejectedAtHTTPBoundary(t *testing.T) {
 		name       string
 		target     string
 		body       string
-		handle     func(echo.Context) error
+		handle     func(*echo.Context) error
 		wantStatus int
 		wantCode   string
 		wantDetail string
@@ -89,7 +89,7 @@ func TestUserHandler_InvalidPayloadsAreRejectedAtHTTPBoundary(t *testing.T) {
 			name:   "merchant verification missing business license",
 			target: "/merchant/verification",
 			body:   `{}`,
-			handle: func(c echo.Context) error {
+			handle: func(c *echo.Context) error {
 				c.Set("userID", uuid.New())
 
 				return handler.SubmitMerchantVerification(c)
@@ -102,7 +102,7 @@ func TestUserHandler_InvalidPayloadsAreRejectedAtHTTPBoundary(t *testing.T) {
 			name:   "merchant profile update missing fields",
 			target: "/merchant/profile",
 			body:   `{}`,
-			handle: func(c echo.Context) error {
+			handle: func(c *echo.Context) error {
 				c.Set("userID", uuid.New())
 
 				return handler.UpdateMerchantProfile(c)

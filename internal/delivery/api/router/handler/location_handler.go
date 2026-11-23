@@ -9,7 +9,7 @@ import (
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.uber.org/fx"
 )
 
@@ -56,7 +56,7 @@ type UpdateLocationRequest struct {
 }
 
 // CreateUserLocation handles creating a new user location
-func (h *LocationHandler) CreateUserLocation(c echo.Context) error {
+func (h *LocationHandler) CreateUserLocation(c *echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -76,7 +76,7 @@ func (h *LocationHandler) CreateUserLocation(c echo.Context) error {
 }
 
 // GetUserLocations handles retrieving all user locations
-func (h *LocationHandler) GetUserLocations(c echo.Context) error {
+func (h *LocationHandler) GetUserLocations(c *echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -91,7 +91,7 @@ func (h *LocationHandler) GetUserLocations(c echo.Context) error {
 }
 
 // UpdateUserLocation handles updating a user location
-func (h *LocationHandler) UpdateUserLocation(c echo.Context) error {
+func (h *LocationHandler) UpdateUserLocation(c *echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -116,7 +116,7 @@ func (h *LocationHandler) UpdateUserLocation(c echo.Context) error {
 }
 
 // DeleteUserLocation handles deleting a user location
-func (h *LocationHandler) DeleteUserLocation(c echo.Context) error {
+func (h *LocationHandler) DeleteUserLocation(c *echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -135,7 +135,7 @@ func (h *LocationHandler) DeleteUserLocation(c echo.Context) error {
 }
 
 // CreateMerchantLocation handles creating a new merchant location
-func (h *LocationHandler) CreateMerchantLocation(c echo.Context) error {
+func (h *LocationHandler) CreateMerchantLocation(c *echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -155,7 +155,7 @@ func (h *LocationHandler) CreateMerchantLocation(c echo.Context) error {
 }
 
 // GetMerchantLocations handles retrieving all merchant locations
-func (h *LocationHandler) GetMerchantLocations(c echo.Context) error {
+func (h *LocationHandler) GetMerchantLocations(c *echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -170,7 +170,7 @@ func (h *LocationHandler) GetMerchantLocations(c echo.Context) error {
 }
 
 // UpdateMerchantLocation handles updating a merchant location
-func (h *LocationHandler) UpdateMerchantLocation(c echo.Context) error {
+func (h *LocationHandler) UpdateMerchantLocation(c *echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -195,7 +195,7 @@ func (h *LocationHandler) UpdateMerchantLocation(c echo.Context) error {
 }
 
 // DeleteMerchantLocation handles deleting a merchant location
-func (h *LocationHandler) DeleteMerchantLocation(c echo.Context) error {
+func (h *LocationHandler) DeleteMerchantLocation(c *echo.Context) error {
 	merchantID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -213,7 +213,7 @@ func (h *LocationHandler) DeleteMerchantLocation(c echo.Context) error {
 	return response.Success(c, http.StatusOK, map[string]string{responseKeyMessage: "Location deleted successfully"})
 }
 
-func (h *LocationHandler) parseLocationID(c echo.Context) (uuid.UUID, error) {
+func (h *LocationHandler) parseLocationID(c *echo.Context) (uuid.UUID, error) {
 	return bindLocationIDPathParam(c, "Invalid location ID")
 }
 

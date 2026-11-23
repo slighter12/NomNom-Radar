@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -15,8 +16,8 @@ import (
 	"radar/internal/delivery/worker/handler"
 	"radar/internal/domain/lifecycle"
 
-	"github.com/labstack/echo/v4"
-	echomiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	echomiddleware "github.com/labstack/echo/v5/middleware"
 	"go.uber.org/fx"
 )
 
@@ -24,6 +25,8 @@ type workerServer struct {
 	cfg    *config.Config
 	logger *slog.Logger
 	server *echo.Echo
+	// httpServer owns the listener lifecycle; Echo v5 no longer exposes one.
+	httpServer *http.Server
 }
 
 // ServerParams holds dependencies for the worker server
@@ -39,11 +42,6 @@ type ServerParams struct {
 // NewServer creates a new worker HTTP server
 func NewServer(params ServerParams) (delivery.Delivery, error) {
 	e := echo.New()
-	e.HideBanner = true
-	e.Server.ReadTimeout = params.Cfg.HTTP.Timeouts.ReadTimeout
-	e.Server.ReadHeaderTimeout = params.Cfg.HTTP.Timeouts.ReadHeaderTimeout
-	e.Server.WriteTimeout = params.Cfg.HTTP.Timeouts.WriteTimeout
-	e.Server.IdleTimeout = params.Cfg.HTTP.Timeouts.IdleTimeout
 
 	// Set up middleware in correct order
 	// 1. Recover middleware first (to catch panics early)
@@ -66,7 +64,7 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 	e.Use(errorMiddleware.RecoverPanics)
 
 	// Health check endpoint
-	e.GET("/health", func(c echo.Context) error {
+	e.GET("/health", func(c *echo.Context) error {
 		return c.JSON(200, map[string]string{"status": "ok"})
 	})
 
@@ -74,9 +72,10 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 	e.POST("/push", params.PushHandler.HandlePush)
 
 	srv := &workerServer{
-		cfg:    params.Cfg,
-		logger: params.Logger,
-		server: e,
+		cfg:        params.Cfg,
+		logger:     params.Logger,
+		server:     e,
+		httpServer: newHTTPServer(e, params.Cfg, params.Logger),
 	}
 
 	params.Lc.Append(fx.Hook{
@@ -86,20 +85,37 @@ func NewServer(params ServerParams) (delivery.Delivery, error) {
 	return srv, nil
 }
 
+// newHTTPServer builds the standard library server that fronts Echo. It serves
+// HTTP/1 and unencrypted HTTP/2 (h2c) on the same port via the standard
+// library, avoiding the deprecated golang.org/x/net/http2 API.
+func newHTTPServer(handler http.Handler, cfg *config.Config, logger *slog.Logger) *http.Server {
+	var protocols http.Protocols
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+
+	return &http.Server{
+		Handler:           handler,
+		ReadTimeout:       cfg.HTTP.Timeouts.ReadTimeout,
+		ReadHeaderTimeout: cfg.HTTP.Timeouts.ReadHeaderTimeout,
+		WriteTimeout:      cfg.HTTP.Timeouts.WriteTimeout,
+		IdleTimeout:       cfg.HTTP.Timeouts.IdleTimeout,
+		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
+		Protocols:         &protocols,
+	}
+}
+
 // Serve starts the worker HTTP server
 func (s *workerServer) Serve(ctx context.Context) error {
 	hostPort := net.JoinHostPort("0.0.0.0", strconv.Itoa(s.cfg.HTTP.Port))
 	s.logger.Info("Starting Worker HTTP server", slog.String("host_port", hostPort))
 
-	// Serve HTTP/1 and unencrypted HTTP/2 (h2c) on the same port via the
-	// standard library, avoiding the deprecated golang.org/x/net/http2 API.
-	var protocols http.Protocols
-	protocols.SetHTTP1(true)
-	protocols.SetUnencryptedHTTP2(true)
-	s.server.Server.Protocols = &protocols
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", hostPort)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", hostPort, err)
+	}
 
-	if err := s.server.Start(hostPort); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
+	if err := s.httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("serve %s HTTP: %w", "'+name+'", err)
 	}
 
 	return nil
@@ -112,5 +128,9 @@ func (s *workerServer) stop(ctx context.Context) error {
 
 	s.logger.Info("Shutting down Worker HTTP server")
 
-	return s.server.Shutdown(shutdownCtx)
+	if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("shutdown %s HTTP server: %w", "'+name+'", err)
+	}
+
+	return nil
 }

@@ -9,7 +9,7 @@ import (
 	"radar/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.uber.org/fx"
 )
 
@@ -48,7 +48,7 @@ type UpdateFCMTokenRequest struct {
 }
 
 // RegisterDevice handles device registration
-func (h *DeviceHandler) RegisterDevice(c echo.Context) error {
+func (h *DeviceHandler) RegisterDevice(c *echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -74,7 +74,7 @@ func (h *DeviceHandler) RegisterDevice(c echo.Context) error {
 }
 
 // GetUserDevices handles retrieving all user devices
-func (h *DeviceHandler) GetUserDevices(c echo.Context) error {
+func (h *DeviceHandler) GetUserDevices(c *echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -89,7 +89,7 @@ func (h *DeviceHandler) GetUserDevices(c echo.Context) error {
 }
 
 // GetDeviceHealth handles retrieving computed device health for the authenticated user.
-func (h *DeviceHandler) GetDeviceHealth(c echo.Context) error {
+func (h *DeviceHandler) GetDeviceHealth(c *echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -104,7 +104,7 @@ func (h *DeviceHandler) GetDeviceHealth(c echo.Context) error {
 }
 
 // UpdateFCMToken handles updating FCM token for a device
-func (h *DeviceHandler) UpdateFCMToken(c echo.Context) error {
+func (h *DeviceHandler) UpdateFCMToken(c *echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -128,7 +128,7 @@ func (h *DeviceHandler) UpdateFCMToken(c echo.Context) error {
 }
 
 // DeactivateDevice handles deactivating a device
-func (h *DeviceHandler) DeactivateDevice(c echo.Context) error {
+func (h *DeviceHandler) DeactivateDevice(c *echo.Context) error {
 	userID, ok := middleware.GetUserID(c)
 	if !ok {
 		return response.InvalidToken(c)
@@ -146,6 +146,6 @@ func (h *DeviceHandler) DeactivateDevice(c echo.Context) error {
 	return response.Success(c, http.StatusOK, map[string]string{responseKeyMessage: "Device deactivated successfully"})
 }
 
-func (h *DeviceHandler) parseDeviceID(c echo.Context) (uuid.UUID, error) {
+func (h *DeviceHandler) parseDeviceID(c *echo.Context) (uuid.UUID, error) {
 	return bindDeviceIDPathParam(c, "Invalid device ID")
 }

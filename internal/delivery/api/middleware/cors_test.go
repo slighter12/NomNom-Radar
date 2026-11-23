@@ -8,7 +8,7 @@ import (
 
 	"radar/config"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -61,7 +61,7 @@ func TestCORSMiddleware_UsesExplicitOrigins(t *testing.T) {
 
 	e := echo.New()
 	e.Use(corsMiddleware)
-	e.GET("/resource", func(c echo.Context) error {
+	e.GET("/resource", func(c *echo.Context) error {
 		return c.NoContent(http.StatusNoContent)
 	})
 

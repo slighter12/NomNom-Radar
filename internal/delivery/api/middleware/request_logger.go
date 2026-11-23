@@ -11,7 +11,7 @@ import (
 	"radar/internal/delivery/api/response"
 	"radar/internal/platform/observability"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/slighter12/go-lib/errors/stack"
 )
 
@@ -40,7 +40,7 @@ func NewRequestLoggerMiddleware(logger *slog.Logger, cfg *config.Config) *Reques
 }
 
 func (m *RequestLoggerMiddleware) Log(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) (err error) {
+	return func(c *echo.Context) (err error) {
 		start := time.Now()
 		defer func() {
 			m.logRequest(c, start)
@@ -50,8 +50,8 @@ func (m *RequestLoggerMiddleware) Log(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
-func (m *RequestLoggerMiddleware) logRequest(c echo.Context, start time.Time) {
-	status := c.Response().Status
+func (m *RequestLoggerMiddleware) logRequest(c *echo.Context, start time.Time) {
+	status, _ := responseState(c)
 	if status == 0 {
 		status = http.StatusOK
 	}
@@ -87,7 +87,7 @@ func (m *RequestLoggerMiddleware) logRequest(c echo.Context, start time.Time) {
 
 // failureLogAttrs returns the sanitized request, response error, and source
 // error fields logged for a failed request.
-func failureLogAttrs(c echo.Context, status int, sourceErr sourceErrorLog, hasSourceErr bool) []slog.Attr {
+func failureLogAttrs(c *echo.Context, status int, sourceErr sourceErrorLog, hasSourceErr bool) []slog.Attr {
 	attrs := []slog.Attr{slog.Any("request", buildSanitizedRequestLog(c))}
 	if status >= http.StatusBadRequest {
 		attrs = append(attrs, slog.Any("response_error", responseErrorLogFromContext(c, status)))
@@ -102,7 +102,7 @@ func failureLogAttrs(c echo.Context, status int, sourceErr sourceErrorLog, hasSo
 	return attrs
 }
 
-func requestIDForLog(c echo.Context) string {
+func requestIDForLog(c *echo.Context) string {
 	if id := observability.CorrelationIDFromContext(c.Request().Context()); id != "" {
 		return id
 	}
@@ -110,7 +110,7 @@ func requestIDForLog(c echo.Context) string {
 	return ""
 }
 
-func setSourceErrorLog(c echo.Context, err error) {
+func setSourceErrorLog(c *echo.Context, err error) {
 	if err == nil {
 		return
 	}
@@ -126,12 +126,12 @@ func setSourceErrorLog(c echo.Context, err error) {
 	}
 	sourceErr.Type = fmt.Sprintf("%T", logErr)
 	sourceErr.Message = sanitizeFreeTextLogValue(logErr.Error())
-	sourceErr.AfterCommit = c.Response().Committed
+	sourceErr.AfterCommit = responseCommitted(c)
 
 	c.Set(sourceErrorLogContextKey, sourceErr)
 }
 
-func stackForInternalServerError(c echo.Context) string {
+func stackForInternalServerError(c *echo.Context) string {
 	if sourceErr, ok := c.Get(sourceErrorLogContextKey).(sourceErrorLog); ok && sourceErr.Stack != nil {
 		if stack := sourceErr.Stack.Stack(); stack != "" {
 			return stack
@@ -141,7 +141,7 @@ func stackForInternalServerError(c echo.Context) string {
 	return stack.Capture(0)
 }
 
-func responseErrorLogFromContext(c echo.Context, status int) responseErrorLog {
+func responseErrorLogFromContext(c *echo.Context, status int) responseErrorLog {
 	if payload, ok := c.Get(response.ErrorLogContextKey).(response.ErrorLogInfo); ok {
 		return buildResponseErrorLog(payload.StatusCode, payload.Code, payload.Message, payload.Details)
 	}

@@ -10,7 +10,7 @@ import (
 	"radar/internal/delivery/api/response"
 	domainerrors "radar/internal/domain/errors"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // DomainGuardMiddleware restricts requests to a single configured host.
@@ -29,7 +29,7 @@ func NewDomainGuardMiddleware(cfg *config.Config) *DomainGuardMiddleware {
 
 // ValidateHost blocks requests that do not pass origin validation.
 func (m *DomainGuardMiddleware) ValidateHost(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		// Keep probe endpoint available for Cloud Run startup checks.
 		if c.Request().URL.Path == "/health" {
 			return next(c)
