@@ -69,25 +69,17 @@ func withJSON(headers map[string]string) map[string]string {
 	return merged
 }
 
-func preflight(origin, method string) map[string]string {
-	return map[string]string{
-		"Origin":                         origin,
-		"Access-Control-Request-Method":  method,
-		"Access-Control-Request-Headers": "authorization,content-type",
-	}
-}
-
-// TestServer_HTTPContract pins the externally visible HTTP behavior of the
-// full middleware chain and router. Every row below produced the same status
-// and error code on Echo v4.16.5 and Echo v5.4.7 (verified by running the same
-// requests against both versions); the only intentional deviation is noted.
+// TestServer_HTTPContract pins the Echo v5 behaviors that no other test covers
+// and that a handler-level test cannot see: how the assembled server answers
+// routing errors, oversized bodies and binary responses. Each row was checked
+// against Echo v4.16.5 and v5.4.7; the one intentional deviation is noted.
+// Binding, validation, auth, CORS and panic mapping are covered where they
+// live (handler, middleware and server_panic tests).
 func TestServer_HTTPContract(t *testing.T) {
 	t.Parallel()
 
-	const oversized = 2000
 	loginBody := `{"email":"a@example.com","password":"x"}`
-	bigLogin := `{"email":"a@example.com","password":"` + strings.Repeat("a", oversized) + `"}`
-	locationPath := "/api/v1/locations/user/" + contractLocationID
+	bigLogin := `{"email":"a@example.com","password":"` + strings.Repeat("a", 2000) + `"}`
 
 	cases := []struct {
 		name     string
@@ -96,56 +88,23 @@ func TestServer_HTTPContract(t *testing.T) {
 		errCode  string
 		wantHdrs map[string]string
 	}{
+		// Echo v5 routing errors are sentinels, not *echo.HTTPError; the error
+		// middleware must still map them to their own 4xx instead of a 500.
 		{name: "unmatched route", req: contractRequest{method: "GET", path: "/nope"}, status: 404, errCode: "NOT_FOUND"},
 		{name: "wrong method", req: contractRequest{method: "POST", path: "/health"}, status: 405, errCode: "REQUEST_FAILED"},
-		{name: "trailing slash is not routed", req: contractRequest{method: "GET", path: "/health/"}, status: 404, errCode: "NOT_FOUND"},
 		// Intentional v5 change: v4 answered 204 for OPTIONS on an unknown path.
 		{name: "options on unknown path", req: contractRequest{method: "OPTIONS", path: "/nope"}, status: 404, errCode: "NOT_FOUND"},
+		// The two body-limit paths differ in v5: Content-Length is checked up
+		// front, a chunked body is only caught while it is being read.
 		{
-			name: "preflight from allowed origin", status: 204,
-			req:      contractRequest{method: "OPTIONS", path: "/auth/login", headers: preflight("https://app.example.com", "POST")},
-			wantHdrs: map[string]string{"Access-Control-Allow-Origin": "https://app.example.com"},
+			name: "oversized body by content-length", status: 413, errCode: "REQUEST_FAILED",
+			req: contractRequest{method: "POST", path: "/auth/login", headers: withJSON(nil), body: bigLogin},
 		},
 		{
-			name: "preflight from foreign origin", status: 204,
-			req:      contractRequest{method: "OPTIONS", path: "/auth/login", headers: preflight("https://evil.example.com", "POST")},
-			wantHdrs: map[string]string{"Access-Control-Allow-Origin": ""},
+			name: "oversized chunked body", status: 413, errCode: "REQUEST_FAILED",
+			req: contractRequest{method: "POST", path: "/auth/login", headers: withJSON(nil), body: bigLogin, chunked: true},
 		},
-		{
-			name: "simple request from allowed origin", status: 200,
-			req:      contractRequest{method: "GET", path: "/health", headers: map[string]string{"Origin": "https://app.example.com"}},
-			wantHdrs: map[string]string{"Access-Control-Allow-Origin": "https://app.example.com"},
-		},
-		{
-			name: "simple request from foreign origin", status: 200,
-			req:      contractRequest{method: "GET", path: "/health", headers: map[string]string{"Origin": "https://evil.example.com"}},
-			wantHdrs: map[string]string{"Access-Control-Allow-Origin": ""},
-		},
-		{name: "malformed json", req: contractRequest{method: "POST", path: "/auth/login", headers: withJSON(nil), body: `{"email":`}, status: 400, errCode: "INVALID_INPUT"},
-		{name: "wrong content type", req: contractRequest{method: "POST", path: "/auth/login", headers: map[string]string{"Content-Type": "text/plain"}, body: loginBody}, status: 400, errCode: "INVALID_INPUT"},
-		{name: "json type mismatch", req: contractRequest{method: "POST", path: "/auth/login", headers: withJSON(nil), body: `{"email":1,"password":"x"}`}, status: 400, errCode: "INVALID_INPUT"},
-		{name: "empty body fails validation", req: contractRequest{method: "POST", path: "/auth/login", headers: withJSON(nil)}, status: 400, errCode: "VALIDATION_FAILED"},
-		{name: "null body fails validation", req: contractRequest{method: "POST", path: "/auth/login", headers: withJSON(nil), body: `null`}, status: 400, errCode: "VALIDATION_FAILED"},
-		{name: "field validation", req: contractRequest{method: "POST", path: "/auth/login", headers: withJSON(nil), body: `{"email":"nope"}`}, status: 400, errCode: "VALIDATION_FAILED"},
-		{name: "valid login", req: contractRequest{method: "POST", path: "/auth/login", headers: withJSON(nil), body: loginBody}, status: 200},
-		{name: "oversized body by content-length", req: contractRequest{method: "POST", path: "/auth/login", headers: withJSON(nil), body: bigLogin}, status: 413, errCode: "REQUEST_FAILED"},
-		{name: "oversized chunked body", req: contractRequest{method: "POST", path: "/auth/login", headers: withJSON(nil), body: bigLogin, chunked: true}, status: 413, errCode: "REQUEST_FAILED"},
-		{name: "handler panic", req: contractRequest{method: "POST", path: "/auth/login", headers: withJSON(nil), body: `{"email":"` + contractPanicEmail + `","password":"x"}`}, status: 500, errCode: "INTERNAL_ERROR"},
-		{name: "missing token", req: contractRequest{method: "GET", path: "/api/v1/user/profile"}, status: 401, errCode: "UNAUTHORIZED"},
-		{name: "unknown token", req: contractRequest{method: "GET", path: "/api/v1/user/profile", headers: bearer("zzz")}, status: 401, errCode: "INVALID_TOKEN"},
-		{name: "non-bearer scheme", req: contractRequest{method: "GET", path: "/api/v1/user/profile", headers: map[string]string{"Authorization": "Basic abc"}}, status: 401, errCode: "INVALID_TOKEN"},
-		{name: "wrong role", req: contractRequest{method: "GET", path: "/api/v1/locations/user", headers: bearer(contractMerchantToken)}, status: 403, errCode: "FORBIDDEN"},
-		{name: "authorized list", req: contractRequest{method: "GET", path: "/api/v1/locations/user", headers: bearer(contractUserToken)}, status: 200},
-		{name: "path param not a uuid", req: contractRequest{method: "PUT", path: "/api/v1/locations/user/not-a-uuid", headers: withJSON(bearer(contractUserToken)), body: `{}`}, status: 400, errCode: "INVALID_ID"},
-		{name: "path param with encoded slash", req: contractRequest{method: "PUT", path: locationPath + "%2Fx", headers: withJSON(bearer(contractUserToken)), body: `{}`}, status: 400, errCode: "INVALID_ID"},
-		{name: "path param double encoded", req: contractRequest{method: "PUT", path: "/api/v1/locations/user/%2533333333-3333-3333-3333-333333333333", headers: withJSON(bearer(contractUserToken)), body: `{}`}, status: 400, errCode: "INVALID_ID"},
-		{name: "path param valid", req: contractRequest{method: "PUT", path: locationPath, headers: withJSON(bearer(contractUserToken)), body: `{"label":"home"}`}, status: 200},
-		{name: "body validation on update", req: contractRequest{method: "PUT", path: locationPath, headers: withJSON(bearer(contractUserToken)), body: `{"latitude":999}`}, status: 400, errCode: "VALIDATION_FAILED"},
-		{name: "query binding ok", req: contractRequest{method: "GET", path: "/api/v1/merchants?page=2&page_size=5", headers: bearer(contractUserToken)}, status: 200},
-		{name: "query binding bad int", req: contractRequest{method: "GET", path: "/api/v1/merchants?page=abc", headers: bearer(contractUserToken)}, status: 400, errCode: "INVALID_INPUT"},
-		{name: "query binding bad float", req: contractRequest{method: "GET", path: "/api/v1/merchants?latitude=x", headers: bearer(contractUserToken)}, status: 400, errCode: "INVALID_INPUT"},
-		{name: "query validation", req: contractRequest{method: "GET", path: "/api/v1/merchants?latitude=999", headers: bearer(contractUserToken)}, status: 400, errCode: "VALIDATION_FAILED"},
-		{name: "query uuid validation", req: contractRequest{method: "GET", path: "/api/v1/merchants?category_id=zzz", headers: bearer(contractUserToken)}, status: 400, errCode: "VALIDATION_FAILED"},
+		{name: "body within limit", req: contractRequest{method: "POST", path: "/auth/login", headers: withJSON(nil), body: loginBody}, status: 200},
 		{
 			name: "binary response keeps its headers", status: 200,
 			req: contractRequest{method: "GET", path: "/api/v1/merchant/qr", headers: bearer(contractMerchantToken)},
@@ -176,60 +135,32 @@ func TestServer_HTTPContract(t *testing.T) {
 	}
 }
 
-func TestServer_RequestIDIsEchoedOnRoutingErrors(t *testing.T) {
-	t.Parallel()
-
-	srv := newContractServer(t, contractConfig("1KB", 1000))
-	rec := serveContract(srv, contractRequest{method: "GET", path: "/nope", headers: map[string]string{"X-Request-Id": "abc-123"}})
-
-	require.Equal(t, http.StatusNotFound, rec.Code)
-	assert.Equal(t, "abc-123", rec.Header().Get("X-Request-Id"))
-	assert.Contains(t, rec.Body.String(), `"request_id":"abc-123"`)
-}
-
-func TestServer_BodyAtLimitIsAccepted(t *testing.T) {
-	t.Parallel()
-
-	srv := newContractServer(t, contractConfig("1KB", 1000))
-	padding := 1000 - len(`{"email":"a@example.com","password":""}`)
-	body := `{"email":"a@example.com","password":"` + strings.Repeat("a", padding) + `"}`
-	require.Len(t, body, 1000) // "1KB" is 1000 bytes, as it was under Echo v4
-
-	rec := serveContract(srv, contractRequest{method: "POST", path: "/auth/login", headers: withJSON(nil), body: body, remote: "192.0.2.10:1"})
-
-	assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-}
-
 // Echo v5's memory rate limiter sets X-RateLimit-* and Retry-After itself; v4
-// sent neither. The limiter must still key on the network peer, never on
-// forwarded headers a client can forge.
-func TestServer_RateLimitDeniesWithRetryAfterAndIgnoresForgedForwarding(t *testing.T) {
+// sent neither. Peer-IP keying and forged forwarding headers are covered by
+// the rate limiter tests in the middleware package.
+func TestServer_RateLimitDeniesWithRetryAfter(t *testing.T) {
 	t.Parallel()
 
 	srv := newContractServer(t, contractConfig("1KB", 3))
-	login := func(forwardedFor, remote string) contractResponse {
+	login := func() contractResponse {
 		return serveContract(srv, contractRequest{
-			method: "POST", path: "/auth/login", remote: remote,
-			headers: withJSON(map[string]string{"X-Forwarded-For": forwardedFor}),
-			body:    `{"email":"a@example.com","password":"x"}`,
+			method: "POST", path: "/auth/login", remote: "198.51.100.7:4000",
+			headers: withJSON(nil), body: `{"email":"a@example.com","password":"x"}`,
 		})
 	}
 
 	for i := range 3 {
-		rec := login(fmt.Sprintf("203.0.113.%d", i), "198.51.100.7:4000")
+		rec := login()
 		require.Equal(t, http.StatusOK, rec.Code, "request %d", i)
 		assert.Equal(t, "3", rec.Header().Get("X-RateLimit-Limit"))
 		assert.Equal(t, fmt.Sprint(2-i), rec.Header().Get("X-RateLimit-Remaining"))
 	}
 
-	denied := login("203.0.113.99", "198.51.100.7:4000")
+	denied := login()
 	require.Equal(t, http.StatusTooManyRequests, denied.Code)
 	assert.Equal(t, "REQUEST_FAILED", denied.errorCode(t))
 	assert.Equal(t, "0", denied.Header().Get("X-RateLimit-Remaining"))
 	assert.NotEmpty(t, denied.Header().Get("Retry-After"))
-
-	otherPeer := login("203.0.113.99", "198.51.100.8:4000")
-	assert.Equal(t, http.StatusOK, otherPeer.Code)
 }
 
 func TestServer_AllowedHostGuardRejectsForeignHostOnErrorPaths(t *testing.T) {

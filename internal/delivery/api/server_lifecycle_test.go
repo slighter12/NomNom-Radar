@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +17,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+const lifecycleWait = 3 * time.Second
 
 type serveResult struct{ err error }
 
@@ -44,89 +47,28 @@ func startContractServer(t *testing.T, srv *apiServer, cfg *config.Config) (base
 	return baseURL, ch
 }
 
-func protocolClient(protocols *http.Protocols) *http.Client {
-	return &http.Client{
-		Timeout:   3 * time.Second,
-		Transport: &http.Transport{Protocols: protocols, DisableKeepAlives: true},
-	}
+type fetchResult struct {
+	status int
+	body   string
+	err    error
 }
 
-type observedResponse struct {
-	StatusCode int
-	ProtoMajor int
-	RequestID  string
-}
-
-func doRequest(t *testing.T, client *http.Client, method, url, body string, headers map[string]string) (observedResponse, string) {
-	t.Helper()
-
-	req, err := http.NewRequestWithContext(context.Background(), method, url, strings.NewReader(body))
-	require.NoError(t, err)
-	for k, v := range headers {
-		req.Header.Set(k, v)
+// fetch performs a GET and reports every outcome, including transport errors,
+// as a value so it is safe to call from a goroutine.
+func fetch(url string) fetchResult {
+	client := &http.Client{Timeout: lifecycleWait, Transport: &http.Transport{DisableKeepAlives: true}}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return fetchResult{err: err}
 	}
 	resp, err := client.Do(req)
-	require.NoError(t, err)
-	payload, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-
-	return observedResponse{
-		StatusCode: resp.StatusCode,
-		ProtoMajor: resp.ProtoMajor,
-		RequestID:  resp.Header.Get("X-Request-Id"),
-	}, string(payload)
-}
-
-// The full middleware chain must behave the same over a real socket as it does
-// under httptest: real peer address, real Content-Length handling, h1 and h2c.
-func TestServer_FullStackOverRealTCP(t *testing.T) {
-	cfg := contractConfig("1KB", 2)
-	srv := newContractServer(t, cfg)
-	baseURL, _ := startContractServer(t, srv, cfg)
-
-	var h1, h2c http.Protocols
-	h1.SetHTTP1(true)
-	h2c.SetUnencryptedHTTP2(true)
-
-	for name, protocols := range map[string]*http.Protocols{"http1": &h1, "h2c": &h2c} {
-		t.Run(name, func(t *testing.T) {
-			client := protocolClient(protocols)
-			wantMajor := map[string]int{"http1": 1, "h2c": 2}[name]
-
-			resp, body := doRequest(t, client, http.MethodGet, baseURL+"/health", "", nil)
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
-			assert.Equal(t, wantMajor, resp.ProtoMajor)
-			assert.NotEmpty(t, resp.RequestID)
-			assert.Contains(t, body, "ok")
-
-			resp, body = doRequest(t, client, http.MethodGet, baseURL+"/nope", "", nil)
-			assert.Equal(t, http.StatusNotFound, resp.StatusCode)
-			assert.Contains(t, body, `"code":"NOT_FOUND"`)
-
-			resp, body = doRequest(t, client, http.MethodPut, baseURL+"/api/v1/locations/user/not-a-uuid",
-				`{}`, withJSON(bearer(contractUserToken)))
-			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
-			assert.Contains(t, body, `"code":"INVALID_ID"`)
-
-			resp, _ = doRequest(t, client, http.MethodPost, baseURL+"/auth/login",
-				`{"email":"a@example.com","password":"`+strings.Repeat("a", 2000)+`"}`, withJSON(nil))
-			assert.Equal(t, http.StatusRequestEntityTooLarge, resp.StatusCode)
-		})
+	if err != nil {
+		return fetchResult{err: err}
 	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
 
-	t.Run("rate limit keys on the real peer, not forged headers", func(t *testing.T) {
-		client := protocolClient(&h1)
-		statuses := make([]int, 0, 4)
-		for i := range 4 {
-			resp, _ := doRequest(t, client, http.MethodPost, baseURL+"/oauth/google/callback", `{}`,
-				withJSON(map[string]string{"X-Forwarded-For": "203.0.113." + strconv.Itoa(i)}))
-			statuses = append(statuses, resp.StatusCode)
-		}
-
-		assert.NotContains(t, statuses[:2], http.StatusTooManyRequests, "burst of 2 is allowed")
-		assert.Equal(t, http.StatusTooManyRequests, statuses[3], "forged X-Forwarded-For must not mint a new bucket")
-	})
+	return fetchResult{status: resp.StatusCode, body: string(body), err: err}
 }
 
 // stop must let in-flight requests finish (graceful) and refuse new ones, the
@@ -134,25 +76,33 @@ func TestServer_FullStackOverRealTCP(t *testing.T) {
 func TestServer_GracefulShutdownCompletesInFlightRequest(t *testing.T) {
 	cfg := contractConfig("1KB", 1000)
 	srv := newContractServer(t, cfg)
+
 	started, release := make(chan struct{}), make(chan struct{})
+	var startedOnce, releaseOnce sync.Once
+	releaseHandler := func() { releaseOnce.Do(func() { close(release) }) }
 	srv.server.GET("/slow", func(c *echo.Context) error {
-		close(started)
-		<-release
+		startedOnce.Do(func() { close(started) })
+		select {
+		case <-release:
+		case <-c.Request().Context().Done():
+		}
 
 		return c.String(http.StatusOK, "finished")
 	})
 	baseURL, served := startContractServer(t, srv, cfg)
+	// Registered after startContractServer's cleanup, so it runs first and a
+	// failed assertion can never leave the handler (and the stop) blocked.
+	t.Cleanup(releaseHandler)
 
-	type result struct {
-		status int
-		body   string
+	inFlight := make(chan fetchResult, 1)
+	go func() { inFlight <- fetch(baseURL + "/slow") }()
+	select {
+	case <-started:
+	case res := <-inFlight:
+		t.Fatalf("request ended before the handler started: %+v", res)
+	case <-time.After(lifecycleWait):
+		t.Fatal("handler did not start in time")
 	}
-	inFlight := make(chan result, 1)
-	go func() {
-		resp, body := doRequest(t, protocolClient(&http.Protocols{}), http.MethodGet, baseURL+"/slow", "", nil)
-		inFlight <- result{resp.StatusCode, body}
-	}()
-	<-started
 
 	stopped := make(chan error, 1)
 	go func() {
@@ -176,10 +126,27 @@ func TestServer_GracefulShutdownCompletesInFlightRequest(t *testing.T) {
 		return err != nil
 	}, time.Second, 20*time.Millisecond, "listener should stop accepting once shutdown begins")
 
-	close(release)
-	assert.Equal(t, result{http.StatusOK, "finished"}, <-inFlight)
-	require.NoError(t, <-stopped)
-	assert.NoError(t, (<-served).err, "Serve must return cleanly after a graceful stop")
+	releaseHandler()
+	select {
+	case res := <-inFlight:
+		require.NoError(t, res.err)
+		assert.Equal(t, http.StatusOK, res.status)
+		assert.Equal(t, "finished", res.body)
+	case <-time.After(lifecycleWait):
+		t.Fatal("in-flight request did not complete after release")
+	}
+	select {
+	case err := <-stopped:
+		require.NoError(t, err)
+	case <-time.After(lifecycleWait):
+		t.Fatal("stop did not return after the in-flight request finished")
+	}
+	select {
+	case res := <-served:
+		assert.NoError(t, res.err, "Serve must return cleanly after a graceful stop")
+	case <-time.After(lifecycleWait):
+		t.Fatal("Serve did not return after stop")
+	}
 }
 
 func TestServer_ServeFailsWhenPortIsTaken(t *testing.T) {

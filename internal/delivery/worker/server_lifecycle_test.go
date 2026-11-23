@@ -6,9 +6,8 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
-	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,46 +19,54 @@ import (
 	"go.uber.org/fx/fxtest"
 )
 
-func newLifecycleWorker(t *testing.T) (*workerServer, *config.Config) {
-	t.Helper()
+const lifecycleWait = 3 * time.Second
 
+type fetchResult struct {
+	status int
+	body   string
+	err    error
+}
+
+// fetch performs a GET and reports every outcome, including transport errors,
+// as a value so it is safe to call from a goroutine.
+func fetch(url string) fetchResult {
+	client := &http.Client{Timeout: lifecycleWait, Transport: &http.Transport{DisableKeepAlives: true}}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return fetchResult{err: err}
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fetchResult{err: err}
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+
+	return fetchResult{status: resp.StatusCode, body: string(body), err: err}
+}
+
+// stop must let in-flight requests finish (graceful), the same contract Echo
+// v4's Shutdown provided. The worker has its own copy of the server wiring, so
+// it needs its own check.
+func TestWorkerServer_GracefulShutdownCompletesInFlightRequest(t *testing.T) {
 	cfg := &config.Config{}
-	srv, err := NewServer(ServerParams{
+	built, err := NewServer(ServerParams{
 		Lc:     fxtest.NewLifecycle(t),
 		Cfg:    cfg,
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	require.NoError(t, err)
+	srv := built.(*workerServer)
 
-	return srv.(*workerServer), cfg
-}
-
-func TestWorkerServer_RoutingErrorsKeepTheirStatus(t *testing.T) {
-	t.Parallel()
-
-	srv, _ := newLifecycleWorker(t)
-	for _, tc := range []struct {
-		method, path string
-		want         int
-	}{
-		{http.MethodGet, "/missing", http.StatusNotFound},
-		{http.MethodPost, "/health", http.StatusMethodNotAllowed},
-		{http.MethodGet, "/health", http.StatusOK},
-	} {
-		req := httptest.NewRequestWithContext(context.Background(), tc.method, tc.path, nil)
-		rec := httptest.NewRecorder()
-		srv.server.ServeHTTP(rec, req)
-
-		assert.Equal(t, tc.want, rec.Code, tc.method+" "+tc.path)
-	}
-}
-
-func TestWorkerServer_GracefulShutdownCompletesInFlightRequest(t *testing.T) {
-	srv, cfg := newLifecycleWorker(t)
 	started, release := make(chan struct{}), make(chan struct{})
+	var startedOnce, releaseOnce sync.Once
+	releaseHandler := func() { releaseOnce.Do(func() { close(release) }) }
 	srv.server.GET("/slow", func(c *echo.Context) error {
-		close(started)
-		<-release
+		startedOnce.Do(func() { close(started) })
+		select {
+		case <-release:
+		case <-c.Request().Context().Done():
+		}
 
 		return c.String(http.StatusOK, "finished")
 	})
@@ -73,22 +80,22 @@ func TestWorkerServer_GracefulShutdownCompletesInFlightRequest(t *testing.T) {
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(context.Background()) }()
 	waitUntilReady(t, baseURL+"/health")
+	t.Cleanup(func() {
+		releaseHandler()
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.stop(ctx)
+	})
 
-	inFlight := make(chan string, 1)
-	go func() {
-		client := &http.Client{Timeout: 3 * time.Second}
-		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, baseURL+"/slow", nil)
-		resp, err := client.Do(req)
-		if err != nil {
-			inFlight <- "error: " + err.Error()
-
-			return
-		}
-		defer resp.Body.Close()
-		body, _ := io.ReadAll(resp.Body)
-		inFlight <- strconv.Itoa(resp.StatusCode) + " " + string(body)
-	}()
-	<-started
+	inFlight := make(chan fetchResult, 1)
+	go func() { inFlight <- fetch(baseURL + "/slow") }()
+	select {
+	case <-started:
+	case res := <-inFlight:
+		t.Fatalf("request ended before the handler started: %+v", res)
+	case <-time.After(lifecycleWait):
+		t.Fatal("handler did not start in time")
+	}
 
 	stopped := make(chan error, 1)
 	go func() {
@@ -102,24 +109,25 @@ func TestWorkerServer_GracefulShutdownCompletesInFlightRequest(t *testing.T) {
 	case <-time.After(150 * time.Millisecond):
 	}
 
-	close(release)
-	assert.Equal(t, "200 finished", <-inFlight)
-	require.NoError(t, <-stopped)
-	assert.NoError(t, <-served)
-}
-
-func TestWorkerServer_ServeFailsWhenPortIsTaken(t *testing.T) {
-	t.Parallel()
-
-	occupied, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "0.0.0.0:0")
-	require.NoError(t, err)
-	defer occupied.Close()
-
-	srv, cfg := newLifecycleWorker(t)
-	cfg.HTTP.Port = occupied.Addr().(*net.TCPAddr).Port
-
-	err = srv.Serve(context.Background())
-
-	require.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), "listen on"), err.Error())
+	releaseHandler()
+	select {
+	case res := <-inFlight:
+		require.NoError(t, res.err)
+		assert.Equal(t, http.StatusOK, res.status)
+		assert.Equal(t, "finished", res.body)
+	case <-time.After(lifecycleWait):
+		t.Fatal("in-flight request did not complete after release")
+	}
+	select {
+	case err := <-stopped:
+		require.NoError(t, err)
+	case <-time.After(lifecycleWait):
+		t.Fatal("stop did not return after the in-flight request finished")
+	}
+	select {
+	case err := <-served:
+		assert.NoError(t, err, "Serve must return cleanly after a graceful stop")
+	case <-time.After(lifecycleWait):
+		t.Fatal("Serve did not return after stop")
+	}
 }

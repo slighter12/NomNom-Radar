@@ -172,6 +172,11 @@ var (
 // BodyLimit accepts only a byte count, so this reproduces the string grammar
 // Echo v4 delegated to labstack/gommon/bytes: "1KB" and "1M" are decimal
 // (1000-based) while "1KiB" and "1Mi" are binary (1024-based).
+//
+// A limit of zero is rejected. Echo v4 treated zero as "no limit" for bodies of
+// unknown length (chunked uploads) while still refusing any sized body; Echo v5
+// refuses every non-empty body. Neither is a useful limit, and silently
+// allowing unbounded chunked uploads would be unsafe, so startup fails instead.
 func parseBodyLimit(raw string) (int64, error) {
 	base := 1000.0
 	parts := bodyLimitDecimalPattern.FindStringSubmatch(raw)
@@ -196,5 +201,10 @@ func parseBodyLimit(raw string) (int64, error) {
 		return 0, fmt.Errorf("invalid http.maxRequestBodySize %q: too large", raw)
 	}
 
-	return int64(amount * multiplier), nil
+	limit := int64(amount * multiplier)
+	if limit <= 0 {
+		return 0, fmt.Errorf("invalid http.maxRequestBodySize %q: must be greater than zero", raw)
+	}
+
+	return limit, nil
 }
