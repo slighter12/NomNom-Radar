@@ -27,7 +27,7 @@ func TestServeHTTP1AndUnencryptedHTTP2(t *testing.T) {
 	cfg := &config.Config{}
 	srv := &workerServer{
 		cfg:    cfg,
-		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		logger: slog.New(slog.DiscardHandler),
 		server: echoServer,
 	}
 	srv.httpServer = newHTTPServer(echoServer, cfg, srv.logger)

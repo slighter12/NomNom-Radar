@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -62,9 +63,7 @@ func bearer(token string) map[string]string {
 
 func withJSON(headers map[string]string) map[string]string {
 	merged := map[string]string{"Content-Type": "application/json"}
-	for k, v := range headers {
-		merged[k] = v
-	}
+	maps.Copy(merged, headers)
 
 	return merged
 }

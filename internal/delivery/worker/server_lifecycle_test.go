@@ -53,7 +53,7 @@ func TestWorkerServer_GracefulShutdownCompletesInFlightRequest(t *testing.T) {
 	built, err := NewServer(ServerParams{
 		Lc:     fxtest.NewLifecycle(t),
 		Cfg:    cfg,
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Logger: slog.New(slog.DiscardHandler),
 	})
 	require.NoError(t, err)
 	srv := built.(*workerServer)

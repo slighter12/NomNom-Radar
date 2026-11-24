@@ -46,7 +46,6 @@ func BenchmarkRoadGraph_FindNearestNode(b *testing.B) {
 
 	queryPoint := orb.Point{121.55, 25.05}
 
-	b.ResetTimer()
 	for b.Loop() {
 		graph.FindNearestNode(queryPoint)
 	}
@@ -77,7 +76,6 @@ func BenchmarkPathfinder_ShortestPath(b *testing.B) {
 	startNode := graph.pointMap[startKey]
 	endNode := graph.pointMap[endKey]
 
-	b.ResetTimer()
 	for b.Loop() {
 		pf.ShortestPath(startNode, endNode)
 	}
@@ -129,7 +127,6 @@ func BenchmarkPathfinder_ShortestPathToMany(b *testing.B) {
 		targetNodes[i] = graph.pointMap[key]
 	}
 
-	b.ResetTimer()
 	for b.Loop() {
 		pf.ShortestPathToMany(startNode, targetNodes)
 	}
@@ -167,7 +164,6 @@ func BenchmarkRoadGraph_getOrCreateNode(b *testing.B) {
 		points[i] = orb.Point{121.5 + float64(i)*0.001, 25.0 + float64(i)*0.001}
 	}
 
-	b.ResetTimer()
 	for b.Loop() {
 		for _, p := range points {
 			graph.getOrCreateNode(p)

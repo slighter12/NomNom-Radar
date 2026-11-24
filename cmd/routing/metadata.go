@@ -2,7 +2,8 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -213,10 +214,12 @@ func WriteMetadataToFile(metadata *RoutingMetadata, filePath string) error {
 	}
 	defer file.Close()
 
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
+	if err := json.MarshalWrite(file, metadata, jsontext.WithIndent("  ")); err != nil {
+		return fmt.Errorf("failed to encode metadata: %w", err)
+	}
 
-	if err := encoder.Encode(metadata); err != nil {
+	// json.MarshalWrite does not append a trailing newline like json.Encoder did.
+	if _, err := file.WriteString("\n"); err != nil {
 		return fmt.Errorf("failed to encode metadata: %w", err)
 	}
 
@@ -232,9 +235,8 @@ func LoadMetadataFromFile(filePath string) (*RoutingMetadata, error) {
 	defer file.Close()
 
 	var metadata RoutingMetadata
-	decoder := json.NewDecoder(file)
 
-	if err := decoder.Decode(&metadata); err != nil {
+	if err := json.UnmarshalRead(file, &metadata); err != nil {
 		return nil, fmt.Errorf("failed to decode metadata: %w", err)
 	}
 
