@@ -2,7 +2,6 @@ package impl
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"testing"
 
@@ -27,7 +26,7 @@ type profileServiceFixtures struct {
 
 func createTestProfileService(t *testing.T) *profileServiceFixtures {
 	txManager := mockRepo.NewMockTransactionManager(t)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	service := NewProfileService(txManager, logger)
 
 	return &profileServiceFixtures{

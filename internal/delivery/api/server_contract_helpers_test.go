@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -59,7 +58,7 @@ func (contractSubscriptionUsecase) GenerateSubscriptionQR(context.Context, uuid.
 func newContractServer(t *testing.T, cfg *config.Config) *apiServer {
 	t.Helper()
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	srv, err := NewServer(ServerParams{
 		Lc:     fxtest.NewLifecycle(t),
 		Cfg:    cfg,

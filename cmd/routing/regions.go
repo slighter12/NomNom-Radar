@@ -1,6 +1,8 @@
 package main
 
-import "sort"
+import (
+	"slices"
+)
 
 // RegionConfig defines supported OSM regions
 type RegionConfig struct {
@@ -44,7 +46,7 @@ func ListRegions() []string {
 		regions = append(regions, region)
 	}
 
-	sort.Strings(regions)
+	slices.Sort(regions)
 
 	return regions
 }

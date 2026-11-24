@@ -1,7 +1,6 @@
 package api
 
 import (
-	"io"
 	"log/slog"
 	"testing"
 
@@ -40,7 +39,7 @@ func TestNewServer_RejectsZeroBodyLimit(t *testing.T) {
 	_, err := NewServer(ServerParams{
 		Lc:           fxtest.NewLifecycle(t),
 		Cfg:          cfg,
-		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Logger:       slog.New(slog.DiscardHandler),
 		RouterParams: router.RouterParams{Config: cfg},
 	})
 

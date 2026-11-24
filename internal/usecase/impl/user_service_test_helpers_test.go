@@ -1,14 +1,13 @@
 package impl
 
 import (
-	"io"
 	"log/slog"
 
 	"radar/config"
 )
 
 func newDiscardLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 func newTestConfig(maxActiveSessions int) *config.Config {

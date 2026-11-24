@@ -2,7 +2,6 @@ package impl
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -27,7 +26,7 @@ type sessionServiceFixtures struct {
 
 func createTestSessionService(t *testing.T) *sessionServiceFixtures {
 	txManager := mockRepo.NewMockTransactionManager(t)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	service := NewSessionService(txManager, logger).(*sessionService)
 
 	return &sessionServiceFixtures{
