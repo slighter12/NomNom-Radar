@@ -24,6 +24,12 @@ on:
 permissions:
   contents: read
 
+# Superseded pull request runs are safe to cancel. Every other run gets its own
+# group: main pushes and version requests must not skip candidate detection.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   GOLANGCI_LINT_VERSION: latest
   TARGETS_FILE: .github/scripts/release/targets.json
@@ -53,11 +59,25 @@ jobs:
         run: PATH="${GITHUB_WORKSPACE}/.release-tools:${PATH}" bash .github/scripts/release/release_test.sh
 
       - name: Set up Go
+        id: go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          cache: true
-          cache-dependency-path: go.mod
+          cache: false
+
+      # setup-go's built-in cache has no restore-keys, so every dependency bump
+      # started cold. A prefix fallback keeps most compiled packages warm. Only
+      # main pushes save, so pull request caches do not evict the shared one.
+      - name: Restore Go caches
+        id: go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            go-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
 
       - name: Run linter
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
@@ -83,6 +103,20 @@ jobs:
           go-version-file: go.mod
           go-version-input: ''
           check-latest: false
+          # Reuse the module cache above; the action's own restore collides with it.
+          cache: false
+
+      # Save after failed checks too: compiled packages stay valid either way.
+      - name: Save Go caches
+        if: >-
+          !cancelled() && github.event_name == 'push'
+          && steps.go-cache.outcome == 'success' && steps.go-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ steps.go-cache.outputs.cache-primary-key }}
 
   candidate-changes:
     name: Detect candidate changes
